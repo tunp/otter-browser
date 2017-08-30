@@ -19,6 +19,7 @@
 **************************************************************************/
 
 #include "ContentBlockingInformationWidget.h"
+#include "../../../core/Console.h"
 #include "../../../core/Application.h"
 #include "../../../core/ContentBlockingManager.h"
 #include "../../../core/ContentBlockingProfile.h"
@@ -30,6 +31,9 @@
 
 #include <QtWidgets/QStyleOptionToolButton>
 #include <QtWidgets/QStylePainter>
+#include <QtWidgets/QCheckBox>
+#include <QtWidgets/QWidgetAction>
+#include <QDir>
 
 namespace Otter
 {
@@ -38,6 +42,7 @@ ContentBlockingInformationWidget::ContentBlockingInformationWidget(Window *windo
 	m_window(window),
 	m_elementsMenu(nullptr),
 	m_profilesMenu(nullptr),
+	m_hostsMenu(nullptr),
 	m_amount(0),
 	m_isContentBlockingEnabled(false)
 {
@@ -45,6 +50,7 @@ ContentBlockingInformationWidget::ContentBlockingInformationWidget(Window *windo
 
 	m_profilesMenu = menu->addMenu(tr("Active Profiles"));
 	m_elementsMenu = menu->addMenu(tr("Blocked Elements"));
+	m_hostsMenu = menu->addMenu(tr("Allowed 3rd-party Hosts"));
 
 	setMenu(menu);
 	setPopupMode(QToolButton::MenuButtonPopup);
@@ -63,6 +69,8 @@ ContentBlockingInformationWidget::ContentBlockingInformationWidget(Window *windo
 	connect(m_elementsMenu, SIGNAL(triggered(QAction*)), this, SLOT(openElement(QAction*)));
 	connect(m_profilesMenu, SIGNAL(aboutToShow()), this, SLOT(populateProfilesMenu()));
 	connect(m_profilesMenu, SIGNAL(triggered(QAction*)), this, SLOT(toggleOption(QAction*)));
+	connect(menu, SIGNAL(aboutToShow()), this, SLOT(populateHostsMenu()));
+	connect(menu, SIGNAL(aboutToHide()), this, SLOT(saveHosts()));
 	connect(defaultAction(), SIGNAL(triggered()), this, SLOT(toggleContentBlocking()));
 }
 
@@ -233,6 +241,250 @@ void ContentBlockingInformationWidget::populateProfilesMenu()
 			profileAction->setData(profiles.at(i)->getName());
 			profileAction->setCheckable(true);
 			profileAction->setChecked(enabledProfiles.contains(profiles.at(i)->getName()));
+		}
+	}
+}
+
+void ContentBlockingInformationWidget::populateHostsMenu()
+{
+	m_hostsMenu->clear();
+	m_tempHosts.clear();
+	m_hostsMenu->setEnabled(0);
+
+	if (!m_window || !m_window->getContentsWidget()->getWebWidget())
+	{
+		return;
+	}
+	if (m_window->getOption(SettingsManager::ContentBlocking_ProfilesOption).toStringList().contains(QLatin1String("3rdpartyblock")))
+	{
+		const QString mainHost = m_window->getContentsWidget()->getWebWidget()->getUrl().host();
+		QFile file(SessionsManager::getWritableDataPath(QLatin1String("contentBlocking/3rdpartyblock.txt")));
+		QHash<QString, bool> hostsEnabled;
+		QHash<QString, unsigned int> hosts;
+		QHash<QString, bool> secondLevelsEnabled;
+		QHash<QString, unsigned int> secondLevels;
+
+		if (file.open(QIODevice::ReadOnly | QIODevice::Text))
+		{
+			QTextStream stream(&file);
+			while (!stream.atEnd())
+			{
+				const QString line(stream.readLine().trimmed());
+				if (line.startsWith(QLatin1String("@@||")))
+				{
+					const QStringList parts(line.split(QLatin1String("^$domain=")));
+					if (parts.count() == 2)
+					{
+						if (parts[1] == mainHost)
+						{
+							const QString host(parts[0].mid(4));
+							QStringList parts(host.split(QLatin1Char('.')));
+							if (parts.count() > 2)
+							{
+								hostsEnabled[host] = 1;
+								hosts[host] = 0;
+							}
+							else
+							{
+								secondLevelsEnabled[host] = 1;
+								secondLevels[host] = 0;
+							}
+						}
+						else
+						{
+							m_tempHosts.append(line);
+						}
+					}
+				}
+			}
+			file.close();
+		}
+
+		const QVector<NetworkManager::ResourceInformation> requests(m_window->getContentsWidget()->getWebWidget()->getBlockedRequests());
+
+		for (int i = 0; i < requests.count(); ++i)
+		{
+			unsigned int count = 0;
+			const QString host = requests.at(i).url.host();
+			QStringList parts(host.split(QLatin1Char('.')));
+			if (hosts.contains(host))
+			{
+				count = hosts[host];
+			}
+			hosts[host] = ++count;
+			count = 0;
+			if (parts.count() > 2)
+			{
+				QString secondLevel = parts.takeLast();
+				if (parts.count() > 0)
+				{
+					secondLevel = QStringLiteral("%1.%2").arg(parts.takeLast()).arg(secondLevel);
+				}
+				if (secondLevels.contains(secondLevel))
+				{
+					count = secondLevels[secondLevel];
+				}
+				secondLevels[secondLevel] = ++count;
+			}
+		}
+		if (secondLevels.count() || hosts.count())
+		{
+			populateHostsPart(secondLevelsEnabled, secondLevels, 1);
+			m_hostsMenu->addSeparator();
+			populateHostsPart(hostsEnabled, hosts, 0);
+			setHostsDisabledState();
+			m_hostsMenu->setEnabled(1);
+		}
+	}
+}
+
+void ContentBlockingInformationWidget::populateHostsPart(const QHash<QString, bool> &hostsEnabled, const QHash<QString, unsigned int> &hosts, const bool isSecondLevel)
+{
+	QMap <unsigned int, QVector<QString> > orderedHosts;
+	QHashIterator<QString, unsigned int> hostsIt(hosts);
+	while (hostsIt.hasNext())
+	{
+		hostsIt.next();
+		orderedHosts[hostsIt.value()].push_back(hostsIt.key());
+	}
+	QMapIterator<unsigned int, QVector<QString> > orderedHostsIt(orderedHosts);
+	while (orderedHostsIt.hasNext())
+	{
+		orderedHostsIt.next();
+		for (int i = 0; i < orderedHostsIt.value().count(); ++i)
+		{
+			const QString host(orderedHostsIt.value().at(i));
+			QCheckBox *checkbox = new QCheckBox(m_hostsMenu);
+			checkbox->setText(QStringLiteral("%1\t [%2]").arg(Utils::elideText(host, m_hostsMenu)).arg(orderedHostsIt.key()));
+			bool isEnabled = hostsEnabled.contains(host);
+			checkbox->setChecked(isEnabled);
+			checkbox->setProperty("origIsChecked", isEnabled);
+			if (isSecondLevel)
+			{
+				connect(checkbox, SIGNAL(stateChanged(int)), this, SLOT(setHostsDisabledState()));
+			}
+			QWidgetAction *action = new QWidgetAction(m_hostsMenu);
+			action->setProperty("isSecondLevel", isSecondLevel);
+			action->setDefaultWidget(checkbox);
+			action->setData(host);
+			m_hostsMenu->addAction(action);
+		}
+	}
+}
+
+void ContentBlockingInformationWidget::saveHosts()
+{
+	if (!m_window || !m_window->getContentsWidget()->getWebWidget())
+	{
+		return;
+	}
+
+	QStringList profiles(m_window->getOption(SettingsManager::ContentBlocking_ProfilesOption).toStringList());
+	if (profiles.contains(QLatin1String("3rdpartyblock")))
+	{
+		const QString mainHost = m_window->getContentsWidget()->getWebWidget()->getUrl().host();
+		QStringList newLines;
+		bool hasChanges = 0;
+		QList<QAction *> actions = m_hostsMenu->actions();
+		for (int i = 0; i < actions.size(); i++)
+		{
+			QWidgetAction *action = qobject_cast<QWidgetAction *>(actions.at(i));
+			if (action)
+			{
+				QCheckBox *checkbox = qobject_cast<QCheckBox *>(action->defaultWidget());
+				if (checkbox)
+				{
+					const bool isChecked = checkbox->isEnabled() && checkbox->isChecked();
+					if (isChecked)
+					{
+						const QString remoteHost(action->data().toString());
+						newLines.append(QStringLiteral("@@||%1^$domain=%2").arg(remoteHost).arg(mainHost));
+					}
+					if (checkbox->property("origIsChecked").toBool() != isChecked)
+					{
+						hasChanges = 1;
+					}
+				}
+			}
+		}
+
+		if (hasChanges) {
+			QDir().mkpath(SessionsManager::getWritableDataPath(QLatin1String("contentBlocking")));
+
+			QFile file(SessionsManager::getWritableDataPath(QLatin1String("contentBlocking/3rdpartyblock.txt")));
+
+			if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
+			{
+				Console::addMessage(QCoreApplication::translate("main", "Failed to create 3rd party rules file: %1").arg(file.errorString()), Console::OtherCategory, Console::ErrorLevel, file.fileName());
+			}
+			else
+			{
+				file.write(QStringLiteral("[AdBlock Plus 2.0]\n").toUtf8());
+				file.write(QStringLiteral("*$third-party\n").toUtf8());
+
+				for (int i = 0; i < m_tempHosts.size(); i++)
+				{
+					file.write(QString(m_tempHosts.at(i) + "\n").toUtf8());
+				}
+				for (int i = 0; i < newLines.size(); i++)
+				{
+					file.write(QString(newLines.at(i) + "\n").toUtf8());
+				}
+
+				ContentBlockingProfile *profile(ContentBlockingManager::getProfile(QLatin1String("3rdpartyblock")));
+
+				// clear profile so that ContentBlockingManager will notice that its empty and reloads it
+				if (profile)
+				{
+					profile->clear();
+				}
+				else
+				{
+					profile = new ContentBlockingProfile(QLatin1String("3rdpartyblock"), tr("3rd-party block"), QUrl(), QDateTime(), QStringList(), 0, ContentBlockingProfile::OtherCategory, ContentBlockingProfile::NoFlags);
+
+					ContentBlockingManager::addProfile(profile);
+				}
+			}
+		}
+	}
+}
+
+void ContentBlockingInformationWidget::setHostsDisabledState()
+{
+	QHash<QString, int> secondLevels;
+	const QList<QAction *> actions(m_hostsMenu->actions());
+	for (int i = 0; i < actions.size(); i++)
+	{
+		QWidgetAction *action = qobject_cast<QWidgetAction *>(actions.at(i));
+		if (action)
+		{
+			QCheckBox *checkbox = qobject_cast<QCheckBox *>(action->defaultWidget());
+			if (checkbox)
+			{
+				const QString host = action->data().toString();
+				if (action->property("isSecondLevel").toBool())
+				{
+					secondLevels[host] = checkbox->isChecked();
+				}
+				else
+				{
+					QStringList parts(host.split(QLatin1Char('.')));
+					QString secondLevel(parts.takeLast());
+					if (parts.count() > 0)
+					{
+						secondLevel = QStringLiteral("%1.%2").arg(parts.takeLast()).arg(secondLevel);
+					}
+					// if secondLevel is checked disable the full host checkbox
+					if (secondLevels.contains(secondLevel))
+					{
+						checkbox->setEnabled(!secondLevels[secondLevel]);
+					}
+					else
+					{
+						checkbox->setEnabled(true);
+					}
+				}
+			}
 		}
 	}
 }

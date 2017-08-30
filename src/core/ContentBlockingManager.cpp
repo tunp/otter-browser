@@ -247,7 +247,7 @@ QStandardItemModel* ContentBlockingManager::createModel(QObject *parent, const Q
 	{
 		const QString name(m_profiles.at(i)->getName());
 
-		if (name == QLatin1String("custom"))
+		if (name == QLatin1String("custom") || name == QLatin1String("3rdpartyblock"))
 		{
 			continue;
 		}

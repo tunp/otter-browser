@@ -56,6 +56,7 @@ ContentBlockingDialog::ContentBlockingDialog(QWidget *parent) : Dialog(parent),
 
 	m_ui->cosmeticFiltersComboBox->setCurrentIndex((cosmeticFiltersIndex < 0) ? 0 : cosmeticFiltersIndex);
 	m_ui->enableCustomRulesCheckBox->setChecked(globalProfiles.contains(QLatin1String("custom")));
+	m_ui->enable3rdpartyBlockCheckBox->setChecked(globalProfiles.contains(QLatin1String("3rdpartyblock")));
 
 	QStandardItemModel *customRulesModel(new QStandardItemModel(this));
 	QFile file(SessionsManager::getWritableDataPath("contentBlocking/custom.txt"));
@@ -361,6 +362,42 @@ void ContentBlockingDialog::save()
 
 			profiles.append(QLatin1String("custom"));
 		}
+	}
+
+	if (m_ui->enable3rdpartyBlockCheckBox->isChecked())
+	{
+		QDir().mkpath(SessionsManager::getWritableDataPath(QLatin1String("contentBlocking")));
+
+		QFile file(SessionsManager::getWritableDataPath("contentBlocking/3rdpartyblock.txt"));
+
+		if (!file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text))
+		{
+			Console::addMessage(QCoreApplication::translate("main", "Failed to create 3rd party rules file: %1").arg(file.errorString()), Console::OtherCategory, Console::ErrorLevel, file.fileName());
+		}
+		else
+		{
+			// We don't have a blocking rule added yet so add it
+			if (!file.pos())
+			{
+				file.write(QStringLiteral("[AdBlock Plus 2.0]\n").toUtf8());
+				file.write(QStringLiteral("*$third-party\n").toUtf8());
+			}
+		}
+		file.close();
+		ContentBlockingProfile *profile(ContentBlockingManager::getProfile(QLatin1String("3rdpartyblock")));
+
+		if (profile)
+		{
+			profile->clear();
+		}
+		else
+		{
+			profile = new ContentBlockingProfile(QLatin1String("3rdpartyblock"), tr("3rd-party block"), QUrl(), QDateTime(), QStringList(), 0, ContentBlockingProfile::OtherCategory, ContentBlockingProfile::NoFlags);
+
+			ContentBlockingManager::addProfile(profile);
+		}
+
+		profiles.append(QLatin1String("3rdpartyblock"));
 	}
 
 	SettingsManager::setOption(SettingsManager::ContentBlocking_ProfilesOption, profiles);

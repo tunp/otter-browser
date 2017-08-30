@@ -50,6 +50,10 @@ protected slots:
 	void toggleOption(QAction *action);
 	void populateElementsMenu();
 	void populateProfilesMenu();
+	void populateHostsMenu();
+	void populateHostsPart(const QHash<QString, bool> &hostsEnabled, const QHash<QString, unsigned int> &hosts, const bool isSecondLevel);
+	void saveHosts();
+	void setHostsDisabledState();
 	void handleRequest(const NetworkManager::ResourceInformation &request);
 	void setWindow(Window *window);
 
@@ -57,9 +61,11 @@ private:
 	Window *m_window;
 	QMenu *m_elementsMenu;
 	QMenu *m_profilesMenu;
+	QMenu *m_hostsMenu;
 	QIcon m_icon;
 	int m_amount;
 	bool m_isContentBlockingEnabled;
+	QStringList m_tempHosts;
 };
 
 }
