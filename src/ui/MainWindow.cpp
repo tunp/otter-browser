@@ -437,10 +437,12 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 		case ActionsManager::GoToHomePageAction:
 			{
 				const QString homePage(SettingsManager::getOption(SettingsManager::Browser_HomePageOption).toString());
+				QVariantMap mutableParameters(parameters);
+				mutableParameters[QLatin1String("url")] = QUrl(homePage);
 
 				if (!homePage.isEmpty())
 				{
-					triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), QUrl(homePage)}});
+					triggerAction(ActionsManager::OpenUrlAction, mutableParameters);
 				}
 			}
 
@@ -617,7 +619,6 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 			return;
 		case ActionsManager::BookmarkAllOpenPagesAction:
 			{
-				BookmarksItem *parent(parameters.contains(QLatin1String("folder")) ? BookmarksManager::getBookmark(parameters[QLatin1String("folder")].toULongLong()) : nullptr);
 				const MainWindowSessionItem *mainWindowItem(SessionsManager::getModel()->getMainWindowItem(this));
 
 				if (mainWindowItem)
@@ -628,7 +629,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 
 						if (windowItem && !Utils::isUrlEmpty(windowItem->getActiveWindow()->getUrl()))
 						{
-							BookmarksManager::addBookmark(BookmarksModel::UrlBookmark, windowItem->getActiveWindow()->getUrl(), windowItem->getActiveWindow()->getTitle(), parent);
+							BookmarksManager::addBookmark(BookmarksModel::UrlBookmark, windowItem->getActiveWindow()->getUrl(), windowItem->getActiveWindow()->getTitle(), (parameters.contains(QLatin1String("folder")) ? BookmarksManager::getBookmark(parameters[QLatin1String("folder")].toULongLong()) : nullptr));
 						}
 					}
 				}
@@ -761,7 +762,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 			{
 				ToolBarsManager::ToolBarDefinition definition(ToolBarsManager::getToolBarDefinition(parameters.value(QLatin1String("sidebar"), ToolBarsManager::SideBar).toInt()));
 
-				if (definition.identifier >= 0)
+				if (definition.isValid())
 				{
 					const bool isFullScreen(windowState().testFlag(Qt::WindowFullScreen));
 					ToolBarsManager::ToolBarVisibility visibility(isFullScreen ? definition.fullScreenVisibility : definition.normalVisibility);
@@ -802,7 +803,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 			{
 				ToolBarsManager::ToolBarDefinition definition(ToolBarsManager::getToolBarDefinition(parameters.value(QLatin1String("sidebar"), ToolBarsManager::SideBar).toInt()));
 
-				if (definition.identifier >= 0 && !definition.currentPanel.isEmpty())
+				if (definition.isValid() && !definition.currentPanel.isEmpty())
 				{
 					triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), SidebarWidget::getPanelUrl(definition.currentPanel)}, {QLatin1String("hints"), SessionsManager::NewTabOpen}});
 				}
@@ -814,7 +815,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 				ToolBarsManager::ToolBarDefinition definition(ToolBarsManager::getToolBarDefinition(parameters.value(QLatin1String("sidebar"), ToolBarsManager::SideBar).toInt()));
 				definition.currentPanel = QString();
 
-				if (definition.identifier >= 0)
+				if (definition.isValid())
 				{
 					ToolBarsManager::setToolBar(definition);
 				}

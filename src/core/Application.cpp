@@ -48,7 +48,6 @@
 #elif defined(Q_OS_UNIX)
 #include "../modules/platforms/freedesktoporg/FreeDesktopOrgPlatformIntegration.h"
 #endif
-#include "../ui/Action.h"
 #include "../ui/LocaleDialog.h"
 #include "../ui/MainWindow.h"
 #include "../ui/NotificationDialog.h"
@@ -609,7 +608,7 @@ void Application::triggerAction(int identifier, const QVariantMap &parameters, Q
 
 			return;
 		case ActionsManager::LockToolBarsAction:
-			ToolBarsManager::setToolBarsLocked(parameters.value(QLatin1String("isChecked"), !m_instance->getActionState(identifier, parameters).isChecked).toBool());
+			SettingsManager::setOption(SettingsManager::Interface_LockToolBarsOption, parameters.value(QLatin1String("isChecked"), !m_instance->getActionState(identifier, parameters).isChecked).toBool());
 
 			return;
 		case ActionsManager::ResetToolBarsAction:
@@ -871,7 +870,6 @@ void Application::handleNewConnection()
 
 	socket->waitForReadyRead(1000);
 
-	const MainWindow *window(getWindows().isEmpty() ? nullptr : getWindow());
 	QString data;
 	QTextStream stream(socket);
 	stream >> data;
@@ -891,6 +889,8 @@ void Application::handleNewConnection()
 
 	if (session.isEmpty())
 	{
+		const MainWindow *window(getWindows().isEmpty() ? nullptr : getWindow());
+
 		if (!window || !SettingsManager::getOption(SettingsManager::Browser_OpenLinksInNewTabOption).toBool() || (isPrivate && !window->isPrivate()))
 		{
 			QVariantMap parameters;

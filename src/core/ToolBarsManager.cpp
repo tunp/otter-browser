@@ -360,6 +360,7 @@ void ToolBarsManager::setToolBar(ToolBarsManager::ToolBarDefinition definition)
 	if (identifier < 0 || identifier >= m_definitions.count())
 	{
 		QStringList toolBars;
+		toolBars.reserve(m_definitions.count());
 
 		for (int i = 0; i < OtherToolBar; ++i)
 		{
@@ -410,13 +411,6 @@ void ToolBarsManager::scheduleSave()
 	{
 		m_saveTimer = startTimer(1000);
 	}
-}
-
-void ToolBarsManager::setToolBarsLocked(bool locked)
-{
-	SettingsManager::setOption(SettingsManager::Interface_LockToolBarsOption, locked);
-
-	emit m_instance->toolBarsLockedChanged(locked);
 }
 
 ToolBarsManager* ToolBarsManager::getInstance()
