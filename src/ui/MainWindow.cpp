@@ -49,6 +49,7 @@
 
 #include "ui_MainWindow.h"
 
+#include <QtCore/QTimer>
 #include <QtGui/QCloseEvent>
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QMessageBox>
@@ -79,8 +80,6 @@ MainWindow::MainWindow(const QVariantMap &parameters, const SessionMainWindow &s
 
 	setUnifiedTitleAndToolBarOnMac(true);
 	updateShortcuts();
-
-	m_workspace->updateActions();
 
 	if (m_hasToolBars)
 	{
@@ -161,8 +160,11 @@ MainWindow::MainWindow(const QVariantMap &parameters, const SessionMainWindow &s
 		restoreGeometry(session.geometry);
 	}
 
-	restore(session);
-	updateWindowTitle();
+	QTimer::singleShot(0, [=]()
+	{
+		restore(session);
+		updateWindowTitle();
+	});
 
 	connect(m_workspace, SIGNAL(actionsStateChanged(QVector<int>)), this, SIGNAL(actionsStateChanged(QVector<int>)));
 }
@@ -513,6 +515,11 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 				QVariantMap mutableParameters(parameters);
 				mutableParameters[QLatin1String("hints")] = QVariant(hints);
 
+				if (!parameters.contains(QLatin1String("size")))
+				{
+					mutableParameters[QLatin1String("size")] = m_workspace->size();
+				}
+
 				if (hints.testFlag(SessionsManager::NewWindowOpen))
 				{
 					Application::createWindow(mutableParameters);
@@ -572,7 +579,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 
 			return;
 		case ActionsManager::ReopenTabAction:
-			restore();
+			restore(parameters.value(QLatin1String("index"), 0).toInt());
 
 			return;
 		case ActionsManager::StopAllAction:
@@ -629,7 +636,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 
 						if (windowItem && !Utils::isUrlEmpty(windowItem->getActiveWindow()->getUrl()))
 						{
-							BookmarksManager::addBookmark(BookmarksModel::UrlBookmark, windowItem->getActiveWindow()->getUrl(), windowItem->getActiveWindow()->getTitle(), (parameters.contains(QLatin1String("folder")) ? BookmarksManager::getBookmark(parameters[QLatin1String("folder")].toULongLong()) : nullptr));
+							BookmarksManager::addBookmark(BookmarksModel::UrlBookmark, {{BookmarksModel::UrlRole, windowItem->getActiveWindow()->getUrl()}, {BookmarksModel::TitleRole, windowItem->getActiveWindow()->getTitle()}}, (parameters.contains(QLatin1String("folder")) ? BookmarksManager::getBookmark(parameters[QLatin1String("folder")].toULongLong()) : nullptr));
 						}
 					}
 				}
@@ -1100,15 +1107,15 @@ void MainWindow::restore(const SessionMainWindow &session)
 	}
 	else
 	{
-		QVariantMap parameters;
-
-		if (m_isPrivate)
-		{
-			parameters[QLatin1String("hints")] = SessionsManager::PrivateOpen;
-		}
-
 		for (int i = 0; i < session.windows.count(); ++i)
 		{
+			QVariantMap parameters({{QLatin1String("size"), ((session.windows.at(i).state.state == Qt::WindowMaximized || !session.windows.at(i).state.geometry.isValid()) ? m_workspace->size() : session.windows.at(i).state.geometry.size())}});
+
+			if (m_isPrivate)
+			{
+				parameters[QLatin1String("hints")] = SessionsManager::PrivateOpen;
+			}
+
 			Window *window(new Window(parameters, nullptr, this));
 			window->setSession(session.windows.at(i), SettingsManager::getOption(SettingsManager::Sessions_DeferTabsLoadingOption).toBool());
 
@@ -1167,7 +1174,7 @@ void MainWindow::restore(int index)
 		}
 	}
 
-	QVariantMap parameters;
+	QVariantMap parameters({{QLatin1String("size"), ((closedWindow.window.state.state == Qt::WindowMaximized || !closedWindow.window.state.geometry.isValid()) ? m_workspace->size() : closedWindow.window.state.geometry.size())}});
 
 	if (m_isPrivate || closedWindow.isPrivate)
 	{
@@ -1982,7 +1989,7 @@ Window* MainWindow::openWindow(ContentsWidget *widget, SessionsManager::OpenHint
 	}
 	else
 	{
-		window = new Window({{QLatin1String("hints"), QVariant(hints)}}, widget, this);
+		window = new Window({{QLatin1String("hints"), QVariant(hints)}, {QLatin1String("size"), ((SettingsManager::getOption(SettingsManager::Interface_NewTabOpeningActionOption).toString() == QLatin1String("maximizeTab")) ? m_workspace->size() : QSize(800, 600))}}, widget, this);
 
 		addWindow(window, hints, index);
 	}
@@ -2014,7 +2021,7 @@ QUrl MainWindow::getUrl() const
 ActionsManager::ActionDefinition::State MainWindow::getActionState(int identifier, const QVariantMap &parameters) const
 {
 	const ActionsManager::ActionDefinition definition(ActionsManager::getActionDefinition(identifier));
-	ActionsManager::ActionDefinition::State state(definition.defaultState);
+	ActionsManager::ActionDefinition::State state(definition.getDefaultState());
 
 	switch (definition.scope)
 	{
@@ -2032,7 +2039,7 @@ ActionsManager::ActionDefinition::State MainWindow::getActionState(int identifie
 		case ActionsManager::ActionDefinition::ApplicationScope:
 			return Application::getInstance()->getActionState(identifier, parameters);
 		default:
-			return definition.defaultState;
+			return definition.getDefaultState();
 	}
 
 	switch (identifier)
@@ -2046,7 +2053,19 @@ ActionsManager::ActionDefinition::State MainWindow::getActionState(int identifie
 
 			break;
 		case ActionsManager::ReopenTabAction:
-			state.isEnabled = !m_closedWindows.isEmpty();
+			if (!m_closedWindows.isEmpty())
+			{
+				if (parameters.contains(QLatin1String("index")))
+				{
+					const int index(parameters[QLatin1String("index")].toInt());
+
+					state.isEnabled = (index >= 0 && index < m_closedWindows.count());
+				}
+				else
+				{
+					state.isEnabled = true;
+				}
+			}
 
 			break;
 		case ActionsManager::MaximizeAllAction:
@@ -2079,6 +2098,10 @@ ActionsManager::ActionDefinition::State MainWindow::getActionState(int identifie
 		case ActionsManager::ActivateTabOnRightAction:
 		case ActionsManager::ShowTabSwitcherAction:
 			state.isEnabled = (m_windows.count() > 1);
+
+			break;
+		case ActionsManager::ActivateTabAction:
+			state.isEnabled = m_windows.contains(parameters.value(QLatin1String("tab"), 0).toULongLong());
 
 			break;
 		case ActionsManager::OpenBookmarkAction:

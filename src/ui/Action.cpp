@@ -25,13 +25,6 @@
 namespace Otter
 {
 
-Action::Action(int identifier, QObject *parent) : QAction(parent),
-	m_flags(NoFlags),
-	m_identifier(identifier)
-{
-	initialize();
-}
-
 Action::Action(int identifier, const QVariantMap &parameters, QObject *parent) : QAction(parent),
 	m_parameters(parameters),
 	m_flags(NoFlags),
@@ -173,7 +166,7 @@ void Action::updateState()
 	}
 	else if (definition.isValid())
 	{
-		state = definition.defaultState;
+		state = definition.getDefaultState();
 		state.isEnabled = false;
 	}
 

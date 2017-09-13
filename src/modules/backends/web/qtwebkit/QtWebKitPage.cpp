@@ -24,6 +24,7 @@
 #include "../../../../core/ActionsManager.h"
 #include "../../../../core/Console.h"
 #include "../../../../core/ContentBlockingManager.h"
+#include "../../../../core/ContentBlockingProfile.h"
 #include "../../../../core/NetworkManagerFactory.h"
 #include "../../../../core/SettingsManager.h"
 #include "../../../../core/ThemesManager.h"
@@ -117,7 +118,7 @@ void QtWebKitFrame::handleLoadFinished()
 
 	runUserScripts(m_widget->getUrl());
 
-	if (SettingsManager::getOption(SettingsManager::Browser_RememberPasswordsOption).toBool())
+	if (m_widget->getOption(SettingsManager::Browser_RememberPasswordsOption).toBool())
 	{
 		QFile file(QLatin1String(":/modules/backends/web/qtwebkit/resources/formExtractor.js"));
 
@@ -129,16 +130,16 @@ void QtWebKitFrame::handleLoadFinished()
 		}
 	}
 
-	if (!m_widget->getOption(SettingsManager::ContentBlocking_EnableContentBlockingOption, m_widget->getUrl()).toBool())
+	if (!m_widget->getOption(SettingsManager::ContentBlocking_EnableContentBlockingOption).toBool())
 	{
 		return;
 	}
 
-	const QUrl url(m_widget->getUrl());
-	const QVector<int> profiles(ContentBlockingManager::getProfileList(m_widget->getOption(SettingsManager::ContentBlocking_ProfilesOption, url).toStringList()));
+	const QVector<int> profiles(ContentBlockingManager::getProfileList(m_widget->getOption(SettingsManager::ContentBlocking_ProfilesOption).toStringList()));
 
 	if (!profiles.isEmpty() && ContentBlockingManager::getCosmeticFiltersMode() != ContentBlockingManager::NoFiltersMode)
 	{
+		const QUrl url(m_widget->getUrl());
 		const ContentBlockingManager::CosmeticFiltersMode mode(ContentBlockingManager::checkUrl(profiles, url, url, NetworkManager::OtherType).comesticFiltersMode);
 
 		if (mode != ContentBlockingManager::NoFiltersMode)
@@ -245,7 +246,7 @@ QtWebKitPage::~QtWebKitPage()
 	m_popups.clear();
 }
 
-void QtWebKitPage::removePopup(const QUrl &url)
+void QtWebKitPage::validatePopup(const QUrl &url)
 {
 	QtWebKitPage *page(qobject_cast<QtWebKitPage*>(sender()));
 
@@ -256,7 +257,31 @@ void QtWebKitPage::removePopup(const QUrl &url)
 		page->deleteLater();
 	}
 
-	emit requestedPopupWindow(mainFrame()->url(), url);
+	const QVector<int> profiles(ContentBlockingManager::getProfileList(getOption(SettingsManager::ContentBlocking_ProfilesOption).toStringList()));
+
+	if (!profiles.isEmpty())
+	{
+		const ContentBlockingManager::CheckResult result(ContentBlockingManager::checkUrl(profiles, mainFrame()->url(), url, NetworkManager::PopupType));
+
+		if (result.isBlocked)
+		{
+			Console::addMessage(QCoreApplication::translate("main", "Request blocked by rule from profile %1:\n%2").arg(ContentBlockingManager::getProfile(result.profile)->getTitle()).arg(result.rule), Console::NetworkCategory, Console::LogLevel, url.url(), -1, (m_widget ? m_widget->getWindowIdentifier() : 0));
+
+			return;
+		}
+	}
+
+	const QString popupsPolicy(getOption(SettingsManager::Permissions_ScriptsCanOpenWindowsOption).toString());
+
+	if (popupsPolicy == QLatin1String("ask"))
+	{
+		emit requestedPopupWindow(mainFrame()->url(), url);
+	}
+	else
+	{
+		QtWebKitWebWidget *widget(createWidget((popupsPolicy == QLatin1String("openAllInBackground")) ? (SessionsManager::NewTabOpen | SessionsManager::BackgroundOpen) : SessionsManager::NewTabOpen));
+		widget->setUrl(url);
+	}
 }
 
 void QtWebKitPage::markAsErrorPage()
@@ -357,10 +382,9 @@ void QtWebKitPage::handleConsoleMessage(MessageSource category, MessageLevel lev
 
 void QtWebKitPage::updateStyleSheets(const QUrl &url)
 {
-	const QUrl currentUrl(url.isEmpty() ? mainFrame()->url() : url);
-	QString styleSheet((QStringLiteral("html {color: %1;} a {color: %2;} a:visited {color: %3;}")).arg(SettingsManager::getOption(SettingsManager::Content_TextColorOption).toString()).arg(SettingsManager::getOption(SettingsManager::Content_LinkColorOption).toString()).arg(SettingsManager::getOption(SettingsManager::Content_VisitedLinkColorOption).toString()).toUtf8());
+	QString styleSheet((QStringLiteral("html {color: %1;} a {color: %2;} a:visited {color: %3;}")).arg(getOption(SettingsManager::Content_TextColorOption).toString()).arg(getOption(SettingsManager::Content_LinkColorOption).toString()).arg(getOption(SettingsManager::Content_VisitedLinkColorOption).toString()).toUtf8());
 	const QWebElement mediaElement(mainFrame()->findFirstElement(QLatin1String("img, audio source, video source")));
-	const bool isViewingMedia(!mediaElement.isNull() && QUrl(mediaElement.attribute(QLatin1String("src"))) == currentUrl);
+	const bool isViewingMedia(!mediaElement.isNull() && QUrl(mediaElement.attribute(QLatin1String("src"))) == (url.isEmpty() ? mainFrame()->url() : url));
 
 	if (isViewingMedia && mediaElement.tagName().toLower() == QLatin1String("img"))
 	{
@@ -384,12 +408,12 @@ void QtWebKitPage::updateStyleSheets(const QUrl &url)
 		emit viewingMediaChanged(m_isViewingMedia);
 	}
 
-	if (!SettingsManager::getOption(SettingsManager::Interface_ShowScrollBarsOption).toBool())
+	if (!getOption(SettingsManager::Interface_ShowScrollBarsOption).toBool())
 	{
 		styleSheet.append(QLatin1String("body::-webkit-scrollbar {display:none;}"));
 	}
 
-	const QString userSyleSheet(m_widget ? m_widget->getOption(SettingsManager::Content_UserStyleSheetOption, currentUrl).toString() : QString());
+	const QString userSyleSheet(getOption(SettingsManager::Content_UserStyleSheetOption).toString());
 
 	if (!userSyleSheet.isEmpty())
 	{
@@ -454,9 +478,88 @@ void QtWebKitPage::triggerAction(QWebPage::WebAction action, bool isChecked)
 	QWebPage::triggerAction(action, isChecked);
 }
 
+QWebPage* QtWebKitPage::createWindow(QWebPage::WebWindowType type)
+{
+	if (type == QWebPage::WebBrowserWindow)
+	{
+		QtWebKitWebWidget *widget(nullptr);
+		const QString popupsPolicy(getOption(SettingsManager::Permissions_ScriptsCanOpenWindowsOption).toString());
+
+		if (!m_widget || currentFrame()->hitTestContent(m_widget->getClickPosition()).linkUrl().isEmpty())
+		{
+			if (popupsPolicy == QLatin1String("blockAll"))
+			{
+				return nullptr;
+			}
+
+			if (popupsPolicy == QLatin1String("ask") || !getOption(SettingsManager::ContentBlocking_ProfilesOption).isNull())
+			{
+				QtWebKitPage *page(new QtWebKitPage());
+				page->markAsPopup();
+
+				connect(page, SIGNAL(aboutToNavigate(QUrl,QWebFrame*,QWebPage::NavigationType)), this, SLOT(validatePopup(QUrl)));
+
+				return page;
+			}
+		}
+
+		widget = createWidget(SessionsManager::calculateOpenHints((popupsPolicy == QLatin1String("openAllInBackground")) ? (SessionsManager::NewTabOpen | SessionsManager::BackgroundOpen) : SessionsManager::NewTabOpen));
+
+		return widget->getPage();
+	}
+
+	return QWebPage::createWindow(type);
+}
+
 QtWebKitFrame* QtWebKitPage::getMainFrame() const
 {
 	return m_mainFrame;
+}
+
+QtWebKitWebWidget* QtWebKitPage::createWidget(SessionsManager::OpenHints hints)
+{
+	QtWebKitWebWidget *widget(nullptr);
+
+	if (m_widget)
+	{
+		widget = qobject_cast<QtWebKitWebWidget*>(m_widget->clone(false, m_widget->isPrivate(), getOption(SettingsManager::Sessions_OptionsExludedFromInheritingOption).toStringList()));
+	}
+	else if (settings()->testAttribute(QWebSettings::PrivateBrowsingEnabled))
+	{
+		widget = new QtWebKitWebWidget({{QLatin1String("hints"), SessionsManager::PrivateOpen}}, nullptr, nullptr);
+	}
+	else
+	{
+		widget = new QtWebKitWebWidget({}, nullptr, nullptr);
+	}
+
+	widget->handleLoadStarted();
+
+	emit requestedNewWindow(widget, hints);
+
+	return widget;
+}
+
+QString QtWebKitPage::chooseFile(QWebFrame *frame, const QString &suggestedFile)
+{
+	Q_UNUSED(frame)
+
+	return Utils::getOpenPaths(QStringList(suggestedFile)).value(0);
+}
+
+QString QtWebKitPage::userAgentForUrl(const QUrl &url) const
+{
+	if (m_networkManager)
+	{
+		return m_networkManager->getUserAgent();
+	}
+
+	return QWebPage::userAgentForUrl(url);
+}
+
+QString QtWebKitPage::getDefaultUserAgent() const
+{
+	return QWebPage::userAgentForUrl(QUrl());
 }
 
 QVariant QtWebKitPage::runScript(const QString &path, QWebElement element)
@@ -480,70 +583,17 @@ QVariant QtWebKitPage::runScript(const QString &path, QWebElement element)
 	return QVariant();
 }
 
-QWebPage* QtWebKitPage::createWindow(QWebPage::WebWindowType type)
+QVariant QtWebKitPage::getOption(int identifier) const
 {
-	if (type == QWebPage::WebBrowserWindow)
+	if (m_widget)
 	{
-		QtWebKitWebWidget *widget(nullptr);
-		const QString popupsPolicy((m_widget ? m_widget->getOption(SettingsManager::Permissions_ScriptsCanOpenWindowsOption) : SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanOpenWindowsOption)).toString());
-
-		if (!m_widget || currentFrame()->hitTestContent(m_widget->getClickPosition()).linkUrl().isEmpty())
-		{
-			if (popupsPolicy == QLatin1String("blockAll"))
-			{
-				return nullptr;
-			}
-
-			if (popupsPolicy == QLatin1String("ask"))
-			{
-				QtWebKitPage *page(new QtWebKitPage());
-				page->markAsPopup();
-
-				connect(page, SIGNAL(aboutToNavigate(QUrl,QWebFrame*,QWebPage::NavigationType)), this, SLOT(removePopup(QUrl)));
-
-				return page;
-			}
-		}
-
-		if (m_widget)
-		{
-			widget = qobject_cast<QtWebKitWebWidget*>(m_widget->clone(false, m_widget->isPrivate(), SettingsManager::getOption(SettingsManager::Sessions_OptionsExludedFromInheritingOption).toStringList()));
-		}
-		else
-		{
-			widget = new QtWebKitWebWidget(settings()->testAttribute(QWebSettings::PrivateBrowsingEnabled), nullptr, nullptr);
-		}
-
-		widget->handleLoadStarted();
-
-		emit requestedNewWindow(widget, SessionsManager::calculateOpenHints((popupsPolicy == QLatin1String("openAllInBackground")) ? (SessionsManager::NewTabOpen | SessionsManager::BackgroundOpen) : SessionsManager::NewTabOpen));
-
-		return widget->getPage();
+		return m_widget->getOption(identifier);
 	}
 
-	return QWebPage::createWindow(type);
-}
+	QUrl url(mainFrame()->url());
+	url = (url.isEmpty() ? mainFrame()->requestedUrl() : url);
 
-QString QtWebKitPage::chooseFile(QWebFrame *frame, const QString &suggestedFile)
-{
-	Q_UNUSED(frame)
-
-	return Utils::getOpenPaths(QStringList(suggestedFile)).value(0);
-}
-
-QString QtWebKitPage::userAgentForUrl(const QUrl &url) const
-{
-	if (m_networkManager)
-	{
-		return m_networkManager->getUserAgent();
-	}
-
-	return QWebPage::userAgentForUrl(url);
-}
-
-QString QtWebKitPage::getDefaultUserAgent() const
-{
-	return QWebPage::userAgentForUrl(QUrl());
+	return SettingsManager::getOption(identifier, url);
 }
 
 bool QtWebKitPage::acceptNavigationRequest(QWebFrame *frame, const QNetworkRequest &request, QWebPage::NavigationType type)
@@ -766,10 +816,13 @@ bool QtWebKitPage::extension(QWebPage::Extension extension, const QWebPage::Exte
 			domain = QLatin1String("HTTP");
 		}
 
-		Console::addMessage(tr("%1 error #%2: %3").arg(domain).arg(errorOption->error).arg(errorOption->errorString), Console::NetworkCategory, Console::ErrorLevel, url.toString(), -1, (m_widget ? m_widget->getWindowIdentifier() : 0));
+		const QString logMessage(tr("%1 error #%2: %3").arg(domain).arg(errorOption->error).arg(errorOption->errorString));
+		const quint64 windowIdentifier(m_widget ? m_widget->getWindowIdentifier() : 0);
 
 		if (errorOption->domain == QWebPage::WebKit && (errorOption->error == 102 || errorOption->error == 203))
 		{
+			Console::addMessage(logMessage, Console::NetworkCategory, Console::ErrorLevel, url.toString(), -1, windowIdentifier);
+
 			return false;
 		}
 
@@ -781,6 +834,8 @@ bool QtWebKitPage::extension(QWebPage::Extension extension, const QWebPage::Exte
 
 		if (errorOption->domain == QWebPage::QtNetwork && url.isLocalFile() && QFileInfo(url.toLocalFile()).isDir())
 		{
+			Console::addMessage(logMessage, Console::NetworkCategory, Console::ErrorLevel, url.toString(), -1, windowIdentifier);
+
 			return false;
 		}
 
@@ -817,7 +872,37 @@ bool QtWebKitPage::extension(QWebPage::Extension extension, const QWebPage::Exte
 		}
 		else if (errorOption->domain == QWebPage::QtNetwork && errorOption->error == QNetworkReply::QNetworkReply::ProtocolUnknownError)
 		{
-			information.type = ErrorPageInformation::UnsupportedAddressTypeError;
+			const QUrl normalizedUrl(Utils::normalizeUrl(url));
+			const QVector<NetworkManager::ResourceInformation> blockeckedRequests(m_networkManager->getBlockedRequests());
+			bool isBlockedContent(false);
+
+			for (int i = 0; i < blockeckedRequests.count(); ++i)
+			{
+				if (blockeckedRequests.at(i).resourceType == NetworkManager::MainFrameType && Utils::normalizeUrl(blockeckedRequests.at(i).url) == normalizedUrl)
+				{
+					isBlockedContent = true;
+
+					information.description.clear();
+
+					if (blockeckedRequests.at(i).metaData.contains(NetworkManager::ContentBlockingRuleMetaData))
+					{
+						const ContentBlockingProfile *profile(ContentBlockingManager::getProfile(blockeckedRequests.at(i).metaData.value(NetworkManager::ContentBlockingProfileMetaData).toInt()));
+
+						information.description.append(tr("Request blocked by rule from profile %1:<br>\n%2").arg(profile ? profile->getTitle() : tr("(Unknown)")).arg(QStringLiteral("<span style=\"font-family:monospace;\">%1</span>").arg(blockeckedRequests.at(i).metaData.value(NetworkManager::ContentBlockingRuleMetaData).toString())));
+					}
+
+					break;
+				}
+			}
+
+			if (isBlockedContent)
+			{
+				information.type = ErrorPageInformation::BlockedContentError;
+			}
+			else
+			{
+				information.type = ErrorPageInformation::UnsupportedAddressTypeError;
+			}
 		}
 		else if (errorOption->domain == QWebPage::WebKit)
 		{
@@ -842,7 +927,7 @@ bool QtWebKitPage::extension(QWebPage::Extension extension, const QWebPage::Exte
 
 			information.actions = QVector<ErrorPageInformation::PageAction>({goBackAction, addExceptionAction});
 		}
-		else
+		else if (information.type != ErrorPageInformation::BlockedContentError)
 		{
 			ErrorPageInformation::PageAction reloadAction;
 			reloadAction.name = QLatin1String("reloadPage");
@@ -853,6 +938,11 @@ bool QtWebKitPage::extension(QWebPage::Extension extension, const QWebPage::Exte
 		}
 
 		errorOutput->content = Utils::createErrorPage(information).toUtf8();
+
+		if (information.type != ErrorPageInformation::BlockedContentError)
+		{
+			Console::addMessage(logMessage, Console::NetworkCategory, Console::ErrorLevel, url.toString(), -1, windowIdentifier);
+		}
 
 		return true;
 	}

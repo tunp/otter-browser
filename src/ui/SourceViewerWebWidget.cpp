@@ -37,7 +37,7 @@
 namespace Otter
 {
 
-SourceViewerWebWidget::SourceViewerWebWidget(bool isPrivate, ContentsWidget *parent) : WebWidget(isPrivate, nullptr, parent),
+SourceViewerWebWidget::SourceViewerWebWidget(bool isPrivate, ContentsWidget *parent) : WebWidget({}, nullptr, parent),
 	m_sourceViewer(new SourceViewerWidget(this)),
 	m_networkManager(nullptr),
 	m_viewSourceReply(nullptr),
@@ -200,10 +200,7 @@ void SourceViewerWebWidget::triggerAction(int identifier, const QVariantMap &par
 
 			return;
 		case ActionsManager::CopyToNoteAction:
-			{
-				BookmarksItem *note(NotesManager::addNote(BookmarksModel::UrlBookmark, getUrl()));
-				note->setData(getSelectedText(), BookmarksModel::DescriptionRole);
-			}
+			NotesManager::addNote(BookmarksModel::UrlBookmark, {{BookmarksModel::UrlRole, getUrl()}, {BookmarksModel::DescriptionRole, getSelectedText()}});
 
 			return;
 		case ActionsManager::PasteAction:
@@ -491,7 +488,7 @@ ActionsManager::ActionDefinition::State SourceViewerWebWidget::getActionState(in
 			break;
 		default:
 			{
-				ActionsManager::ActionDefinition::State state(ActionsManager::getActionDefinition(identifier).defaultState);
+				ActionsManager::ActionDefinition::State state(ActionsManager::getActionDefinition(identifier).getDefaultState());
 				state.isEnabled = false;
 
 				return state;

@@ -572,6 +572,10 @@ void Application::triggerAction(int identifier, const QVariantMap &parameters, Q
 			}
 
 			return;
+		case ActionsManager::ReopenWindowAction:
+			SessionsManager::restoreClosedWindow(parameters.value(QLatin1String("index"), 0).toInt());
+
+			return;
 		case ActionsManager::SessionsAction:
 			{
 				SessionsManagerDialog dialog(m_activeWindow);
@@ -1338,17 +1342,49 @@ ActionsManager::ActionDefinition::State Application::getActionState(int identifi
 				return m_activeWindow->getActionState(identifier, parameters);
 			}
 
-			return definition.defaultState;
+			return definition.getDefaultState();
 		case ActionsManager::ActionDefinition::ApplicationScope:
 			break;
 		default:
-			return definition.defaultState;
+			return definition.getDefaultState();
 	}
 
-	ActionsManager::ActionDefinition::State state(definition.defaultState);
+	ActionsManager::ActionDefinition::State state(definition.getDefaultState());
 
 	switch (identifier)
 	{
+		case ActionsManager::ReopenWindowAction:
+			if (!SessionsManager::getClosedWindows().isEmpty())
+			{
+				if (parameters.contains(QLatin1String("index")))
+				{
+					const int index(parameters[QLatin1String("index")].toInt());
+
+					state.isEnabled = (index >= 0 && index < SessionsManager::getClosedWindows().count());
+				}
+				else
+				{
+					state.isEnabled = true;
+				}
+			}
+
+			break;
+		case ActionsManager::ActivateWindowAction:
+			{
+				const quint64 windowIdentifier(parameters.value(QLatin1String("window")).toULongLong());
+
+				for (int i = 0; i < m_windows.count(); ++i)
+				{
+					if (m_windows.at(i)->getIdentifier() == windowIdentifier)
+					{
+						state.isEnabled = true;
+
+						break;
+					}
+				}
+			}
+
+			break;
 		case ActionsManager::WorkOfflineAction:
 			state.isChecked = SettingsManager::getOption(SettingsManager::Network_WorkOfflineOption).toBool();
 

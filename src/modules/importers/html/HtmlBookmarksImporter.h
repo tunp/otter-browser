@@ -22,15 +22,15 @@
 #define OTTER_HTMLBOOKMARKSIMPORTER_H
 
 #include "../../../core/BookmarksImporter.h"
-#include "../../../ui/BookmarksImporterWidget.h"
 
-#include <QtCore/QFile>
 #ifdef OTTER_ENABLE_QTWEBKIT
 #include <QtWebKit/QWebElement>
 #endif
 
 namespace Otter
 {
+
+class BookmarksImporterWidget;
 
 class HtmlBookmarksImporter final : public BookmarksImporter
 {
@@ -55,6 +55,7 @@ public slots:
 #ifdef OTTER_ENABLE_QTWEBKIT
 protected:
 	void processElement(const QWebElement &element);
+	static QDateTime getDateTime(const QWebElement &element, const QString &attribute);
 #endif
 
 private:

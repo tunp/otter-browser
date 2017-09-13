@@ -110,7 +110,7 @@ protected:
 		PositionEntryData
 	};
 
-	explicit QtWebKitWebWidget(bool isPrivate, WebBackend *backend, QtWebKitNetworkManager *networkManager = nullptr, ContentsWidget *parent = nullptr);
+	explicit QtWebKitWebWidget(const QVariantMap &parameters, WebBackend *backend, QtWebKitNetworkManager *networkManager = nullptr, ContentsWidget *parent = nullptr);
 
 	void timerEvent(QTimerEvent *event) override;
 	void showEvent(QShowEvent *event) override;
@@ -141,6 +141,7 @@ protected:
 	bool canGoBack() const override;
 	bool canGoForward() const override;
 	bool canFastForward() const override;
+	bool canInspect() const override;
 	bool canRedo() const override;
 	bool canUndo() const override;
 	bool canShowContextMenu(const QPoint &position) const override;

@@ -47,7 +47,7 @@ namespace Otter
 
 QString WebWidget::m_fastForwardScript;
 
-WebWidget::WebWidget(bool isPrivate, WebBackend *backend, ContentsWidget *parent) : QWidget(parent), ActionExecutor(),
+WebWidget::WebWidget(const QVariantMap &parameters, WebBackend *backend, ContentsWidget *parent) : QWidget(parent), ActionExecutor(),
 	m_parent(parent),
 	m_backend(backend),
 	m_windowIdentifier(0),
@@ -55,7 +55,7 @@ WebWidget::WebWidget(bool isPrivate, WebBackend *backend, ContentsWidget *parent
 	m_loadingTimer(0),
 	m_reloadTimer(0)
 {
-	Q_UNUSED(isPrivate)
+	Q_UNUSED(parameters)
 
 	connect(this, SIGNAL(loadingStateChanged(WebWidget::LoadingState)), this, SLOT(handleLoadingStateChange(WebWidget::LoadingState)));
 	connect(BookmarksManager::getModel(), SIGNAL(modelModified()), this, SLOT(notifyPageActionsChanged()));
@@ -800,7 +800,7 @@ QRect WebWidget::getProgressBarGeometry() const
 
 ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier, const QVariantMap &parameters) const
 {
-	ActionsManager::ActionDefinition::State state(ActionsManager::getActionDefinition(identifier).defaultState);
+	ActionsManager::ActionDefinition::State state(ActionsManager::getActionDefinition(identifier).getDefaultState());
 
 	switch (identifier)
 	{
@@ -1067,6 +1067,11 @@ ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier
 			break;
 		case ActionsManager::InspectPageAction:
 			state.isChecked = isInspecting();
+			state.isEnabled = canInspect();
+
+			break;
+		case ActionsManager::InspectElementAction:
+			state.isEnabled = canInspect();
 
 			break;
 		case ActionsManager::WebsitePreferencesAction:
@@ -1270,6 +1275,11 @@ bool WebWidget::canGoForward() const
 }
 
 bool WebWidget::canFastForward() const
+{
+	return false;
+}
+
+bool WebWidget::canInspect() const
 {
 	return false;
 }

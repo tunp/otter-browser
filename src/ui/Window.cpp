@@ -718,7 +718,7 @@ Window* Window::clone(bool cloneHistory, MainWindow *mainWindow) const
 		return nullptr;
 	}
 
-	QVariantMap parameters;
+	QVariantMap parameters({{QLatin1String("size"), size()}});
 
 	if (isPrivate())
 	{
@@ -795,7 +795,7 @@ QDateTime Window::getLastActivity() const
 
 ActionsManager::ActionDefinition::State Window::getActionState(int identifier, const QVariantMap &parameters) const
 {
-	ActionsManager::ActionDefinition::State state(ActionsManager::getActionDefinition(identifier).defaultState);
+	ActionsManager::ActionDefinition::State state(ActionsManager::getActionDefinition(identifier).getDefaultState());
 
 	switch (identifier)
 	{

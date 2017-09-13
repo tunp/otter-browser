@@ -524,7 +524,7 @@ void WorkspaceWidget::addWindow(Window *window, const WindowState &state, bool i
 		QMdiSubWindow *activeWindow(m_mdi->currentSubWindow());
 		MdiWindow *mdiWindow(new MdiWindow(window, m_mdi));
 		QMenu *menu(new QMenu(mdiWindow));
-		Action *closeAction(new Action(ActionsManager::CloseTabAction, menu));
+		Action *closeAction(new Action(ActionsManager::CloseTabAction, {}, menu));
 		closeAction->setEnabled(true);
 		closeAction->setOverrideText(QT_TRANSLATE_NOOP("actions", "Close"));
 		closeAction->setOverrideIcon(QIcon());
@@ -586,8 +586,8 @@ void WorkspaceWidget::addWindow(Window *window, const WindowState &state, bool i
 		}
 
 		connect(closeAction, SIGNAL(triggered()), window, SLOT(close()));
-		connect(mdiWindow, SIGNAL(windowStateChanged(Qt::WindowStates,Qt::WindowStates)), this, SLOT(updateActions()));
-		connect(window, SIGNAL(destroyed()), this, SLOT(updateActions()));
+		connect(mdiWindow, SIGNAL(windowStateChanged(Qt::WindowStates,Qt::WindowStates)), this, SLOT(notifyActionsStateChanged()));
+		connect(window, SIGNAL(destroyed()), this, SLOT(notifyActionsStateChanged()));
 	}
 	else
 	{
@@ -595,7 +595,7 @@ void WorkspaceWidget::addWindow(Window *window, const WindowState &state, bool i
 		window->move(0, 0);
 	}
 
-	updateActions();
+	notifyActionsStateChanged();
 }
 
 void WorkspaceWidget::handleActiveSubWindowChanged(QMdiSubWindow *subWindow)
@@ -611,7 +611,7 @@ void WorkspaceWidget::handleActiveSubWindowChanged(QMdiSubWindow *subWindow)
 	}
 	else
 	{
-		updateActions();
+		notifyActionsStateChanged();
 	}
 }
 
@@ -623,7 +623,7 @@ void WorkspaceWidget::handleOptionChanged(int identifier, const QVariant &value)
 	}
 }
 
-void WorkspaceWidget::updateActions()
+void WorkspaceWidget::notifyActionsStateChanged()
 {
 	emit actionsStateChanged(QVector<int>({ActionsManager::MaximizeAllAction, ActionsManager::MinimizeAllAction, ActionsManager::RestoreAllAction, ActionsManager::CascadeAllAction, ActionsManager::TileAllAction}));
 }
@@ -642,7 +642,7 @@ void WorkspaceWidget::showContextMenu(const QPoint &position)
 	arrangeMenu->addAction(new Action(ActionsManager::CascadeAllAction, {}, executor, arrangeMenu));
 	arrangeMenu->addAction(new Action(ActionsManager::TileAllAction, {}, executor, arrangeMenu));
 
-	menu.addMenu(new Menu(Menu::ToolBarsMenuRole, &menu))->setText(tr("Toolbars"));
+	menu.addMenu(new Menu(Menu::ToolBarsMenuRole, &menu));
 	menu.exec(m_mdi->mapToGlobal(position));
 }
 

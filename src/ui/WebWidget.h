@@ -98,7 +98,8 @@ public:
 		NoFlagsFind = 0,
 		BackwardFind = 1,
 		CaseSensitiveFind = 2,
-		HighlightAllFind = 4
+		ExactMatchFind = 4,
+		HighlightAllFind = 8
 	};
 
 	Q_DECLARE_FLAGS(FindFlags, FindFlag)
@@ -268,7 +269,7 @@ public slots:
 	void setRequestedUrl(const QUrl &url, bool isTyped = true, bool onlyUpdate = false);
 
 protected:
-	explicit WebWidget(bool isPrivate, WebBackend *backend, ContentsWidget *parent = nullptr);
+	explicit WebWidget(const QVariantMap &parameters, WebBackend *backend, ContentsWidget *parent = nullptr);
 
 	void timerEvent(QTimerEvent *event) override;
 	void openUrl(const QUrl &url, SessionsManager::OpenHints hints);
@@ -286,6 +287,7 @@ protected:
 	virtual bool canGoBack() const;
 	virtual bool canGoForward() const;
 	virtual bool canFastForward() const;
+	virtual bool canInspect() const;
 	virtual bool canRedo() const;
 	virtual bool canUndo() const;
 	virtual bool canShowContextMenu(const QPoint &position) const;

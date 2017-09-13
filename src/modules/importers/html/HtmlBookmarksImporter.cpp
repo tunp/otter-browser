@@ -20,8 +20,10 @@
 
 #include "HtmlBookmarksImporter.h"
 #include "../../../core/BookmarksManager.h"
+#include "../../../ui/BookmarksImporterWidget.h"
 
 #include <QtCore/QDir>
+#include <QtCore/QFile>
 #ifdef OTTER_ENABLE_QTWEBKIT
 //TODO QtWebKit should not be used directly
 #include <QtWebKitWidgets/QWebPage>
@@ -48,91 +50,113 @@ HtmlBookmarksImporter::~HtmlBookmarksImporter()
 #ifdef OTTER_ENABLE_QTWEBKIT
 void HtmlBookmarksImporter::processElement(const QWebElement &element)
 {
-	const QString tagName(element.tagName().toLower());
-	BookmarksModel::BookmarkType type(BookmarksModel::UnknownBookmark);
+	QWebElement entryElement(element.findFirst(QLatin1String("dt, hr")));
 
-	if (tagName == QLatin1String("h3"))
+	while (!entryElement.isNull())
 	{
-		type = BookmarksModel::FolderBookmark;
+		if (entryElement.tagName().toLower() == QLatin1String("hr"))
+		{
+			BookmarksManager::addBookmark(BookmarksModel::SeparatorBookmark, {}, getCurrentFolder());
+		}
+		else
+		{
+			BookmarksModel::BookmarkType type(BookmarksModel::UnknownBookmark);
+			QWebElement matchedElement(entryElement.findFirst(QLatin1String("dt > h3")));
+
+			if (matchedElement.isNull())
+			{
+				matchedElement = entryElement.findFirst(QLatin1String("dt > a"));
+
+				if (!matchedElement.isNull())
+				{
+					type = BookmarksModel::UrlBookmark;
+				}
+			}
+			else
+			{
+				type = BookmarksModel::FolderBookmark;
+			}
+
+			if (type != BookmarksModel::UnknownBookmark && !matchedElement.isNull())
+			{
+				QMap<int, QVariant> metaData({{BookmarksModel::TitleRole, matchedElement.toPlainText()}});
+
+				if (type == BookmarksModel::UrlBookmark)
+				{
+					const QUrl url(matchedElement.attribute(QLatin1String("HREF")));
+
+					if (!areDuplicatesAllowed() && BookmarksManager::hasBookmark(url))
+					{
+						entryElement = entryElement.nextSibling();
+
+						continue;
+					}
+
+					metaData[BookmarksModel::UrlRole] = url;
+				}
+
+				if (matchedElement.hasAttribute(QLatin1String("SHORTCUTURL")))
+				{
+					const QString keyword(matchedElement.attribute(QLatin1String("SHORTCUTURL")));
+
+					if (!keyword.isEmpty() && !BookmarksManager::hasKeyword(keyword))
+					{
+						metaData[BookmarksModel::KeywordRole] = keyword;
+					}
+				}
+
+				if (matchedElement.hasAttribute(QLatin1String("ADD_DATE")))
+				{
+					const QDateTime dateTime(getDateTime(matchedElement, QLatin1String("ADD_DATE")));
+
+					if (dateTime.isValid())
+					{
+						metaData[BookmarksModel::TimeAddedRole] = dateTime;
+						metaData[BookmarksModel::TimeModifiedRole] = dateTime;
+					}
+				}
+
+				if (matchedElement.hasAttribute(QLatin1String("LAST_MODIFIED")))
+				{
+					const QDateTime dateTime(getDateTime(matchedElement, QLatin1String("LAST_MODIFIED")));
+
+					if (dateTime.isValid())
+					{
+						metaData[BookmarksModel::TimeModifiedRole] = dateTime;
+					}
+				}
+
+				if (type == BookmarksModel::UrlBookmark && matchedElement.hasAttribute(QLatin1String("LAST_VISITED")))
+				{
+					const QDateTime dateTime(getDateTime(matchedElement, QLatin1String("LAST_VISITED")));
+
+					if (dateTime.isValid())
+					{
+						metaData[BookmarksModel::TimeVisitedRole] = dateTime;
+					}
+				}
+
+				BookmarksItem *bookmark(BookmarksManager::addBookmark(type, metaData, getCurrentFolder()));
+
+				if (type == BookmarksModel::FolderBookmark)
+				{
+					setCurrentFolder(bookmark);
+					processElement(entryElement);
+				}
+
+				if (entryElement.nextSibling().tagName().toLower() == QLatin1String("dd"))
+				{
+					bookmark->setItemData(entryElement.nextSibling().toPlainText(), BookmarksModel::DescriptionRole);
+
+					entryElement = entryElement.nextSibling();
+				}
+			}
+		}
+
+		entryElement = entryElement.nextSibling();
 	}
-	else if (tagName == QLatin1String("a"))
-	{
-		type = BookmarksModel::UrlBookmark;
-	}
-	else if (tagName == QLatin1String("hr"))
-	{
-		type = BookmarksModel::SeparatorBookmark;
-	}
 
-	if (type == BookmarksModel::FolderBookmark || type == BookmarksModel::UrlBookmark)
-	{
-		const QString keyword(element.attribute(QLatin1String("SHORTCUTURL")));
-		const QUrl url((type == BookmarksModel::UrlBookmark) ? element.attribute(QLatin1String("HREF")) : QUrl());
-
-		if (type == BookmarksModel::UrlBookmark && !allowDuplicates() && BookmarksManager::hasBookmark(url))
-		{
-			return;
-		}
-
-		BookmarksItem *bookmark(BookmarksManager::addBookmark(type, url, element.toPlainText(), getCurrentFolder()));
-
-		if (type == BookmarksModel::FolderBookmark)
-		{
-			setCurrentFolder(bookmark);
-		}
-
-		if (!keyword.isEmpty() && !BookmarksManager::hasKeyword(keyword))
-		{
-			bookmark->setData(keyword, BookmarksModel::KeywordRole);
-		}
-
-		if (!element.attribute(QLatin1String("ADD_DATE")).isEmpty())
-		{
-			const QDateTime time(QDateTime::fromTime_t(element.attribute(QLatin1String("ADD_DATE")).toUInt()));
-
-			bookmark->setData(time, BookmarksModel::TimeAddedRole);
-			bookmark->setData(time, BookmarksModel::TimeModifiedRole);
-		}
-
-		if (element.parent().nextSibling().tagName().toLower() == QLatin1String("dd"))
-		{
-			bookmark->setData(element.parent().nextSibling().toPlainText(), BookmarksModel::DescriptionRole);
-		}
-
-		if (!element.attribute(QLatin1String("ADD_DATE")).isEmpty())
-		{
-			bookmark->setData(QDateTime::fromTime_t(element.attribute(QLatin1String("ADD_DATE")).toUInt()), BookmarksModel::TimeAddedRole);
-		}
-
-		if (!element.attribute(QLatin1String("LAST_MODIFIED")).isEmpty())
-		{
-			bookmark->setData(QDateTime::fromTime_t(element.attribute(QLatin1String("LAST_MODIFIED")).toUInt()), BookmarksModel::TimeModifiedRole);
-		}
-
-		if (!element.attribute(QLatin1String("LAST_VISITED")).isEmpty())
-		{
-			bookmark->setData(QDateTime::fromTime_t(element.attribute(QLatin1String("LAST_VISITED")).toUInt()), BookmarksModel::TimeVisitedRole);
-		}
-	}
-	else if (type == BookmarksModel::SeparatorBookmark)
-	{
-		BookmarksManager::addBookmark(BookmarksModel::SeparatorBookmark, QUrl(), QString(), getCurrentFolder());
-	}
-
-	const QWebElementCollection descendants(element.findAll(QLatin1String("*")));
-
-	for (int i = 0; i < descendants.count(); ++i)
-	{
-		if (descendants.at(i).parent() == element)
-		{
-			processElement(descendants.at(i));
-		}
-	}
-
-	if (element.tagName().toLower() == QLatin1String("dl"))
-	{
-		goToParent();
-	}
+	goToParent();
 }
 #endif
 
@@ -181,6 +205,21 @@ QUrl HtmlBookmarksImporter::getHomePage() const
 	return QUrl(QLatin1String("https://otter-browser.org/"));
 }
 
+#ifdef OTTER_ENABLE_QTWEBKIT
+QDateTime HtmlBookmarksImporter::getDateTime(const QWebElement &element, const QString &attribute)
+{
+#if QT_VERSION < 0x050800
+	const uint seconds(element.attribute(attribute).toUInt());
+
+	return ((seconds > 0) ? QDateTime::fromTime_t(seconds) : QDateTime());
+#else
+	const qint64 seconds(element.attribute(attribute).toLongLong());
+
+	return ((seconds != 0) ? QDateTime::fromSecsSinceEpoch(seconds) : QDateTime());
+#endif
+}
+#endif
+
 QStringList HtmlBookmarksImporter::getFileFilters() const
 {
 	return QStringList(tr("HTML files (*.htm *.html)"));
@@ -204,7 +243,7 @@ bool HtmlBookmarksImporter::import(const QString &path)
 
 			if (m_optionsWidget->isImportingIntoSubfolder())
 			{
-				setImportFolder(BookmarksManager::addBookmark(BookmarksModel::FolderBookmark, QUrl(), m_optionsWidget->getSubfolderName()));
+				setImportFolder(BookmarksManager::addBookmark(BookmarksModel::FolderBookmark, {{BookmarksModel::TitleRole, m_optionsWidget->getSubfolderName()}}));
 			}
 		}
 		else
@@ -215,9 +254,14 @@ bool HtmlBookmarksImporter::import(const QString &path)
 	}
 
 	QWebPage page;
+	page.settings()->setAttribute(QWebSettings::JavascriptEnabled, false);
 	page.mainFrame()->setHtml(file.readAll());
 
-	processElement(page.mainFrame()->documentElement());
+	BookmarksManager::getModel()->beginImport(getImportFolder(), page.mainFrame()->findAllElements(QLatin1String("a[href]")).count(), page.mainFrame()->findAllElements(QLatin1String("a[shortcuturl]")).count());
+
+	processElement(page.mainFrame()->documentElement().findFirst(QLatin1String("dl")));
+
+	BookmarksManager::getModel()->endImport();
 
 	file.close();
 

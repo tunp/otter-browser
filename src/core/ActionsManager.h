@@ -113,6 +113,7 @@ public:
 		CascadeAllAction,
 		TileAllAction,
 		CloseWindowAction,
+		ReopenWindowAction,
 		SessionsAction,
 		SaveSessionAction,
 		OpenUrlAction,
@@ -316,6 +317,14 @@ public:
 			return QCoreApplication::translate("actions", ((preferDescription && !description.isEmpty()) ? description : defaultState.text).toUtf8().constData());
 		}
 
+		State getDefaultState() const
+		{
+			State state(defaultState);
+			state.text = getText(false);
+
+			return state;
+		}
+
 		bool isValid() const
 		{
 			return (identifier >= 0);
@@ -365,9 +374,10 @@ public:
 		explicit Object(QObject *object, ActionExecutor *executor);
 		Object(const Object &other);
 
-		ActionsManager::ActionDefinition::State getActionState(int identifier, const QVariantMap &parameters = {}) const;
 		void triggerAction(int identifier, const QVariantMap &parameters = {});
-		QObject *getObject() const;
+		QObject* getObject() const;
+		Object& operator=(const Object &other);
+		ActionsManager::ActionDefinition::State getActionState(int identifier, const QVariantMap &parameters = {}) const;
 		bool isValid() const;
 
 	private:

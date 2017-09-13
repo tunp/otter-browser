@@ -307,13 +307,14 @@ ActionsManager::ActionsManager(QObject *parent) : QObject(parent),
 	registerAction(CloseOtherTabsAction, QT_TRANSLATE_NOOP("actions", "Close Other Tabs"), QString(), ThemesManager::createIcon(QLatin1String("tab-close-other")), ActionDefinition::MainWindowScope);
 	registerAction(ClosePrivateTabsAction, QT_TRANSLATE_NOOP("actions", "Close All Private Tabs"), QT_TRANSLATE_NOOP("actions", "Close All Private Tabs in Current Window"), QIcon(), ActionDefinition::MainWindowScope, ActionDefinition::NoFlags);
 	registerAction(ClosePrivateTabsPanicAction, QT_TRANSLATE_NOOP("actions", "Close Private Tabs and Windows"), QString(), QIcon(), ActionDefinition::ApplicationScope);
-	registerAction(ReopenTabAction, QT_TRANSLATE_NOOP("actions", "Reopen Previously Closed Tab"), QString(), QIcon(), ActionDefinition::MainWindowScope);
+	registerAction(ReopenTabAction, QT_TRANSLATE_NOOP("actions", "Reopen Previously Closed Tab"), QString(), QIcon(), ActionDefinition::MainWindowScope, ActionDefinition::NoFlags);
 	registerAction(MaximizeAllAction, QT_TRANSLATE_NOOP("actions", "Maximize All"), QString(), QIcon(), ActionDefinition::MainWindowScope);
 	registerAction(MinimizeAllAction, QT_TRANSLATE_NOOP("actions", "Minimize All"), QString(), QIcon(), ActionDefinition::MainWindowScope);
 	registerAction(RestoreAllAction, QT_TRANSLATE_NOOP("actions", "Restore All"), QString(), QIcon(), ActionDefinition::MainWindowScope);
 	registerAction(CascadeAllAction, QT_TRANSLATE_NOOP("actions", "Cascade"), QString(), QIcon(), ActionDefinition::MainWindowScope);
 	registerAction(TileAllAction, QT_TRANSLATE_NOOP("actions", "Tile"), QString(), QIcon(), ActionDefinition::MainWindowScope);
 	registerAction(CloseWindowAction, QT_TRANSLATE_NOOP("actions", "Close Window"), QString(), QIcon(), ActionDefinition::MainWindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsImmutableFlag));
+	registerAction(ReopenWindowAction, QT_TRANSLATE_NOOP("actions", "Reopen Previously Closed Window"), QString(), QIcon(), ActionDefinition::ApplicationScope, ActionDefinition::NoFlags);
 	registerAction(SessionsAction, QT_TRANSLATE_NOOP("actions", "Manage Sessions…"), QString(), QIcon(), ActionDefinition::ApplicationScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsImmutableFlag));
 	registerAction(SaveSessionAction, QT_TRANSLATE_NOOP("actions", "Save Current Session…"), QString(), QIcon(), ActionDefinition::ApplicationScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsImmutableFlag));
 	registerAction(OpenUrlAction, QT_TRANSLATE_NOOP("actions", "Open URL"), QString(), QIcon(), ActionDefinition::MainWindowScope, ActionDefinition::RequiresParameters);
@@ -409,10 +410,10 @@ ActionsManager::ActionsManager(QObject *parent) : QObject(parent),
 	registerAction(ActivateContentAction, QT_TRANSLATE_NOOP("actions", "Activate Content"), QString(), QIcon(), ActionDefinition::WindowScope);
 	registerAction(ActivatePreviouslyUsedTabAction, QT_TRANSLATE_NOOP("actions", "Go to Previously Used Tab"), QString(), QIcon(), ActionDefinition::MainWindowScope);
 	registerAction(ActivateLeastRecentlyUsedTabAction, QT_TRANSLATE_NOOP("actions", "Go to Least Recently Used Tab"), QString(), QIcon(), ActionDefinition::MainWindowScope);
-	registerAction(ActivateTabAction, QT_TRANSLATE_NOOP("actions", "Activate Tab"), QString(), QIcon(), ActionDefinition::MainWindowScope);
+	registerAction(ActivateTabAction, QT_TRANSLATE_NOOP("actions", "Activate Tab"), QString(), QIcon(), ActionDefinition::MainWindowScope, ActionDefinition::RequiresParameters);
 	registerAction(ActivateTabOnLeftAction, QT_TRANSLATE_NOOP("actions", "Go to Tab on Left"), QString(), QIcon(), ActionDefinition::MainWindowScope);
 	registerAction(ActivateTabOnRightAction, QT_TRANSLATE_NOOP("actions", "Go to Tab on Right"), QString(), QIcon(), ActionDefinition::MainWindowScope);
-	registerAction(ActivateWindowAction, QT_TRANSLATE_NOOP("actions", "Activate Window"), QString(), QIcon(), ActionDefinition::ApplicationScope);
+	registerAction(ActivateWindowAction, QT_TRANSLATE_NOOP("actions", "Activate Window"), QString(), QIcon(), ActionDefinition::ApplicationScope, ActionDefinition::RequiresParameters);
 	registerAction(BookmarksAction, QT_TRANSLATE_NOOP("actions", "Manage Bookmarks"), QString(), ThemesManager::createIcon(QLatin1String("bookmarks-organize")), ActionDefinition::MainWindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsImmutableFlag));
 	registerAction(BookmarkPageAction, QT_TRANSLATE_NOOP("actions", "Bookmark Page…"), QString(), ThemesManager::createIcon(QLatin1String("bookmark-new")), ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::PageCategory);
 	registerAction(BookmarkAllOpenPagesAction, QT_TRANSLATE_NOOP("actions", "Bookmark All Open Pages"), QString(), QIcon(), ActionDefinition::MainWindowScope);
@@ -423,8 +424,8 @@ ActionsManager::ActionsManager(QObject *parent) : QObject(parent),
 	registerAction(EnableJavaScriptAction, QT_TRANSLATE_NOOP("actions", "Enable JavaScript"), QString(), QIcon(), ActionDefinition::WindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsCheckableFlag), ActionDefinition::PageCategory);
 	registerAction(EnableReferrerAction, QT_TRANSLATE_NOOP("actions", "Enable Referrer"), QString(), QIcon(), ActionDefinition::WindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsCheckableFlag), ActionDefinition::PageCategory);
 	registerAction(ViewSourceAction, QT_TRANSLATE_NOOP("actions", "View Source"), QString(), QIcon(), ActionDefinition::WindowScope, ActionDefinition::NoFlags, ActionDefinition::NavigationCategory);
-	registerAction(InspectPageAction, QT_TRANSLATE_NOOP("actions", "Inspect Page"), QString(), QIcon(), ActionDefinition::WindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsCheckableFlag));
-	registerAction(InspectElementAction, QT_TRANSLATE_NOOP("actions", "Inspect Element…"), QString(), QIcon(), ActionDefinition::WindowScope);
+	registerAction(InspectPageAction, QT_TRANSLATE_NOOP("actions", "Inspect Page"), QString(), QIcon(), ActionDefinition::WindowScope, ActionDefinition::IsCheckableFlag);
+	registerAction(InspectElementAction, QT_TRANSLATE_NOOP("actions", "Inspect Element…"), QString(), QIcon(), ActionDefinition::WindowScope, ActionDefinition::NoFlags);
 	registerAction(WorkOfflineAction, QT_TRANSLATE_NOOP("actions", "Work Offline"), QString(), QIcon(), ActionDefinition::ApplicationScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsCheckableFlag));
 	registerAction(FullScreenAction, QT_TRANSLATE_NOOP("actions", "Full Screen"), QString(), ThemesManager::createIcon(QLatin1String("view-fullscreen")), ActionDefinition::MainWindowScope);
 	registerAction(ShowTabSwitcherAction, QT_TRANSLATE_NOOP("actions", "Show Tab Switcher"), QString(), QIcon(), ActionDefinition::MainWindowScope);
@@ -740,21 +741,8 @@ ActionExecutor::Object::Object(QObject *object, ActionExecutor *executor) : m_ob
 {
 }
 
-ActionExecutor::Object::Object(const ActionExecutor::Object &other) : m_object(other.m_object), m_executor(other.m_executor)
+ActionExecutor::Object::Object(const Object &other) : m_object(other.m_object), m_executor(other.m_executor)
 {
-}
-
-ActionsManager::ActionDefinition::State ActionExecutor::Object::getActionState(int identifier, const QVariantMap &parameters) const
-{
-	if (!m_object.isNull())
-	{
-		return m_executor->getActionState(identifier, parameters);
-	}
-
-	ActionsManager::ActionDefinition::State state(ActionsManager::getActionDefinition(identifier).defaultState);
-	state.isEnabled = false;
-
-	return state;
 }
 
 void ActionExecutor::Object::triggerAction(int identifier, const QVariantMap &parameters)
@@ -768,6 +756,30 @@ void ActionExecutor::Object::triggerAction(int identifier, const QVariantMap &pa
 QObject* ActionExecutor::Object::getObject() const
 {
 	return m_object.data();
+}
+
+ActionExecutor::Object& ActionExecutor::Object::operator=(const Object &other)
+{
+	if (this != &other)
+	{
+		m_object = other.m_object;
+		m_executor = other.m_executor;
+	}
+
+	return *this;
+}
+
+ActionsManager::ActionDefinition::State ActionExecutor::Object::getActionState(int identifier, const QVariantMap &parameters) const
+{
+	if (!m_object.isNull())
+	{
+		return m_executor->getActionState(identifier, parameters);
+	}
+
+	ActionsManager::ActionDefinition::State state(ActionsManager::getActionDefinition(identifier).getDefaultState());
+	state.isEnabled = false;
+
+	return state;
 }
 
 bool ActionExecutor::Object::isValid() const

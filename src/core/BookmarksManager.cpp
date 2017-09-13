@@ -132,22 +132,14 @@ BookmarksModel* BookmarksManager::getModel()
 	return m_model;
 }
 
-BookmarksItem* BookmarksManager::addBookmark(BookmarksModel::BookmarkType type, const QUrl &url, const QString &title, BookmarksItem *parent, int index)
+BookmarksItem* BookmarksManager::addBookmark(BookmarksModel::BookmarkType type, const QMap<int, QVariant> &metaData, BookmarksItem *parent, int index)
 {
 	if (!m_model)
 	{
 		getModel();
 	}
 
-	BookmarksItem *bookmark(m_model->addBookmark(type, 0, url, title, parent, index));
-
-	if (bookmark)
-	{
-		bookmark->setData(QDateTime::currentDateTime(), BookmarksModel::TimeAddedRole);
-		bookmark->setData(QDateTime::currentDateTime(), BookmarksModel::TimeModifiedRole);
-	}
-
-	return bookmark;
+	return m_model->addBookmark(type, metaData, parent, index);
 }
 
 BookmarksItem* BookmarksManager::getBookmark(const QString &keyword)

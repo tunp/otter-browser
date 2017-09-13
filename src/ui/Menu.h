@@ -71,6 +71,8 @@ public:
 
 protected:
 	void changeEvent(QEvent *event) override;
+	void hideEvent(QHideEvent *event) override;
+	void mousePressEvent(QMouseEvent *event) override;
 	void mouseReleaseEvent(QMouseEvent *event) override;
 	void contextMenuEvent(QContextMenuEvent *event) override;
 	void appendAction(const QJsonValue &definition, const QStringList &includeSections, ActionExecutor::Object executor);
@@ -95,18 +97,17 @@ protected slots:
 	void clearBookmarksMenu();
 	void clearClosedWindows();
 	void clearNotesMenu();
-	void restoreClosedWindow();
 	void openBookmark();
 	void openImporter(QAction *action);
 	void openSession(QAction *action);
 	void selectDictionary(QAction *action);
 	void selectOption(QAction *action);
 	void selectStyleSheet(QAction *action);
-	void selectWindow(QAction *action);
 	void updateClosedWindowsMenu();
 
 private:
 	QActionGroup *m_actionGroup;
+	QAction *m_clickedAction;
 	BookmarksItem *m_bookmark;
 	QString m_title;
 	ActionExecutor::Object m_executor;

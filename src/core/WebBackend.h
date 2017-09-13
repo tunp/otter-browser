@@ -34,7 +34,7 @@ class WebBackend : public QObject, public Addon
 	Q_OBJECT
 
 public:
-	enum BackendCapability
+	enum BackendCapability : quint32
 	{
 		NoCapabilities = 0,
 		CacheManagementCapability = 1,
@@ -54,14 +54,16 @@ public:
 		TabDoNotTrackCapability = 16384,
 		TabProxyCapability = 32768,
 		TabReferrerCapability = 65536,
-		TabUserAgentCapability = 131072
+		TabUserAgentCapability = 131072,
+		FindInPageHighlightAllCapability = 262144,
+		FindInPageExactMatchCapability = 524288
 	};
 
 	Q_DECLARE_FLAGS(BackendCapabilities, BackendCapability)
 
 	explicit WebBackend(QObject *parent = nullptr);
 
-	virtual WebWidget* createWidget(bool isPrivate = false, ContentsWidget *parent = nullptr) = 0;
+	virtual WebWidget* createWidget(const QVariantMap &parameters, ContentsWidget *parent = nullptr) = 0;
 	virtual QString getEngineVersion() const = 0;
 	virtual QString getSslVersion() const = 0;
 	virtual QString getUserAgent(const QString &pattern = {}) const = 0;

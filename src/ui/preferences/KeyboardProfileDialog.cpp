@@ -197,6 +197,10 @@ KeyboardProfileDialog::KeyboardProfileDialog(const QString &profile, const QHash
 	m_ui->versionLineEdit->setText(m_profile.getVersion());
 	m_ui->authorLineEdit->setText(m_profile.getAuthor());
 
+	connect(m_ui->titleLineEdit, &QLineEdit::textChanged, m_ui->actionsViewWidget, &ItemViewWidget::markAsModified);
+	connect(m_ui->descriptionLineEdit, &QLineEdit::textChanged, m_ui->actionsViewWidget, &ItemViewWidget::markAsModified);
+	connect(m_ui->versionLineEdit, &QLineEdit::textChanged, m_ui->actionsViewWidget, &ItemViewWidget::markAsModified);
+	connect(m_ui->authorLineEdit, &QLineEdit::textChanged, m_ui->actionsViewWidget, &ItemViewWidget::markAsModified);
 	connect(m_ui->filterLineEdit, &QLineEdit::textChanged, m_ui->actionsViewWidget, &ItemViewWidget::setFilterString);
 	connect(m_ui->actionsViewWidget, &ItemViewWidget::needsActionsUpdate, this, &KeyboardProfileDialog::updateActions);
 	connect(m_ui->addActionButton, &QPushButton::clicked, this, &KeyboardProfileDialog::addAction);
@@ -240,7 +244,7 @@ void KeyboardProfileDialog::updateActions()
 
 KeyboardProfile KeyboardProfileDialog::getProfile() const
 {
-	KeyboardProfile profile;
+	KeyboardProfile profile(m_profile);
 	profile.setTitle(m_ui->titleLineEdit->text());
 	profile.setDescription(m_ui->descriptionLineEdit->text());
 	profile.setVersion(m_ui->versionLineEdit->text());

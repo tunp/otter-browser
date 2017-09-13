@@ -115,7 +115,7 @@ void BookmarksContentsWidget::addSeparator()
 	const QModelIndex index(m_ui->bookmarksViewWidget->currentIndex());
 	BookmarksItem *folder(findFolder(index));
 
-	BookmarksManager::addBookmark(BookmarksModel::SeparatorBookmark, QUrl(), QString(), folder, ((folder && folder->index() == index) ? -1 : (index.row() + 1)));
+	BookmarksManager::addBookmark(BookmarksModel::SeparatorBookmark, {}, folder, ((folder && folder->index() == index) ? -1 : (index.row() + 1)));
 }
 
 void BookmarksContentsWidget::removeBookmark()
@@ -329,7 +329,7 @@ QIcon BookmarksContentsWidget::getIcon() const
 
 ActionsManager::ActionDefinition::State BookmarksContentsWidget::getActionState(int identifier, const QVariantMap &parameters) const
 {
-	ActionsManager::ActionDefinition::State state(ActionsManager::getActionDefinition(identifier).defaultState);
+	ActionsManager::ActionDefinition::State state(ActionsManager::getActionDefinition(identifier).getDefaultState());
 
 	switch (identifier)
 	{

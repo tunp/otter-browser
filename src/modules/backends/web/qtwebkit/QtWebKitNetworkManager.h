@@ -2,7 +2,7 @@
 * Otter Browser: Web browser controlled by the user, not vice-versa.
 * Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2014 Piotr Wójcik <chocimier@tlen.pl>
-* Copyright (C) 2015 - 2016 Jan Bajer aka bajasoft <jbajer@gmail.com>
+* Copyright (C) 2015 - 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -63,7 +63,7 @@ protected:
 	void setFormRequest(const QUrl &url);
 	void setMainRequest(const QUrl &url);
 	void setWidget(QtWebKitWebWidget *widget);
-	QtWebKitNetworkManager *clone() const;
+	QtWebKitNetworkManager* clone() const;
 	QNetworkReply* createRequest(Operation operation, const QNetworkRequest &request, QIODevice *outgoingData) override;
 	QString getUserAgent() const;
 	QVariant getOption(int identifier, const QUrl &url) const;

@@ -78,7 +78,7 @@
 namespace Otter
 {
 
-QtWebKitWebWidget::QtWebKitWebWidget(bool isPrivate, WebBackend *backend, QtWebKitNetworkManager *networkManager, ContentsWidget *parent) : WebWidget(isPrivate, backend, parent),
+QtWebKitWebWidget::QtWebKitWebWidget(const QVariantMap &parameters, WebBackend *backend, QtWebKitNetworkManager *networkManager, ContentsWidget *parent) : WebWidget(parameters, backend, parent),
 	m_webView(new QWebView(this)),
 	m_page(nullptr),
 	m_inspector(nullptr),
@@ -92,6 +92,7 @@ QtWebKitWebWidget::QtWebKitWebWidget(bool isPrivate, WebBackend *backend, QtWebK
 	m_isTyped(false),
 	m_isNavigating(false)
 {
+	const bool isPrivate(SessionsManager::calculateOpenHints(parameters).testFlag(SessionsManager::PrivateOpen));
 	QVBoxLayout *layout(new QVBoxLayout(this));
 	layout->addWidget(m_webView);
 	layout->setContentsMargins(0, 0, 0, 0);
@@ -118,6 +119,11 @@ QtWebKitWebWidget::QtWebKitWebWidget(bool isPrivate, WebBackend *backend, QtWebK
 	m_webView->setContextMenuPolicy(Qt::CustomContextMenu);
 	m_webView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 	m_webView->installEventFilter(this);
+
+	if (parameters.contains(QLatin1String("size")))
+	{
+		m_page->setViewportSize(parameters[QLatin1String("size")].toSize());
+	}
 
 	handleOptionChanged(SettingsManager::Permissions_ScriptsCanShowStatusMessagesOption, SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanShowStatusMessagesOption));
 	handleOptionChanged(SettingsManager::Content_BackgroundColorOption, SettingsManager::getOption(SettingsManager::Content_BackgroundColorOption));
@@ -672,9 +678,7 @@ void QtWebKitWebWidget::openFormRequest(const QNetworkRequest &request, QNetwork
 {
 	m_page->triggerAction(QWebPage::Stop);
 
-	QtWebKitWebWidget *widget(new QtWebKitWebWidget(isPrivate(), getBackend(), m_networkManager->clone()));
-	widget->setOptions(getOptions());
-	widget->setZoom(getZoom());
+	QtWebKitWebWidget *widget(qobject_cast<QtWebKitWebWidget*>(clone(false)));
 	widget->openRequest(request, operation, outgoingData);
 
 	emit requestedNewWindow(widget, SessionsManager::calculateOpenHints(SessionsManager::NewTabOpen));
@@ -704,6 +708,7 @@ void QtWebKitWebWidget::notifyUrlChanged(const QUrl &url)
 	updateOptions(url);
 
 	emit urlChanged(url);
+	emit actionsStateChanged(QVector<int>({ActionsManager::InspectPageAction, ActionsManager::InspectElementAction}));
 	emit actionsStateChanged(ActionsManager::ActionDefinition::NavigationCategory | ActionsManager::ActionDefinition::PageCategory);
 
 	SessionsManager::markSessionModified();
@@ -1396,7 +1401,7 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 
 			return;
 		case ActionsManager::CopyToNoteAction:
-			NotesManager::addNote(BookmarksModel::UrlBookmark, getUrl())->setData(getSelectedText(), BookmarksModel::DescriptionRole);
+			NotesManager::addNote(BookmarksModel::UrlBookmark, {{BookmarksModel::UrlRole, getUrl()}, {BookmarksModel::DescriptionRole, getSelectedText()}});
 
 			return;
 		case ActionsManager::PasteAction:
@@ -1994,7 +1999,9 @@ void QtWebKitWebWidget::setScrollPosition(const QPoint &position)
 
 WebWidget* QtWebKitWebWidget::clone(bool cloneHistory, bool isPrivate, const QStringList &excludedOptions) const
 {
-	QtWebKitWebWidget *widget(new QtWebKitWebWidget((this->isPrivate() || isPrivate), getBackend(), ((this->isPrivate() != isPrivate) ? nullptr : m_networkManager->clone()), nullptr));
+	QtWebKitNetworkManager *networkManager((this->isPrivate() != isPrivate) ? nullptr : m_networkManager->clone());
+	QtWebKitWebWidget *widget((this->isPrivate() || isPrivate) ? new QtWebKitWebWidget({{QLatin1String("hints"), SessionsManager::PrivateOpen}}, getBackend(), networkManager, nullptr) : new QtWebKitWebWidget({}, getBackend(), networkManager, nullptr));
+	widget->getPage()->setViewportSize(m_page->viewportSize());
 	widget->setOptions(getOptions(), excludedOptions);
 
 	if (cloneHistory)
@@ -2601,6 +2608,11 @@ bool QtWebKitWebWidget::canFastForward() const
 	}
 
 	return m_page->mainFrame()->evaluateJavaScript(getFastForwardScript(false)).toBool();
+}
+
+bool QtWebKitWebWidget::canInspect() const
+{
+	return !Utils::isUrlEmpty(getUrl());
 }
 
 bool QtWebKitWebWidget::canRedo() const

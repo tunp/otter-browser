@@ -60,9 +60,9 @@
 namespace Otter
 {
 
-QtWebEngineWebWidget::QtWebEngineWebWidget(bool isPrivate, WebBackend *backend, ContentsWidget *parent) : WebWidget(isPrivate, backend, parent),
+QtWebEngineWebWidget::QtWebEngineWebWidget(const QVariantMap &parameters, WebBackend *backend, ContentsWidget *parent) : WebWidget(parameters, backend, parent),
 	m_webView(nullptr),
-	m_page(new QtWebEnginePage(isPrivate, this)),
+	m_page(new QtWebEnginePage(SessionsManager::calculateOpenHints(parameters).testFlag(SessionsManager::PrivateOpen), this)),
 #if QT_VERSION < 0x050700
 	m_iconReply(nullptr),
 #endif
@@ -759,10 +759,7 @@ void QtWebEngineWebWidget::triggerAction(int identifier, const QVariantMap &para
 
 			return;
 		case ActionsManager::CopyToNoteAction:
-			{
-				BookmarksItem *note(NotesManager::addNote(BookmarksModel::UrlBookmark, getUrl()));
-				note->setData(getSelectedText(), BookmarksModel::DescriptionRole);
-			}
+			NotesManager::addNote(BookmarksModel::UrlBookmark, {{BookmarksModel::UrlRole, getUrl()}, {BookmarksModel::DescriptionRole, getSelectedText()}});
 
 			return;
 		case ActionsManager::PasteAction:
@@ -1448,7 +1445,7 @@ void QtWebEngineWebWidget::setOptions(const QHash<int, QVariant> &options, const
 
 WebWidget* QtWebEngineWebWidget::clone(bool cloneHistory, bool isPrivate, const QStringList &excludedOptions) const
 {
-	QtWebEngineWebWidget *widget(new QtWebEngineWebWidget((this->isPrivate() || isPrivate), getBackend()));
+	QtWebEngineWebWidget *widget((this->isPrivate() || isPrivate) ? new QtWebEngineWebWidget({{QLatin1String("hints"), SessionsManager::PrivateOpen}}, getBackend()) : new QtWebEngineWebWidget({}, getBackend()));
 	widget->setOptions(getOptions(), excludedOptions);
 
 	if (cloneHistory)
@@ -1559,27 +1556,6 @@ QPoint QtWebEngineWebWidget::getScrollPosition() const
 #else
 	return m_page->scrollPosition().toPoint();
 #endif
-}
-
-ActionsManager::ActionDefinition::State QtWebEngineWebWidget::getActionState(int identifier, const QVariantMap &parameters) const
-{
-	switch (identifier)
-	{
-		case ActionsManager::InspectPageAction:
-		case ActionsManager::InspectElementAction:
-			{
-				ActionsManager::ActionDefinition::State state(ActionsManager::getActionDefinition(identifier).defaultState);
-				state.isEnabled = false;
-
-				return state;
-			}
-
-			break;
-		default:
-			break;
-	}
-
-	return WebWidget::getActionState(identifier, parameters);
 }
 
 WindowHistoryInformation QtWebEngineWebWidget::getHistory() const

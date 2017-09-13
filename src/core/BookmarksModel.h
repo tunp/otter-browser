@@ -93,10 +93,12 @@ public:
 
 	explicit BookmarksModel(const QString &path, FormatMode mode, QObject *parent = nullptr);
 
+	void beginImport(BookmarksItem *target, int estimatedUrlsAmount = 0, int estimatedKeywordsAmount = 0);
+	void endImport();
 	void trashBookmark(BookmarksItem *bookmark);
 	void restoreBookmark(BookmarksItem *bookmark);
 	void removeBookmark(BookmarksItem *bookmark);
-	BookmarksItem* addBookmark(BookmarkType type, quint64 identifier = 0, const QUrl &url = {}, const QString &title = {}, BookmarksItem *parent = nullptr, int index = -1);
+	BookmarksItem* addBookmark(BookmarkType type, const QMap<int, QVariant> &metaData = {}, BookmarksItem *parent = nullptr, int index = -1);
 	BookmarksItem* getBookmark(const QString &keyword) const;
 	BookmarksItem* getBookmark(const QModelIndex &index) const;
 	BookmarksItem* getBookmark(quint64 identifier) const;
@@ -126,6 +128,9 @@ protected:
 	void writeBookmark(QXmlStreamWriter *writer, BookmarksItem *bookmark) const;
 	void removeBookmarkUrl(BookmarksItem *bookmark);
 	void readdBookmarkUrl(BookmarksItem *bookmark);
+	void handleKeywordChanged(BookmarksItem *bookmark, const QString &newKeyword, const QString &oldKeyword = {});
+	void handleUrlChanged(BookmarksItem *bookmark, const QUrl &newUrl, const QUrl &oldUrl = {});
+	static QDateTime readDateTime(QXmlStreamReader *reader, const QString &attribute);
 
 protected slots:
 	void notifyBookmarkModified(const QModelIndex &index);
@@ -133,6 +138,7 @@ protected slots:
 private:
 	BookmarksItem *m_rootItem;
 	BookmarksItem *m_trashItem;
+	BookmarksItem *m_importTargetItem;
 	QHash<BookmarksItem*, QPair<QModelIndex, int> > m_trash;
 	QHash<QUrl, QVector<BookmarksItem*> > m_urls;
 	QHash<QString, BookmarksItem*> m_keywords;

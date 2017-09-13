@@ -163,6 +163,7 @@ ToolBarWidget::ToolBarWidget(int identifier, Window *window, QWidget *parent) : 
 	m_bookmark(nullptr),
 	m_dropBookmark(nullptr),
 	m_toggleButton(nullptr),
+	m_reloadTimer(0),
 	m_identifier(identifier),
 	m_dropIndex(-1),
 	m_isCollapsed(false),
@@ -215,6 +216,18 @@ ToolBarWidget::ToolBarWidget(int identifier, Window *window, QWidget *parent) : 
 	if (m_mainWindow && m_identifier != ToolBarsManager::AddressBar && m_identifier != ToolBarsManager::ProgressBar)
 	{
 		connect(m_mainWindow, SIGNAL(currentWindowChanged(quint64)), this, SLOT(notifyWindowChanged(quint64)));
+	}
+}
+
+void ToolBarWidget::timerEvent(QTimerEvent *event)
+{
+	if (event->timerId() == m_reloadTimer)
+	{
+		killTimer(m_reloadTimer);
+
+		m_reloadTimer = 0;
+
+		loadBookmarks();
 	}
 }
 
@@ -541,11 +554,11 @@ void ToolBarWidget::dropEvent(QDropEvent *event)
 		{
 			if (m_dropBookmark)
 			{
-				BookmarksManager::addBookmark(BookmarksModel::UrlBookmark, urls.at(i), QString(), m_dropBookmark);
+				BookmarksManager::addBookmark(BookmarksModel::UrlBookmark, {{BookmarksModel::UrlRole, urls.at(i)}}, m_dropBookmark);
 			}
 			else
 			{
-				BookmarksManager::addBookmark(BookmarksModel::UrlBookmark, urls.at(i), QString(), m_bookmark, (m_dropIndex + i));
+				BookmarksManager::addBookmark(BookmarksModel::UrlBookmark, {{BookmarksModel::UrlRole, urls.at(i)}}, m_bookmark, (m_dropIndex + i));
 			}
 		}
 	}
@@ -792,6 +805,16 @@ void ToolBarWidget::resetGeometry()
 	setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
 }
 
+void ToolBarWidget::scheduleBookmarksReload()
+{
+	if (m_reloadTimer != 0)
+	{
+		killTimer(m_reloadTimer);
+	}
+
+	m_reloadTimer = startTimer(100);
+}
+
 void ToolBarWidget::loadBookmarks()
 {
 	clear();
@@ -867,7 +890,7 @@ void ToolBarWidget::handleBookmarkModified(BookmarksItem *bookmark)
 {
 	if (bookmark == m_bookmark || m_bookmark->isAncestorOf(bookmark))
 	{
-		loadBookmarks();
+		scheduleBookmarksReload();
 	}
 }
 
@@ -875,7 +898,7 @@ void ToolBarWidget::handleBookmarkMoved(BookmarksItem *bookmark, BookmarksItem *
 {
 	if (bookmark == m_bookmark || previousParent == m_bookmark || m_bookmark->isAncestorOf(bookmark) || m_bookmark->isAncestorOf(previousParent))
 	{
-		loadBookmarks();
+		scheduleBookmarksReload();
 	}
 }
 
@@ -1160,7 +1183,7 @@ QMenu* ToolBarWidget::createCustomizationMenu(int identifier, QVector<QAction*> 
 	removeAction->setData(identifier);
 	removeAction->setEnabled(definition.identifier >= ToolBarsManager::OtherToolBar);
 
-	menu->addMenu(new Menu(Menu::ToolBarsMenuRole, menu))->setText(tr("Toolbars"));
+	menu->addMenu(new Menu(Menu::ToolBarsMenuRole, menu));
 
 	return menu;
 }

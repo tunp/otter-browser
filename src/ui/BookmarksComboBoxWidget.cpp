@@ -47,11 +47,11 @@ void BookmarksComboBoxWidget::createFolder()
 		switch (m_model->getFormatMode())
 		{
 			case BookmarksModel::BookmarksMode:
-				setCurrentFolder(BookmarksManager::addBookmark(BookmarksModel::FolderBookmark, QUrl(), title, getCurrentFolder()));
+				setCurrentFolder(BookmarksManager::addBookmark(BookmarksModel::FolderBookmark, {{BookmarksModel::TitleRole, title}}, getCurrentFolder()));
 
 				break;
 			case BookmarksModel::NotesMode:
-				setCurrentFolder(NotesManager::addNote(BookmarksModel::FolderBookmark, QUrl(), title, getCurrentFolder()));
+				setCurrentFolder(NotesManager::addNote(BookmarksModel::FolderBookmark, {{BookmarksModel::TitleRole, title}}, getCurrentFolder()));
 
 				break;
 			default:

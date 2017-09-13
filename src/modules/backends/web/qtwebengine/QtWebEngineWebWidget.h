@@ -52,7 +52,6 @@ public:
 	QVector<SpellCheckManager::DictionaryInformation> getDictionaries() const override;
 	WindowHistoryInformation getHistory() const override;
 	HitTestResult getHitTestResult(const QPoint &position) override;
-	ActionsManager::ActionDefinition::State getActionState(int identifier, const QVariantMap &parameters = {}) const override;
 	QHash<QByteArray, QByteArray> getHeaders() const override;
 	LoadingState getLoadingState() const override;
 	int getZoom() const override;
@@ -79,7 +78,7 @@ public slots:
 	void setUrl(const QUrl &url, bool isTyped = true) override;
 
 protected:
-	explicit QtWebEngineWebWidget(bool isPrivate, WebBackend *backend, ContentsWidget *parent = nullptr);
+	explicit QtWebEngineWebWidget(const QVariantMap &parameters, WebBackend *backend, ContentsWidget *parent = nullptr);
 
 	void timerEvent(QTimerEvent *event) override;
 	void showEvent(QShowEvent *event) override;
