@@ -62,7 +62,7 @@ public:
 
 	Q_DECLARE_FLAGS(ScrollDirections, ScrollDirection)
 
-	explicit WebContentsWidget(const QVariantMap &parameters, const QHash<int, QVariant> &options, WebWidget *widget, Window *window);
+	explicit WebContentsWidget(const QVariantMap &parameters, const QHash<int, QVariant> &options, WebWidget *widget, Window *window, QWidget *parent);
 
 	void search(const QString &search, const QString &query);
 	void print(QPrinter *printer) override;
@@ -112,18 +112,18 @@ protected:
 	void setWidget(WebWidget *widget, const QVariantMap &parameters, const QHash<int, QVariant> &options);
 
 protected slots:
-	void findInPage(WebWidget::FindFlags flags = WebWidget::NoFlagsFind);
+	void findInPage(WebWidget::FindFlags flags);
 	void closePasswordBar();
 	void closePopupsBar();
 	void handleOptionChanged(int identifier, const QVariant &value);
 	void handleUrlChange(const QUrl &url);
 	void handleSavePasswordRequest(const PasswordsManager::PasswordInformation &password, bool isUpdate);
 	void handlePopupWindowRequest(const QUrl &parentUrl, const QUrl &popupUrl);
-	void handlePermissionRequest(WebWidget::FeaturePermission feature, const QUrl &url, bool cancel);
+	void handlePermissionRequest(WebWidget::FeaturePermission feature, const QUrl &url, bool isCancellation);
 	void handleInspectorVisibilityChangeRequest(bool isVisible);
 	void handleLoadingStateChange(WebWidget::LoadingState state);
+	void handleFindInPageQueryChanged();
 	void notifyPermissionChanged(WebWidget::PermissionPolicies policies);
-	void notifyRequestedOpenUrl(const QUrl &url, SessionsManager::OpenHints hints);
 	void notifyRequestedNewWindow(WebWidget *widget, SessionsManager::OpenHints hints);
 	void updateFindHighlight(WebWidget::FindFlags flags);
 
@@ -151,7 +151,7 @@ private:
 	bool m_isIgnoringMouseRelease;
 
 	static QString m_sharedQuickFindQuery;
-	static QMap<int, QPixmap> m_scrollCursors;
+	static QMap<ScrollDirections, QPixmap> m_scrollCursors;
 };
 
 }

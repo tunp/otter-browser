@@ -73,7 +73,7 @@ QVector<ApplicationInformation> PlatformIntegration::getApplicationsForMimeType(
 {
 	Q_UNUSED(mimeType)
 
-	return QVector<ApplicationInformation>();
+	return {};
 }
 
 QString PlatformIntegration::getPreferredPasswordsBackend() const
@@ -88,7 +88,7 @@ QString PlatformIntegration::getUpdaterBinary() const
 
 QString PlatformIntegration::getPlatformName() const
 {
-	return QString();
+	return {};
 }
 
 bool PlatformIntegration::canShowNotifications() const
@@ -123,7 +123,7 @@ bool PlatformIntegration::installUpdate() const
 
 	if (Updater::isReadyToInstall(scriptPath) && QFileInfo(updaterPath).isExecutable())
 	{
-		if (QProcess::startDetached(updaterPath, QStringList({QLatin1String("--install-dir"), QCoreApplication::applicationDirPath(), QLatin1String("--package-dir"), QFileInfo(scriptPath).absolutePath(), QLatin1String("--script"), scriptPath})))
+		if (QProcess::startDetached(updaterPath, {QLatin1String("--install-dir"), QCoreApplication::applicationDirPath(), QLatin1String("--package-dir"), QFileInfo(scriptPath).absolutePath(), QLatin1String("--script"), scriptPath}))
 		{
 			Updater::clearUpdate();
 

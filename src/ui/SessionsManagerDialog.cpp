@@ -47,7 +47,7 @@ SessionsManagerDialog::SessionsManagerDialog(QWidget *parent) : Dialog(parent),
 	}
 
 	QStandardItemModel *model(new QStandardItemModel(this));
-	model->setHorizontalHeaderLabels(QStringList({tr("Title"), tr("Identifier"), tr("Windows")}));
+	model->setHorizontalHeaderLabels({tr("Title"), tr("Identifier"), tr("Windows")});
 
 	const QList<SessionInformation> sorted(information.values());
 	const QString currentSession(SessionsManager::getCurrentSession());
@@ -77,9 +77,9 @@ SessionsManagerDialog::SessionsManagerDialog(QWidget *parent) : Dialog(parent),
 
 	m_ui->sessionsViewWidget->setModel(model);
 
-	connect(m_ui->openButton, SIGNAL(clicked()), this, SLOT(openSession()));
-	connect(m_ui->deleteButton, SIGNAL(clicked()), this, SLOT(deleteSession()));
-	connect(m_ui->sessionsViewWidget, SIGNAL(needsActionsUpdate()), this, SLOT(updateActions()));
+	connect(m_ui->openButton, &QPushButton::clicked, this, &SessionsManagerDialog::openSession);
+	connect(m_ui->deleteButton, &QPushButton::clicked, this, &SessionsManagerDialog::deleteSession);
+	connect(m_ui->sessionsViewWidget, &ItemViewWidget::needsActionsUpdate, this, &SessionsManagerDialog::updateActions);
 
 	m_ui->sessionsViewWidget->setCurrentIndex(m_ui->sessionsViewWidget->getIndex(row, 0));
 }

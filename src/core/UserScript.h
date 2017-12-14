@@ -26,6 +26,8 @@
 namespace Otter
 {
 
+class IconFetchJob;
+
 class UserScript final : public QObject, public Addon
 {
 	Q_OBJECT
@@ -39,7 +41,7 @@ public:
 		DeferredTime
 	};
 
-	explicit UserScript(const QString &path, QObject *parent = nullptr);
+	explicit UserScript(const QString &path, const QUrl &url = {}, QObject *parent = nullptr);
 
 	QString getName() const override;
 	QString getTitle() const override;
@@ -57,7 +59,9 @@ public:
 	InjectionTime getInjectionTime() const;
 	AddonType getType() const override;
 	bool isEnabledForUrl(const QUrl &url);
+	bool canRemove() const override;
 	bool shouldRunOnSubFrames() const;
+	bool remove() override;
 
 public slots:
 	void reload();
@@ -67,12 +71,15 @@ protected:
 	bool checkUrl(const QUrl &url, const QStringList &rules) const;
 
 private:
+	IconFetchJob *m_iconFetchJob;
 	QString m_path;
 	QString m_source;
 	QString m_title;
 	QString m_description;
 	QString m_version;
 	QUrl m_homePage;
+	QUrl m_downloadUrl;
+	QUrl m_iconUrl;
 	QUrl m_updateUrl;
 	QIcon m_icon;
 	QStringList m_excludeRules;
@@ -80,6 +87,9 @@ private:
 	QStringList m_matchRules;
 	InjectionTime m_injectionTime;
 	bool m_shouldRunOnSubFrames;
+
+signals:
+	void metaDataChanged();
 };
 
 }

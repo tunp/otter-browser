@@ -34,17 +34,16 @@ LocaleDialog::LocaleDialog(QWidget *parent) : Dialog(parent),
 {
 	m_ui->setupUi(this);
 
-	const QList<QFileInfo> locales(QDir(Application::getLocalePath()).entryInfoList(QStringList(QLatin1String("*.qm")), QDir::Files, QDir::Name));
+	const QList<QFileInfo> locales(QDir(Application::getLocalePath()).entryInfoList({QLatin1String("otter-browser_*.qm")}, QDir::Files, QDir::Name));
 	QVector<QPair<QString, QString> > entries;
 
 	for (int i = 0; i < locales.count(); ++i)
 	{
-		const QLocale locale(Utils::createLocale(locales.at(i).baseName().remove(QLatin1String("otter-browser_"))));
+		const QString name(locales.at(i).baseName().remove(QLatin1String("otter-browser_")));
+		const QLocale locale(Utils::createLocale(name));
 
 		if (locale.nativeCountryName().isEmpty() || locale.nativeLanguageName().isEmpty())
 		{
-			const QString name(locales.at(i).baseName().remove(QLatin1String("otter-browser_")));
-
 			entries.append({tr("Unknown [%1]").arg(name), name});
 		}
 		else
@@ -70,15 +69,15 @@ LocaleDialog::LocaleDialog(QWidget *parent) : Dialog(parent),
 
 	m_ui->languageComboBox->setCurrentIndex((currentLocale.endsWith(QLatin1String(".qm"))) ? 1 : qMax(0, m_ui->languageComboBox->findData(currentLocale)));
 	m_ui->customFilePathWidget->setEnabled(m_ui->languageComboBox->currentIndex() == 1);
-	m_ui->customFilePathWidget->setFilters(QStringList(tr("Translation files (*.qm)")));
+	m_ui->customFilePathWidget->setFilters({tr("Translation files (*.qm)")});
 
 	if (m_ui->languageComboBox->currentIndex() == 1)
 	{
 		m_ui->customFilePathWidget->setPath(currentLocale);
 	}
 
-	connect(this, SIGNAL(accepted()), this, SLOT(save()));
-	connect(m_ui->languageComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(currentIndexChanged(int)));
+	connect(this, &LocaleDialog::accepted, this, &LocaleDialog::save);
+	connect(m_ui->languageComboBox, static_cast<void(QComboBox::*)(int)>(&QComboBox::currentIndexChanged), this, &LocaleDialog::handleCurrentIndexChanged);
 }
 
 LocaleDialog::~LocaleDialog()
@@ -96,7 +95,7 @@ void LocaleDialog::changeEvent(QEvent *event)
 	}
 }
 
-void LocaleDialog::currentIndexChanged(int index)
+void LocaleDialog::handleCurrentIndexChanged(int index)
 {
 	m_ui->customFilePathWidget->setEnabled(index == 1);
 }
@@ -119,8 +118,6 @@ void LocaleDialog::save()
 	}
 
 	SettingsManager::setOption(SettingsManager::Browser_LocaleOption, locale);
-
-	Application::setLocale(locale);
 }
 
 }

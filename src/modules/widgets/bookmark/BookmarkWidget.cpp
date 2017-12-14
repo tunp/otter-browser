@@ -35,17 +35,18 @@ BookmarkWidget::BookmarkWidget(BookmarksItem *bookmark, const ToolBarsManager::T
 {
 	updateBookmark(m_bookmark);
 
-	connect(BookmarksManager::getModel(), SIGNAL(bookmarkRemoved(BookmarksItem*,BookmarksItem*)), this, SLOT(removeBookmark(BookmarksItem*)));
-	connect(BookmarksManager::getModel(), SIGNAL(bookmarkModified(BookmarksItem*)), this, SLOT(updateBookmark(BookmarksItem*)));
+	connect(BookmarksManager::getModel(), &BookmarksModel::bookmarkRemoved, this, &BookmarkWidget::removeBookmark);
+	connect(BookmarksManager::getModel(), &BookmarksModel::bookmarkModified, this, &BookmarkWidget::updateBookmark);
 }
 
-BookmarkWidget::BookmarkWidget(const QString &path, const ToolBarsManager::ToolBarDefinition::Entry &definition, QWidget *parent) : ToolButtonWidget(definition, parent),
-	m_bookmark(BookmarksManager::getModel()->getItem(path))
+void BookmarkWidget::changeEvent(QEvent *event)
 {
-	updateBookmark(m_bookmark);
+	ToolButtonWidget::changeEvent(event);
 
-	connect(BookmarksManager::getModel(), SIGNAL(bookmarkRemoved(BookmarksItem*,BookmarksItem*)), this, SLOT(removeBookmark(BookmarksItem*)));
-	connect(BookmarksManager::getModel(), SIGNAL(bookmarkModified(BookmarksItem*)), this, SLOT(updateBookmark(BookmarksItem*)));
+	if (event->type() == QEvent::LanguageChange && m_bookmark && m_bookmark->getRawData(BookmarksModel::TitleRole).isNull())
+	{
+		updateBookmark(m_bookmark);
+	}
 }
 
 void BookmarkWidget::mouseReleaseEvent(QMouseEvent *event)
@@ -54,7 +55,7 @@ void BookmarkWidget::mouseReleaseEvent(QMouseEvent *event)
 
 	if ((event->button() == Qt::LeftButton || event->button() == Qt::MiddleButton) && m_bookmark)
 	{
-		Application::triggerAction(ActionsManager::OpenBookmarkAction, {{QLatin1String("bookmark"), m_bookmark->data(BookmarksModel::IdentifierRole)}, {QLatin1String("hints"), QVariant(SessionsManager::calculateOpenHints(SessionsManager::DefaultOpen, event->button(), event->modifiers()))}}, parentWidget());
+		Application::triggerAction(ActionsManager::OpenBookmarkAction, {{QLatin1String("bookmark"), m_bookmark->getIdentifier()}, {QLatin1String("hints"), QVariant(SessionsManager::calculateOpenHints(SessionsManager::DefaultOpen, event->button(), event->modifiers()))}}, parentWidget());
 	}
 }
 
@@ -75,15 +76,15 @@ void BookmarkWidget::updateBookmark(BookmarksItem *bookmark)
 		return;
 	}
 
-	QString title(m_bookmark->data(BookmarksModel::TitleRole).toString().isEmpty() ? tr("(Untitled)") : m_bookmark->data(BookmarksModel::TitleRole).toString());
-	const BookmarksModel::BookmarkType type(static_cast<BookmarksModel::BookmarkType>(m_bookmark->data(BookmarksModel::TypeRole).toInt()));
+	QString title(m_bookmark->getTitle());
+	const BookmarksModel::BookmarkType type(static_cast<BookmarksModel::BookmarkType>(m_bookmark->getType()));
 
 	if (type == BookmarksModel::RootBookmark || type == BookmarksModel::TrashBookmark || type == BookmarksModel::FolderBookmark)
 	{
 		if (!menu())
 		{
 			Menu *menu(new Menu(Menu::BookmarksMenuRole, this));
-			menu->menuAction()->setData(m_bookmark->data(BookmarksModel::IdentifierRole));
+			menu->setMenuOptions({{QLatin1String("bookmark"), m_bookmark->getIdentifier()}});
 
 			setMenu(menu);
 		}
@@ -97,24 +98,24 @@ void BookmarkWidget::updateBookmark(BookmarksItem *bookmark)
 		QStringList toolTip;
 		toolTip.append(tr("Title: %1").arg(title));
 
-		if (!m_bookmark->data(BookmarksModel::UrlRole).toString().isEmpty())
+		if (!m_bookmark->getUrl().isEmpty())
 		{
-			toolTip.append(tr("Address: %1").arg(m_bookmark->data(BookmarksModel::UrlRole).toString()));
+			toolTip.append(tr("Address: %1").arg(m_bookmark->getUrl().toDisplayString()));
 		}
 
-		if (m_bookmark->data(BookmarksModel::DescriptionRole).isValid())
+		if (!m_bookmark->getDescription().isEmpty())
 		{
-			toolTip.append(tr("Description: %1").arg(m_bookmark->data(BookmarksModel::DescriptionRole).toString()));
+			toolTip.append(tr("Description: %1").arg(m_bookmark->getDescription()));
 		}
 
-		if (!m_bookmark->data(BookmarksModel::TimeAddedRole).toDateTime().isNull())
+		if (m_bookmark->getTimeAdded().isValid())
 		{
-			toolTip.append(tr("Created: %1").arg(Utils::formatDateTime(m_bookmark->data(BookmarksModel::TimeAddedRole).toDateTime())));
+			toolTip.append(tr("Created: %1").arg(Utils::formatDateTime(m_bookmark->getTimeAdded())));
 		}
 
-		if (!m_bookmark->data(BookmarksModel::TimeVisitedRole).toDateTime().isNull())
+		if (m_bookmark->getTimeVisited().isValid())
 		{
-			toolTip.append(tr("Visited: %1").arg(Utils::formatDateTime(m_bookmark->data(BookmarksModel::TimeVisitedRole).toDateTime())));
+			toolTip.append(tr("Visited: %1").arg(Utils::formatDateTime(m_bookmark->getTimeVisited())));
 		}
 
 		setToolTip(QLatin1String("<div style=\"white-space:pre;\">") + toolTip.join(QLatin1Char('\n')) + QLatin1String("</div>"));
@@ -122,8 +123,8 @@ void BookmarkWidget::updateBookmark(BookmarksItem *bookmark)
 	}
 
 	setText(title.replace(QLatin1Char('&'), QLatin1String("&&")));
-	setStatusTip(m_bookmark->data(BookmarksModel::UrlRole).toString());
-	setIcon(m_bookmark->data(Qt::DecorationRole).value<QIcon>());
+	setStatusTip(m_bookmark->getUrl().toDisplayString());
+	setIcon(m_bookmark->getIcon());
 }
 
 }

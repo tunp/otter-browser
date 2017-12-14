@@ -1,7 +1,7 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
 * Copyright (C) 2015 Jan Bajer aka bajasoft <jbajer@gmail.com>
-* Copyright (C) 2015 - 2016 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -30,7 +30,7 @@ namespace Otter
 
 class Notification;
 
-class NotificationDialog : public QDialog
+class NotificationDialog final : public QDialog
 {
 	Q_OBJECT
 
@@ -40,17 +40,14 @@ public:
 	bool eventFilter(QObject *object, QEvent *event) override;
 
 protected:
-	void closeEvent(QCloseEvent *event) override;
+	void timerEvent(QTimerEvent *event) override;
 	void resizeEvent(QResizeEvent *event) override;
-
-protected slots:
-	void aboutToClose();
-	void clean();
 
 private:
 	Notification *m_notification;
 	QLabel *m_closeLabel;
 	QPropertyAnimation *m_animation;
+	int m_closeTimer;
 };
 
 }

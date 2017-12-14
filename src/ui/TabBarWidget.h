@@ -40,6 +40,7 @@ class TabHandleWidget final : public QWidget
 public:
 	explicit TabHandleWidget(Window *window, TabBarWidget *parent);
 
+	void setIsActiveWindow(bool isActive);
 	Window* getWindow() const;
 
 protected:
@@ -54,23 +55,26 @@ protected:
 	void dragEnterEvent(QDragEnterEvent *event) override;
 
 protected slots:
-	void markAsActive();
 	void markAsNeedingAttention();
 	void handleLoadingStateChanged(WebWidget::LoadingState state);
 	void updateGeometries();
+	void updateTitle();
 
 private:
 	Window *m_window;
 	TabBarWidget *m_tabBarWidget;
+	QString m_title;
 	QRect m_closeButtonRectangle;
 	QRect m_urlIconRectangle;
 	QRect m_thumbnailRectangle;
+	QRect m_labelRectangle;
 	QRect m_titleRectangle;
 	int m_dragTimer;
+	bool m_isActiveWindow;
 	bool m_isCloseButtonUnderMouse;
 	bool m_wasCloseButtonPressed;
 
-	static Animation *m_loadingAnimation;
+	static Animation *m_spinnerAnimation;
 	static QIcon m_lockedIcon;
 };
 
@@ -123,14 +127,15 @@ protected:
 
 protected slots:
 	void handleOptionChanged(int identifier, const QVariant &value);
-	void updatePreviewPosition();
+	void handleCurrentChanged(int index);
 	void updatePinnedTabsAmount();
 	void updateStyle();
 	void setArea(Qt::ToolBarArea area);
 
 private:
 	PreviewWidget *m_previewWidget;
-	QWidget *m_movableTabWidget;
+	QPointer<TabHandleWidget> m_activeTabHandleWidget;
+	QPointer<QWidget> m_movableTabWidget;
 	QPoint m_dragMovePosition;
 	QPoint m_dragStartPosition;
 	QSize m_maximumTabSize;

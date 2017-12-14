@@ -50,7 +50,7 @@ namespace Otter
 {
 
 StartPageModel* StartPageWidget::m_model(nullptr);
-Animation* StartPageWidget::m_loadingAnimation(nullptr);
+Animation* StartPageWidget::m_spinnerAnimation(nullptr);
 QPointer<StartPagePreferencesDialog> StartPageWidget::m_preferencesDialog(nullptr);
 
 TileDelegate::TileDelegate(QObject *parent) : QStyledItemDelegate(parent)
@@ -321,9 +321,9 @@ StartPageWidget::StartPageWidget(Window *parent) : QScrollArea(parent),
 	handleOptionChanged(SettingsManager::StartPage_BackgroundPathOption, SettingsManager::getOption(SettingsManager::StartPage_BackgroundPathOption));
 	handleOptionChanged(SettingsManager::StartPage_ShowSearchFieldOption, SettingsManager::getOption(SettingsManager::StartPage_ShowSearchFieldOption));
 
-	connect(m_model, SIGNAL(modelModified()), this, SLOT(updateSize()));
-	connect(m_model, SIGNAL(isReloadingTileChanged(QModelIndex)), this, SLOT(handleIsReloadingTileChanged(QModelIndex)));
-	connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int,QVariant)));
+	connect(m_model, &StartPageModel::modelModified, this, &StartPageWidget::updateSize);
+	connect(m_model, &StartPageModel::isReloadingTileChanged, this, &StartPageWidget::handleIsReloadingTileChanged);
+	connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &StartPageWidget::handleOptionChanged);
 }
 
 StartPageWidget::~StartPageWidget()
@@ -453,23 +453,36 @@ void StartPageWidget::configure()
 
 	m_preferencesDialog = new StartPagePreferencesDialog(this);
 
-	ContentsDialog *dialog(new ContentsDialog(ThemesManager::createIcon(QLatin1String("configure")), m_preferencesDialog->windowTitle(), QString(), QString(), QDialogButtonBox::NoButton, m_preferencesDialog, this));
+	ContentsDialog *dialog(new ContentsDialog(ThemesManager::createIcon(QLatin1String("configure")), m_preferencesDialog->windowTitle(), {}, {}, QDialogButtonBox::NoButton, m_preferencesDialog, this));
 
-	connect(m_preferencesDialog, SIGNAL(finished(int)), dialog, SLOT(close()));
+	connect(m_preferencesDialog, &StartPagePreferencesDialog::finished, dialog, &ContentsDialog::close);
 
 	m_window->getContentsWidget()->showDialog(dialog, false);
 }
 
 void StartPageWidget::addTile()
 {
-	OpenAddressDialog dialog(this);
+	OpenAddressDialog dialog(ActionExecutor::Object(), this);
 	dialog.setWindowTitle(tr("Add Tile"));
-
-	connect(&dialog, SIGNAL(requestedLoadUrl(QUrl,SessionsManager::OpenHints)), m_model, SLOT(addTile(QUrl)));
 
 	m_ignoreEnter = true;
 
-	dialog.exec();
+	if (dialog.exec() == QDialog::Accepted && dialog.getResult().isValid())
+	{
+		switch (dialog.getResult().type)
+		{
+			case InputInterpreter::InterpreterResult::BookmarkType:
+				m_model->addTile(dialog.getResult().bookmark->getUrl());
+
+				break;
+			case InputInterpreter::InterpreterResult::UrlType:
+				m_model->addTile(dialog.getResult().url);
+
+				break;
+			default:
+				break;
+		}
+	}
 }
 
 void StartPageWidget::openTile()
@@ -497,7 +510,7 @@ void StartPageWidget::openTile()
 		{
 			m_urlOpenTime = QTime::currentTime();
 
-			Application::triggerAction(ActionsManager::OpenBookmarkAction, {{QLatin1String("bookmark"), bookmark->data(BookmarksModel::IdentifierRole)}, {QLatin1String("hints"), QVariant(hints)}}, parentWidget());
+			Application::triggerAction(ActionsManager::OpenBookmarkAction, {{QLatin1String("bookmark"), bookmark->getIdentifier()}, {QLatin1String("hints"), QVariant(hints)}}, parentWidget());
 		}
 
 		return;
@@ -533,12 +546,22 @@ void StartPageWidget::editTile()
 
 void StartPageWidget::reloadTile()
 {
-	if (!m_loadingAnimation)
+	if (!m_spinnerAnimation)
 	{
-		m_loadingAnimation = new Animation(ThemesManager::getAnimationPath(QLatin1String("loading")), this);
-		m_loadingAnimation->start();
+		const QString path(ThemesManager::getAnimationPath(QLatin1String("spinner")));
 
-		connect(m_loadingAnimation, SIGNAL(frameChanged()), m_listView, SLOT(update()));
+		if (path.isEmpty())
+		{
+			m_spinnerAnimation = new SpinnerAnimation(this);
+		}
+		else
+		{
+			m_spinnerAnimation = new GenericAnimation(path, this);
+		}
+
+		m_spinnerAnimation->start();
+
+		connect(m_spinnerAnimation, &Animation::frameChanged, m_listView, static_cast<void(QListView::*)()>(&QListView::update));
 	}
 
 	m_model->reloadTile(m_currentIndex);
@@ -550,7 +573,7 @@ void StartPageWidget::removeTile()
 
 	if (bookmark)
 	{
-		const QString path(StartPageModel::getThumbnailPath(bookmark->data(BookmarksModel::IdentifierRole).toULongLong()));
+		const QString path(StartPageModel::getThumbnailPath(bookmark->getIdentifier()));
 
 		if (QFile::exists(path))
 		{
@@ -684,12 +707,12 @@ void StartPageWidget::handleIsReloadingTileChanged(const QModelIndex &index)
 {
 	m_listView->update(index);
 
-	m_thumbnail = QPixmap();
+	m_thumbnail = {};
 
-	if (m_loadingAnimation && m_model->match(m_model->index(0, 0), StartPageModel::IsReloadingRole, true, 1, Qt::MatchExactly).isEmpty())
+	if (m_spinnerAnimation && m_model->match(m_model->index(0, 0), StartPageModel::IsReloadingRole, true, 1, Qt::MatchExactly).isEmpty())
 	{
-		m_loadingAnimation->deleteLater();
-		m_loadingAnimation = nullptr;
+		m_spinnerAnimation->deleteLater();
+		m_spinnerAnimation = nullptr;
 	}
 }
 
@@ -706,7 +729,7 @@ void StartPageWidget::updateSize()
 	m_listView->setGridSize(QSize(tileWidth, tileHeight));
 	m_listView->setFixedSize(((qMin(amount, columns) * tileWidth) + 2), ((rows * tileHeight) + 20));
 
-	m_thumbnail = QPixmap();
+	m_thumbnail = {};
 }
 
 void StartPageWidget::showContextMenu(const QPoint &position)
@@ -747,7 +770,7 @@ void StartPageWidget::showContextMenu(const QPoint &position)
 
 Animation* StartPageWidget::getLoadingAnimation()
 {
-	return m_loadingAnimation;
+	return m_spinnerAnimation;
 }
 
 QPixmap StartPageWidget::createThumbnail()
@@ -848,7 +871,7 @@ bool StartPageWidget::eventFilter(QObject *object, QEvent *event)
 						m_ignoreEnter = true;
 
 						Menu menu(Menu::BookmarksMenuRole, this);
-						menu.menuAction()->setData(bookmark->data(BookmarksModel::IdentifierRole));
+						menu.setMenuOptions({{QLatin1String("bookmark"), bookmark->getIdentifier()}});
 						menu.exec(m_listView->mapToGlobal(m_listView->visualRect(m_currentIndex).center()));
 					}
 				}
@@ -922,7 +945,7 @@ bool StartPageWidget::eventFilter(QObject *object, QEvent *event)
 						m_ignoreEnter = true;
 
 						Menu menu(Menu::BookmarksMenuRole, this);
-						menu.menuAction()->setData(bookmark->data(BookmarksModel::IdentifierRole));
+						menu.setMenuOptions({{QLatin1String("bookmark"), bookmark->getIdentifier()}});
 						menu.exec(mouseEvent->globalPos());
 					}
 

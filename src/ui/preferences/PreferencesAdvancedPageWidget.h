@@ -35,7 +35,6 @@ namespace Ui
 	class PreferencesAdvancedPageWidget;
 }
 
-class ItemViewWidget;
 class KeyboardProfile;
 class MouseProfile;
 
@@ -58,12 +57,15 @@ public:
 	explicit PreferencesAdvancedPageWidget(QWidget *parent = nullptr);
 	~PreferencesAdvancedPageWidget();
 
+public slots:
+	void save();
+
 protected:
 	void changeEvent(QEvent *event) override;
 	void resizeEvent(QResizeEvent *event) override;
 	void updateReaddKeyboardProfileMenu();
 	void updateReaddMouseProfileMenu();
-	QString createProfileIdentifier(ItemViewWidget *view, const QString &base = {}) const;
+	QString createProfileIdentifier(QStandardItemModel *model, const QString &base = {}) const;
 	QStringList getSelectedUpdateChannels() const;
 
 protected slots:
@@ -78,11 +80,11 @@ protected slots:
 	void addUserAgent(QAction *action);
 	void editUserAgent();
 	void updateUserAgentsActions();
-	void saveUsuerAgents(QJsonArray *userAgents, QStandardItem *parent);
+	void saveUsuerAgents(QJsonArray *userAgents, const QStandardItem *parent);
 	void addProxy(QAction *action);
 	void editProxy();
 	void updateProxiesActions();
-	void saveProxies(QJsonArray *proxies, QStandardItem *parent);
+	void saveProxies(QJsonArray *proxies, const QStandardItem *parent);
 	void addCipher(QAction *action);
 	void removeCipher();
 	void updateCiphersActions();
@@ -101,7 +103,6 @@ protected slots:
 	void updateMouseProfileActions();
 	void updateJavaScriptOptions();
 	void changeCurrentPage();
-	void save();
 	void updatePageSwitcher();
 
 private:

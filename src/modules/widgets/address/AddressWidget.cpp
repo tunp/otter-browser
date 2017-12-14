@@ -20,6 +20,7 @@
 **************************************************************************/
 
 #include "AddressWidget.h"
+#include "../../../core/ActionsManager.h"
 #include "../../../core/AddressCompletionModel.h"
 #include "../../../core/Application.h"
 #include "../../../core/BookmarksManager.h"
@@ -58,60 +59,45 @@ AddressDelegate::AddressDelegate(const QString &highlight, ViewMode mode, QObjec
 	m_displayMode((SettingsManager::getOption(SettingsManager::AddressField_CompletionDisplayModeOption).toString() == QLatin1String("columns")) ? ColumnsMode : CompactMode),
 	m_viewMode(mode)
 {
-	connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int,QVariant)));
+	connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &AddressDelegate::handleOptionChanged);
 }
 
 void AddressDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const
 {
-	QAbstractTextDocumentLayout::PaintContext paintContext;
 	QRect titleRectangle(option.rect);
 	const bool isRightToLeft(option.direction == Qt::RightToLeft);
-	QTextDocument document;
-	document.setDefaultFont(option.font);
 
-	if (static_cast<AddressCompletionModel::EntryType>(index.data(AddressCompletionModel::TypeRole).toInt()) == AddressCompletionModel::HeaderType)
+	if (static_cast<AddressCompletionModel::CompletionEntry::EntryType>(index.data(AddressCompletionModel::TypeRole).toInt()) == AddressCompletionModel::CompletionEntry::HeaderType)
 	{
-		const int headerTopPosition((index.row() != 0) ? titleRectangle.top() : (titleRectangle.top() - (titleRectangle.height() - painter->clipBoundingRect().united(document.documentLayout()->blockBoundingRect(document.firstBlock())).height())));
+		QStyleOptionViewItem headerOption(option);
+		headerOption.rect = titleRectangle.marginsRemoved(QMargins(0, 2, (isRightToLeft ? 3 : 0), 2));
+		headerOption.text = index.data(AddressCompletionModel::TitleRole).toString();
 
-		if (index.row() != 0)
+		if (index.row() > 0)
 		{
-			QPen pen(Qt::lightGray);
+			QPen pen(option.palette.color(QPalette::Disabled, QPalette::Text).lighter());
 			pen.setWidth(1);
 			pen.setStyle(Qt::SolidLine);
 
+			painter->save();
 			painter->setPen(pen);
 			painter->drawLine((option.rect.left() + 5), (option.rect.top() + 3), (option.rect.right() - 5), (option.rect.top() + 3));
+			painter->restore();
 		}
 
-		painter->save();
-
-		const QString title(index.data(AddressCompletionModel::TitleRole).toString());
-
-		titleRectangle = titleRectangle.marginsRemoved(QMargins(2, 2, 2, 2));
-
-		if (isRightToLeft)
-		{
-			painter->translate((titleRectangle.right() - (option.fontMetrics.width(title) + 10)), headerTopPosition);
-		}
-		else
-		{
-			painter->translate(titleRectangle.left(), headerTopPosition);
-		}
-
-		paintContext.palette.setCurrentColorGroup(QPalette::Disabled);
-
-		document.setPlainText(title);
-		document.documentLayout()->draw(painter, paintContext);
-
-		painter->restore();
+		QStyledItemDelegate::paint(painter, headerOption, index);
 
 		return;
 	}
 
+	QAbstractTextDocumentLayout::PaintContext paintContext;
+	QTextDocument document;
+	document.setDefaultFont(option.font);
+
 	QString url(index.data(Qt::DisplayRole).toString());
 	QString description((m_viewMode == HistoryMode) ? Utils::formatDateTime(index.data(AddressCompletionModel::TimeVisitedRole).toDateTime()) : index.data(AddressCompletionModel::TitleRole).toString());
 	const int topPosition(titleRectangle.top() - ((titleRectangle.height() - painter->clipBoundingRect().united(document.documentLayout()->blockBoundingRect(document.firstBlock())).height()) / 2));
-	const bool isSearchSuggestion(static_cast<AddressCompletionModel::EntryType>(index.data(AddressCompletionModel::TypeRole).toInt()) == AddressCompletionModel::SearchSuggestionType);
+	const bool isSearchSuggestion(static_cast<AddressCompletionModel::CompletionEntry::EntryType>(index.data(AddressCompletionModel::TypeRole).toInt()) == AddressCompletionModel::CompletionEntry::SearchSuggestionType);
 
 	if (option.state.testFlag(QStyle::State_Selected))
 	{
@@ -128,17 +114,15 @@ void AddressDelegate::paint(QPainter *painter, const QStyleOptionViewItem &optio
 
 	if (isRightToLeft)
 	{
-		const int width(option.rect.width() - 33);
+		decorationRectangle.setLeft(option.rect.width() - option.rect.height() - 5);
 
-		decorationRectangle.setLeft(width);
-
-		titleRectangle.setRight(width);
+		titleRectangle.setRight(option.rect.width() - option.rect.height() - 10);
 	}
 	else
 	{
-		decorationRectangle.setRight(33);
+		decorationRectangle.setRight(option.rect.height());
 
-		titleRectangle.setLeft(33);
+		titleRectangle.setLeft(option.rect.height());
 	}
 
 	decorationRectangle = decorationRectangle.marginsRemoved(QMargins(2, 2, 2, 2));
@@ -317,7 +301,7 @@ QSize AddressDelegate::sizeHint(const QStyleOptionViewItem &option, const QModel
 {
 	QSize size(index.data(Qt::SizeHintRole).toSize());
 
-	if (index.row() != 0 && static_cast<AddressCompletionModel::EntryType>(index.data(AddressCompletionModel::TypeRole).toInt()) == AddressCompletionModel::HeaderType)
+	if (index.row() != 0 && static_cast<AddressCompletionModel::CompletionEntry::EntryType>(index.data(AddressCompletionModel::TypeRole).toInt()) == AddressCompletionModel::CompletionEntry::HeaderType)
 	{
 		size.setHeight(option.fontMetrics.lineSpacing() * 1.75);
 	}
@@ -337,7 +321,8 @@ AddressWidget::AddressWidget(Window *window, QWidget *parent) : LineEditWidget(p
 	m_completionModes(NoCompletionMode),
 	m_hints(SessionsManager::DefaultOpen),
 	m_isNavigatingCompletion(false),
-	m_isUsingSimpleMode(false)
+	m_isUsingSimpleMode(false),
+	m_wasEdited(false)
 {
 	const ToolBarWidget *toolBar(qobject_cast<ToolBarWidget*>(parent));
 
@@ -358,17 +343,24 @@ AddressWidget::AddressWidget(Window *window, QWidget *parent) : LineEditWidget(p
 	{
 		setPlaceholderText(tr("Enter address or search…"));
 
-		connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int,QVariant)));
+		connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &AddressWidget::handleOptionChanged);
 
 		if (toolBar->getIdentifier() != ToolBarsManager::AddressBar)
 		{
-			connect(toolBar, SIGNAL(windowChanged(Window*)), this, SLOT(setWindow(Window*)));
+			connect(toolBar, &ToolBarWidget::windowChanged, this, &AddressWidget::setWindow);
 		}
 	}
 
-	connect(this, SIGNAL(textDropped(QString)), this, SLOT(handleUserInput(QString)));
-	connect(m_completionModel, SIGNAL(completionReady(QString)), this, SLOT(setCompletion(QString)));
-	connect(BookmarksManager::getModel(), SIGNAL(modelModified()), this, SLOT(updateGeometries()));
+	connect(this, &AddressWidget::textEdited, this, [&]()
+	{
+		m_wasEdited = true;
+	});
+	connect(this, &AddressWidget::textDropped, this, [&](const QString &text)
+	{
+		handleUserInput(text);
+	});
+	connect(m_completionModel, &AddressCompletionModel::completionReady, this, &AddressWidget::setCompletion);
+	connect(BookmarksManager::getModel(), &BookmarksModel::modelModified, this, &AddressWidget::updateGeometries);
 }
 
 void AddressWidget::changeEvent(QEvent *event)
@@ -462,8 +454,6 @@ void AddressWidget::keyPressEvent(QKeyEvent *event)
 		case Qt::Key_Down:
 			if (!isPopupVisible() && HistoryManager::getTypedHistoryModel()->rowCount() > 0)
 			{
-				m_completionModel->setFilter(QString(), AddressCompletionModel::TypedHistoryCompletionType);
-
 				showCompletion(true);
 			}
 
@@ -477,7 +467,11 @@ void AddressWidget::keyPressEvent(QKeyEvent *event)
 
 			break;
 		case Qt::Key_Escape:
-			if (m_window)
+			if (isPopupVisible())
+			{
+				hidePopup();
+			}
+			else if (m_window)
 			{
 				const QUrl url(m_window->getUrl());
 				const QString text(this->text().trimmed());
@@ -512,24 +506,26 @@ void AddressWidget::contextMenuEvent(QContextMenuEvent *event)
 
 	if (entry == UnknownEntry || entry == AddressEntry)
 	{
-		menu.addAction(ThemesManager::createIcon(QLatin1String("edit-undo")), tr("Undo"), this, SLOT(undo()), QKeySequence(QKeySequence::Undo))->setEnabled(isUndoAvailable());
-		menu.addAction(ThemesManager::createIcon(QLatin1String("edit-redo")), tr("Redo"), this, SLOT(redo()), QKeySequence(QKeySequence::Redo))->setEnabled(isRedoAvailable());
+		ActionExecutor::Object executor(this, this);
+
+		menu.addAction(new Action(ActionsManager::UndoAction, {}, executor, &menu));
+		menu.addAction(new Action(ActionsManager::RedoAction, {}, executor, &menu));
 		menu.addSeparator();
-		menu.addAction(ThemesManager::createIcon(QLatin1String("edit-cut")), tr("Cut"), this, SLOT(cut()), QKeySequence(QKeySequence::Cut))->setEnabled(hasSelectedText());
-		menu.addAction(ThemesManager::createIcon(QLatin1String("edit-copy")), tr("Copy"), this, SLOT(copy()), QKeySequence(QKeySequence::Copy))->setEnabled(hasSelectedText());
-		menu.addAction(ThemesManager::createIcon(QLatin1String("edit-paste")), tr("Paste"), this, SLOT(paste()), QKeySequence(QKeySequence::Paste))->setEnabled(!QApplication::clipboard()->text().isEmpty());
+		menu.addAction(new Action(ActionsManager::CutAction, {}, executor, &menu));
+		menu.addAction(new Action(ActionsManager::CopyAction, {}, executor, &menu));
+		menu.addAction(new Action(ActionsManager::PasteAction, {}, executor, &menu));
 
 		if (!m_isUsingSimpleMode)
 		{
 			menu.addAction(new Action(ActionsManager::PasteAndGoAction, {}, ActionExecutor::Object(m_window, m_window), this));
 		}
 
-		menu.addAction(ThemesManager::createIcon(QLatin1String("edit-delete")), tr("Delete"), this, SLOT(deleteText()), QKeySequence(QKeySequence::Delete))->setEnabled(hasSelectedText());
+		menu.addAction(new Action(ActionsManager::DeleteAction, {}, executor, &menu));
 		menu.addSeparator();
-		menu.addAction(tr("Copy to Note"), this, SLOT(copyToNote()))->setEnabled(!text().isEmpty());
+		menu.addAction(new Action(ActionsManager::CopyToNoteAction, {}, executor, &menu));
 		menu.addSeparator();
-		menu.addAction(tr("Clear All"), this, SLOT(clear()))->setEnabled(!text().isEmpty());
-		menu.addAction(ThemesManager::createIcon(QLatin1String("edit-select-all")), tr("Select All"), this, SLOT(selectAll()), QKeySequence(QKeySequence::SelectAll))->setEnabled(!text().isEmpty());
+		menu.addAction(new Action(ActionsManager::ClearAllAction, {}, executor, &menu));
+		menu.addAction(new Action(ActionsManager::SelectAllAction, {}, executor, &menu));
 	}
 	else
 	{
@@ -544,7 +540,10 @@ void AddressWidget::contextMenuEvent(QContextMenuEvent *event)
 			menu.addSeparator();
 		}
 
-		menu.addAction(tr("Remove this Icon"), this, SLOT(removeEntry()))->setData(entry);
+		QAction *removeEntryAction(menu.addAction(tr("Remove this Icon")));
+		removeEntryAction->setData(entry);
+
+		connect(removeEntryAction, &QAction::triggered, this, &AddressWidget::removeEntry);
 	}
 
 	const ToolBarWidget *toolBar(qobject_cast<ToolBarWidget*>(parentWidget()));
@@ -552,7 +551,7 @@ void AddressWidget::contextMenuEvent(QContextMenuEvent *event)
 	if (toolBar)
 	{
 		menu.addSeparator();
-		menu.addMenu(ToolBarWidget::createCustomizationMenu(toolBar->getIdentifier(), QVector<QAction*>(), &menu));
+		menu.addMenu(ToolBarWidget::createCustomizationMenu(toolBar->getIdentifier(), {}, &menu));
 	}
 
 	menu.exec(event->globalPos());
@@ -568,7 +567,7 @@ void AddressWidget::mousePressEvent(QMouseEvent *event)
 	}
 	else
 	{
-		m_dragStartPosition = QPoint();
+		m_dragStartPosition = {};
 	}
 
 	LineEditWidget::mousePressEvent(event);
@@ -605,14 +604,17 @@ void AddressWidget::mouseReleaseEvent(QMouseEvent *event)
 		switch (m_clickedEntry)
 		{
 			case WebsiteInformationEntry:
-				m_window->triggerAction(ActionsManager::WebsiteInformationAction);
+				if (m_window)
+				{
+					m_window->triggerAction(ActionsManager::WebsiteInformationAction);
+				}
 
 				event->accept();
 
 				return;
 			case ListFeedsEntry:
 				{
-					const QVector<WebWidget::LinkUrl> feeds((m_window && m_window->getLoadingState() == WebWidget::FinishedLoadingState && m_window->getContentsWidget()->getWebWidget()) ? m_window->getContentsWidget()->getWebWidget()->getFeeds() : QVector<WebWidget::LinkUrl>());
+					const QVector<WebWidget::LinkUrl> feeds((m_window && m_window->getLoadingState() == WebWidget::FinishedLoadingState && m_window->getWebWidget()) ? m_window->getWebWidget()->getFeeds() : QVector<WebWidget::LinkUrl>());
 
 					if (feeds.count() == 1 && m_window)
 					{
@@ -627,7 +629,13 @@ void AddressWidget::mouseReleaseEvent(QMouseEvent *event)
 							menu.addAction(feeds.at(i).title.isEmpty() ? tr("(Untitled)") : feeds.at(i).title)->setData(feeds.at(i).url);
 						}
 
-						connect(&menu, SIGNAL(triggered(QAction*)), this, SLOT(openFeed(QAction*)));
+						connect(&menu, &QMenu::triggered, this, [&](QAction *action)
+						{
+							if (action && m_window)
+							{
+								m_window->setUrl(action->data().toUrl());
+							}
+						});
 
 						menu.exec(mapToGlobal(m_entries.value(ListFeedsEntry).rectangle.bottomLeft()));
 					}
@@ -652,7 +660,21 @@ void AddressWidget::mouseReleaseEvent(QMouseEvent *event)
 							menu.addAction(tr("Add to Bookmarks"));
 							menu.addAction(tr("Add to Start Page"))->setData(SettingsManager::getOption(SettingsManager::StartPage_BookmarksFolderOption));
 
-							connect(&menu, SIGNAL(triggered(QAction*)), this, SLOT(addBookmark(QAction*)));
+							connect(&menu, &QMenu::triggered, this, [&](QAction *action)
+							{
+								if (action && m_window)
+								{
+									if (action->data().isNull())
+									{
+										BookmarkPropertiesDialog dialog(getUrl().adjusted(QUrl::RemovePassword), m_window->getTitle(), QString(), nullptr, -1, true, this);
+										dialog.exec();
+									}
+									else
+									{
+										BookmarksManager::addBookmark(BookmarksModel::UrlBookmark, {{BookmarksModel::UrlRole, getUrl().adjusted(QUrl::RemovePassword)}, {BookmarksModel::TitleRole, m_window->getTitle()}}, BookmarksManager::getModel()->getItem(action->data().toString()));
+									}
+								}
+							});
 
 							menu.exec(mapToGlobal(m_entries.value(BookmarkEntry).rectangle.bottomLeft()));
 						}
@@ -681,8 +703,6 @@ void AddressWidget::mouseReleaseEvent(QMouseEvent *event)
 			case HistoryDropdownEntry:
 				if (!isPopupVisible() && HistoryManager::getTypedHistoryModel()->rowCount() > 0)
 				{
-					m_completionModel->setFilter(QString(), AddressCompletionModel::TypedHistoryCompletionType);
-
 					showCompletion(true);
 				}
 
@@ -714,58 +734,10 @@ void AddressWidget::dragEnterEvent(QDragEnterEvent *event)
 	LineEditWidget::dragEnterEvent(event);
 }
 
-void AddressWidget::addBookmark(QAction *action)
-{
-	if (action && m_window)
-	{
-		const QUrl url(getUrl().adjusted(QUrl::RemovePassword));
-
-		if (action->data().isNull())
-		{
-			BookmarkPropertiesDialog dialog(url, m_window->getTitle(), QString(), nullptr, -1, true, this);
-			dialog.exec();
-		}
-		else
-		{
-			BookmarksManager::addBookmark(BookmarksModel::UrlBookmark, {{BookmarksModel::UrlRole, url}, {BookmarksModel::TitleRole, m_window->getTitle()}}, BookmarksManager::getModel()->getItem(action->data().toString()));
-		}
-	}
-}
-
-void AddressWidget::openFeed(QAction *action)
-{
-	if (action && m_window)
-	{
-		m_window->setUrl(action->data().toUrl());
-	}
-}
-
 void AddressWidget::openUrl(const QString &url)
 {
 	setUrl(url);
 	handleUserInput(url, SessionsManager::CurrentTabOpen);
-}
-
-void AddressWidget::openUrl(const QModelIndex &index)
-{
-	hidePopup();
-
-	if (!index.isValid())
-	{
-		return;
-	}
-
-	if (static_cast<AddressCompletionModel::EntryType>(index.data(AddressCompletionModel::TypeRole).toInt()) == AddressCompletionModel::SearchSuggestionType)
-	{
-		emit requestedSearch(index.data(AddressCompletionModel::TextRole).toString(), SearchEnginesManager::getSearchEngine(index.data(AddressCompletionModel::KeywordRole).toString(), true).identifier, SessionsManager::CurrentTabOpen);
-	}
-	else
-	{
-		const QString url(index.data(AddressCompletionModel::UrlRole).toUrl().toString());
-
-		setUrl(url);
-		handleUserInput(url, SessionsManager::CurrentTabOpen);
-	}
 }
 
 void AddressWidget::removeEntry()
@@ -795,10 +767,72 @@ void AddressWidget::showCompletion(bool isTypedHistory)
 	popupWidget->setModel(m_completionModel);
 	popupWidget->setItemDelegate(new AddressDelegate((isTypedHistory ? QString() : text()), (isTypedHistory ? AddressDelegate::HistoryMode : AddressDelegate::CompletionMode), popupWidget));
 
+	if (isTypedHistory)
+	{
+		m_completionModel->setTypes(AddressCompletionModel::TypedHistoryCompletionType);
+	}
+	else
+	{
+		AddressCompletionModel::CompletionTypes types(AddressCompletionModel::UnknownCompletionType);
+
+		if (SettingsManager::getOption(SettingsManager::AddressField_SuggestBookmarksOption).toBool())
+		{
+			types |= AddressCompletionModel::BookmarksCompletionType;
+		}
+
+		if (SettingsManager::getOption(SettingsManager::AddressField_SuggestHistoryOption).toBool())
+		{
+			types |= AddressCompletionModel::HistoryCompletionType;
+		}
+
+		if (!m_isUsingSimpleMode && SettingsManager::getOption(SettingsManager::AddressField_SuggestSearchOption).toBool())
+		{
+			types |= AddressCompletionModel::SearchSuggestionsCompletionType;
+		}
+
+		if (SettingsManager::getOption(SettingsManager::AddressField_SuggestSpecialPagesOption).toBool())
+		{
+			types |= AddressCompletionModel::SpecialPagesCompletionType;
+		}
+
+		if (SettingsManager::getOption(SettingsManager::AddressField_SuggestLocalPathsOption).toBool())
+		{
+			types |= AddressCompletionModel::LocalPathSuggestionsCompletionType;
+		}
+
+		m_completionModel->setTypes(types);
+	}
+
 	if (!isPopupVisible())
 	{
-		connect(popupWidget, SIGNAL(clicked(QModelIndex)), this, SLOT(openUrl(QModelIndex)));
-		connect(popupWidget->selectionModel(), SIGNAL(currentChanged(QModelIndex,QModelIndex)), this, SLOT(setTextFromIndex(QModelIndex)));
+		connect(popupWidget, &PopupViewWidget::clicked, this, [&](const QModelIndex &index)
+		{
+			hidePopup();
+
+			if (index.isValid())
+			{
+				if (static_cast<AddressCompletionModel::CompletionEntry::EntryType>(index.data(AddressCompletionModel::TypeRole).toInt()) == AddressCompletionModel::CompletionEntry::SearchSuggestionType)
+				{
+					emit requestedSearch(index.data(AddressCompletionModel::TextRole).toString(), SearchEnginesManager::getSearchEngine(index.data(AddressCompletionModel::KeywordRole).toString(), true).identifier, SessionsManager::CurrentTabOpen);
+				}
+				else
+				{
+					const QString url(index.data(AddressCompletionModel::UrlRole).toUrl().toString());
+
+					setUrl(url);
+					handleUserInput(url, SessionsManager::CurrentTabOpen);
+				}
+			}
+		});
+		connect(popupWidget->selectionModel(), &QItemSelectionModel::currentChanged, this, [&](const QModelIndex &index)
+		{
+			if (m_isNavigatingCompletion)
+			{
+				m_isNavigatingCompletion = false;
+
+				setText(index.data(AddressCompletionModel::TextRole).toString());
+			}
+		});
 
 		showPopup();
 	}
@@ -828,11 +862,11 @@ void AddressWidget::handleOptionChanged(int identifier, const QVariant &value)
 					m_completionModes = PopupCompletionMode;
 				}
 
-				disconnect(this, SIGNAL(textEdited(QString)), m_completionModel, SLOT(setFilter(QString)));
+				disconnect(this, &AddressWidget::textEdited, m_completionModel, &AddressCompletionModel::setFilter);
 
 				if (m_completionModes != NoCompletionMode)
 				{
-					connect(this, SIGNAL(textEdited(QString)), m_completionModel, SLOT(setFilter(QString)));
+					connect(this, &AddressWidget::textEdited, m_completionModel, &AddressCompletionModel::setFilter);
 				}
 			}
 
@@ -881,11 +915,11 @@ void AddressWidget::handleOptionChanged(int identifier, const QVariant &value)
 					QString name(rawLayout.at(i) + QLatin1String("Entry"));
 					name[0] = name.at(0).toUpper();
 
-					const EntryIdentifier identifier(static_cast<EntryIdentifier>(metaObject()->enumerator(m_entryIdentifierEnumerator).keyToValue(name.toLatin1())));
+					const EntryIdentifier entryIdentifier(static_cast<EntryIdentifier>(metaObject()->enumerator(m_entryIdentifierEnumerator).keyToValue(name.toLatin1())));
 
-					if (identifier > UnknownEntry && !layout.contains(identifier))
+					if (entryIdentifier > UnknownEntry && !layout.contains(entryIdentifier))
 					{
-						layout.append(identifier);
+						layout.append(entryIdentifier);
 					}
 				}
 
@@ -915,6 +949,11 @@ void AddressWidget::handleActionsStateChanged(const QVector<int> &identifiers)
 
 void AddressWidget::handleUserInput(const QString &text, SessionsManager::OpenHints hints)
 {
+	if (m_isUsingSimpleMode)
+	{
+		return;
+	}
+
 	if (hints == SessionsManager::DefaultOpen)
 	{
 		hints = SessionsManager::calculateOpenHints(SessionsManager::CurrentTabOpen);
@@ -922,13 +961,37 @@ void AddressWidget::handleUserInput(const QString &text, SessionsManager::OpenHi
 
 	if (!text.isEmpty())
 	{
-		InputInterpreter *interpreter(new InputInterpreter(this));
+		const InputInterpreter::InterpreterResult result(InputInterpreter::interpret(text));
 
-		connect(interpreter, SIGNAL(requestedOpenBookmark(BookmarksItem*,SessionsManager::OpenHints)), this, SIGNAL(requestedOpenBookmark(BookmarksItem*,SessionsManager::OpenHints)));
-		connect(interpreter, SIGNAL(requestedOpenUrl(QUrl,SessionsManager::OpenHints)), this, SIGNAL(requestedOpenUrl(QUrl,SessionsManager::OpenHints)));
-		connect(interpreter, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)), this, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)));
+		if (result.isValid())
+		{
+			MainWindow *mainWindow(m_window ? MainWindow::findMainWindow(m_window) : MainWindow::findMainWindow(this));
+			ActionExecutor::Object executor(mainWindow, mainWindow);
 
-		interpreter->interpret(text, hints);
+			switch (result.type)
+			{
+				case InputInterpreter::InterpreterResult::BookmarkType:
+					if (executor.isValid())
+					{
+						executor.triggerAction(ActionsManager::OpenBookmarkAction, {{QLatin1String("bookmark"), result.bookmark->getIdentifier()}, {QLatin1String("hints"), QVariant(hints)}});
+					}
+
+					break;
+				case InputInterpreter::InterpreterResult::UrlType:
+					if (executor.isValid())
+					{
+						executor.triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), result.url}, {QLatin1String("hints"), QVariant(hints)}});
+					}
+
+					break;
+				case InputInterpreter::InterpreterResult::SearchType:
+					emit requestedSearch(result.searchQuery, result.searchEngine, hints);
+
+					break;
+				default:
+					break;
+			}
+		}
 	}
 }
 
@@ -1014,7 +1077,7 @@ void AddressWidget::updateGeometries()
 
 				break;
 			case ListFeedsEntry:
-				if (!m_window || m_window->isAboutToClose() || m_window->getLoadingState() != WebWidget::FinishedLoadingState || !m_window->getContentsWidget()->getWebWidget() || m_window->getContentsWidget()->getWebWidget()->getFeeds().isEmpty())
+				if (!m_window || m_window->isAboutToClose() || m_window->getLoadingState() != WebWidget::FinishedLoadingState || !m_window->getWebWidget() || m_window->getWebWidget()->getFeeds().isEmpty())
 				{
 					continue;
 				}
@@ -1229,15 +1292,12 @@ void AddressWidget::setWindow(Window *window)
 	{
 		m_window->detachAddressWidget(this);
 
-		disconnect(this, SIGNAL(requestedOpenUrl(QUrl,SessionsManager::OpenHints)), m_window.data(), SLOT(handleOpenUrlRequest(QUrl,SessionsManager::OpenHints)));
-		disconnect(this, SIGNAL(requestedOpenBookmark(BookmarksItem*,SessionsManager::OpenHints)), m_window.data(), SIGNAL(requestedOpenBookmark(BookmarksItem*,SessionsManager::OpenHints)));
-		disconnect(this, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)), m_window.data(), SLOT(handleSearchRequest(QString,QString,SessionsManager::OpenHints)));
-		disconnect(m_window.data(), SIGNAL(destroyed(QObject*)), this, SLOT(setWindow()));
-		disconnect(m_window.data(), SIGNAL(urlChanged(QUrl,bool)), this, SLOT(setUrl(QUrl,bool)));
-		disconnect(m_window.data(), SIGNAL(iconChanged(QIcon)), this, SLOT(setIcon(QIcon)));
-		disconnect(m_window.data(), SIGNAL(actionsStateChanged(QVector<int>)), this, SLOT(handleActionsStateChanged(QVector<int>)));
-		disconnect(m_window.data(), SIGNAL(contentStateChanged(WebWidget::ContentStates)), this, SLOT(updateGeometries()));
-		disconnect(m_window.data(), SIGNAL(loadingStateChanged(WebWidget::LoadingState)), this, SLOT(updateGeometries()));
+		disconnect(this, &AddressWidget::requestedSearch, m_window.data(), &Window::requestedSearch);
+		disconnect(m_window.data(), &Window::urlChanged, this, &AddressWidget::setUrl);
+		disconnect(m_window.data(), &Window::iconChanged, this, &AddressWidget::setIcon);
+		disconnect(m_window.data(), &Window::arbitraryActionsStateChanged, this, &AddressWidget::handleActionsStateChanged);
+		disconnect(m_window.data(), &Window::contentStateChanged, this, &AddressWidget::updateGeometries);
+		disconnect(m_window.data(), &Window::loadingStateChanged, this, &AddressWidget::updateGeometries);
 	}
 
 	m_window = window;
@@ -1246,34 +1306,38 @@ void AddressWidget::setWindow(Window *window)
 	{
 		if (mainWindow)
 		{
-			disconnect(this, SIGNAL(requestedOpenUrl(QUrl,SessionsManager::OpenHints)), mainWindow, SLOT(open(QUrl,SessionsManager::OpenHints)));
-			disconnect(this, SIGNAL(requestedOpenBookmark(BookmarksItem*,SessionsManager::OpenHints)), mainWindow, SLOT(open(BookmarksItem*,SessionsManager::OpenHints)));
-			disconnect(this, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)), mainWindow, SLOT(search(QString,QString,SessionsManager::OpenHints)));
+			disconnect(this, &AddressWidget::requestedSearch, mainWindow, &MainWindow::search);
 		}
 
 		window->attachAddressWidget(this);
 
-		connect(this, SIGNAL(requestedOpenUrl(QUrl,SessionsManager::OpenHints)), window, SLOT(handleOpenUrlRequest(QUrl,SessionsManager::OpenHints)));
-		connect(this, SIGNAL(requestedOpenBookmark(BookmarksItem*,SessionsManager::OpenHints)), window, SIGNAL(requestedOpenBookmark(BookmarksItem*,SessionsManager::OpenHints)));
-		connect(this, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)), window, SLOT(handleSearchRequest(QString,QString,SessionsManager::OpenHints)));
-		connect(window, SIGNAL(urlChanged(QUrl,bool)), this, SLOT(setUrl(QUrl,bool)));
-		connect(window, SIGNAL(iconChanged(QIcon)), this, SLOT(setIcon(QIcon)));
-		connect(window, SIGNAL(actionsStateChanged(QVector<int>)), this, SLOT(handleActionsStateChanged(QVector<int>)));
-		connect(window, SIGNAL(contentStateChanged(WebWidget::ContentStates)), this, SLOT(updateGeometries()));
-		connect(window, SIGNAL(loadingStateChanged(WebWidget::LoadingState)), this, SLOT(updateGeometries()));
+		connect(this, &AddressWidget::requestedSearch, window, &Window::requestedSearch);
+		connect(window, &Window::urlChanged, this, &AddressWidget::setUrl);
+		connect(window, &Window::iconChanged, this, &AddressWidget::setIcon);
+		connect(window, &Window::arbitraryActionsStateChanged, this, &AddressWidget::handleActionsStateChanged);
+		connect(window, &Window::contentStateChanged, this, &AddressWidget::updateGeometries);
+		connect(window, &Window::loadingStateChanged, this, &AddressWidget::updateGeometries);
+		connect(window, &Window::destroyed, this, [&](QObject *object)
+		{
+			if (qobject_cast<Window*>(object) == m_window)
+			{
+				setWindow(nullptr);
+			}
+		});
 
 		const ToolBarWidget *toolBar(qobject_cast<ToolBarWidget*>(parentWidget()));
 
 		if (!toolBar || toolBar->getIdentifier() != ToolBarsManager::AddressBar)
 		{
-			connect(window, SIGNAL(aboutToClose()), this, SLOT(setWindow()));
+			connect(window, &Window::aboutToClose, this, [&]()
+			{
+				setWindow(nullptr);
+			});
 		}
 	}
 	else if (mainWindow && !mainWindow->isAboutToClose() && !m_isUsingSimpleMode)
 	{
-		connect(this, SIGNAL(requestedOpenUrl(QUrl,SessionsManager::OpenHints)), mainWindow, SLOT(open(QUrl,SessionsManager::OpenHints)));
-		connect(this, SIGNAL(requestedOpenBookmark(BookmarksItem*,SessionsManager::OpenHints)), mainWindow, SLOT(open(BookmarksItem*,SessionsManager::OpenHints)));
-		connect(this, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)), mainWindow, SLOT(search(QString,QString,SessionsManager::OpenHints)));
+		connect(this, &AddressWidget::requestedSearch, mainWindow, &MainWindow::search);
 	}
 
 	setIcon(window ? window->getIcon() : QIcon());
@@ -1281,30 +1345,22 @@ void AddressWidget::setWindow(Window *window)
 	update();
 }
 
-void AddressWidget::setTextFromIndex(const QModelIndex &index)
-{
-	if (m_isNavigatingCompletion)
-	{
-		m_isNavigatingCompletion = false;
-
-		setText(index.data(AddressCompletionModel::TextRole).toString());
-	}
-}
-
 void AddressWidget::setUrl(const QUrl &url, bool force)
 {
+	const QString text(Utils::isUrlEmpty(url) ? QString() : url.toString());
+
 	if (!m_isUsingSimpleMode)
 	{
 		updateGeometries();
 	}
 
-	if (!m_window || ((force || !hasFocus()) && url.scheme() != QLatin1String("javascript")))
+	if (m_isUsingSimpleMode || ((force || !m_wasEdited || !hasFocus()) && url.scheme() != QLatin1String("javascript")))
 	{
-		const QString text(Utils::isUrlEmpty(url) ? QString() : url.toString());
-
 		setToolTip(text);
 		setText(text);
 		setCursorPosition(0);
+
+		m_wasEdited = false;
 	}
 }
 

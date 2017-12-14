@@ -87,14 +87,14 @@ ConfigurationOptionWidget::ConfigurationOptionWidget(Window *window, const ToolB
 
 		if (toolBar && toolBar->getIdentifier() != ToolBarsManager::AddressBar)
 		{
-			connect(toolBar, SIGNAL(windowChanged(Window*)), this, SLOT(setWindow(Window*)));
+			connect(toolBar, &ToolBarWidget::windowChanged, this, &ConfigurationOptionWidget::setWindow);
 		}
 
-		connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant,QUrl)), this, SLOT(updateValue(int)));
+		connect(SettingsManager::getInstance(), &SettingsManager::hostOptionChanged, this, &ConfigurationOptionWidget::updateValue);
 	}
 
-	connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int,QVariant)));
-	connect(m_optionWidget, SIGNAL(commitData(QWidget*)), this, SLOT(save()));
+	connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &ConfigurationOptionWidget::handleOptionChanged);
+	connect(m_optionWidget, &OptionWidget::commitData, this, &ConfigurationOptionWidget::save);
 }
 
 void ConfigurationOptionWidget::handleOptionChanged(int option, const QVariant &value)
@@ -117,7 +117,7 @@ void ConfigurationOptionWidget::setWindow(Window *window)
 {
 	if (m_window && !m_window->isAboutToClose())
 	{
-		disconnect(m_window, SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int,QVariant)));
+		disconnect(m_window, &Window::optionChanged, this, &ConfigurationOptionWidget::handleOptionChanged);
 	}
 
 	m_window = window;
@@ -127,7 +127,7 @@ void ConfigurationOptionWidget::setWindow(Window *window)
 
 	if (window)
 	{
-		connect(m_window, SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int,QVariant)));
+		connect(window, &Window::optionChanged, this, &ConfigurationOptionWidget::handleOptionChanged);
 	}
 }
 

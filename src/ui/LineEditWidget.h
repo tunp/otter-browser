@@ -22,7 +22,9 @@
 #define OTTER_LINEEDITWIDGET_H
 
 #include "ItemViewWidget.h"
+#include "../core/ActionExecutor.h"
 
+#include <QtWidgets/QCompleter>
 #include <QtWidgets/QLineEdit>
 
 namespace Otter
@@ -52,7 +54,7 @@ private:
 	LineEditWidget *m_lineEditWidget;
 };
 
-class LineEditWidget : public QLineEdit
+class LineEditWidget : public QLineEdit, public ActionExecutor
 {
 	Q_OBJECT
 
@@ -64,6 +66,7 @@ public:
 		ReplaceAndNotifyDropMode
 	};
 
+	explicit LineEditWidget(const QString &text, QWidget *parent = nullptr);
 	explicit LineEditWidget(QWidget *parent = nullptr);
 	~LineEditWidget();
 
@@ -71,35 +74,48 @@ public:
 	virtual void showPopup();
 	virtual void hidePopup();
 	void setDropMode(DropMode mode);
+	void setClearOnEscape(bool clear);
 	void setSelectAllOnFocus(bool select);
 	PopupViewWidget* getPopup();
+	ActionsManager::ActionDefinition::State getActionState(int identifier, const QVariantMap &parameters) const override;
 	bool isPopupVisible() const;
 
 public slots:
-	void copyToNote();
-	void deleteText();
+	void triggerAction(int identifier, const QVariantMap &parameters) override;
 	void setCompletion(const QString &completion);
 
 protected:
 	void resizeEvent(QResizeEvent *event) override;
+	void focusInEvent(QFocusEvent *event) override;
 	void keyPressEvent(QKeyEvent *event) override;
+	void contextMenuEvent(QContextMenuEvent *event) override;
 	void mousePressEvent(QMouseEvent *event) override;
 	void mouseReleaseEvent(QMouseEvent *event) override;
 	void dropEvent(QDropEvent *event) override;
+	void initialize();
 
 protected slots:
 	void clearSelectAllOnRelease();
+	void handleSelectionChanged();
+	void handleTextChanged(const QString &text);
+	void notifyPasteActionStateChanged();
 
 private:
 	PopupViewWidget *m_popupViewWidget;
+	QCompleter *m_completer;
 	QString m_completion;
 	DropMode m_dropMode;
 	int m_selectionStart;
+	bool m_shouldClearOnEscape;
 	bool m_shouldIgnoreCompletion;
 	bool m_shouldSelectAllOnFocus;
 	bool m_shouldSelectAllOnRelease;
+	bool m_hadSelection;
+	bool m_wasEmpty;
 
 signals:
+	void arbitraryActionsStateChanged(const QVector<int> &identifiers);
+	void popupClicked(const QModelIndex &index);
 	void textDropped(const QString &text);
 };
 

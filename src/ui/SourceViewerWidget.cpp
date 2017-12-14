@@ -40,7 +40,7 @@ SyntaxHighlighter::SyntaxHighlighter(QTextDocument *parent) : QSyntaxHighlighter
 		QFile file(SessionsManager::getReadableDataPath(QLatin1String("syntaxHighlighting.json")));
 		file.open(QIODevice::ReadOnly);
 
-		const QJsonObject syntaxes(QJsonDocument::fromJson(file.readAll()).object());
+		const QJsonObject syntaxesObject(QJsonDocument::fromJson(file.readAll()).object());
 		const QMetaEnum highlightingSyntaxEnum(metaObject()->enumerator(metaObject()->indexOfEnumerator(QLatin1String("HighlightingSyntax").data())));
 		const QMetaEnum highlightingStateEnum(metaObject()->enumerator(metaObject()->indexOfEnumerator(QLatin1String("HighlightingState").data())));
 
@@ -50,17 +50,17 @@ SyntaxHighlighter::SyntaxHighlighter(QTextDocument *parent) : QSyntaxHighlighter
 			QString syntax(highlightingSyntaxEnum.valueToKey(i));
 			syntax.chop(6);
 
-			const QJsonObject definitions(syntaxes.value(syntax).toObject());
+			const QJsonObject definitionsObject(syntaxesObject.value(syntax).toObject());
 
 			for (int j = 0; j < highlightingStateEnum.keyCount(); ++j)
 			{
 				QString state(highlightingStateEnum.valueToKey(j));
 				state.chop(5);
 
-				const QJsonObject definition(definitions.value(state).toObject());
-				const QString foreground(definition.value(QLatin1String("foreground")).toString(QLatin1String("auto")));
-				const QString fontStyle(definition.value(QLatin1String("fontStyle")).toString(QLatin1String("auto")));
-				const QString fontWeight(definition.value(QLatin1String("fontWeight")).toString(QLatin1String("auto")));
+				const QJsonObject definitionObject(definitionsObject.value(state).toObject());
+				const QString foreground(definitionObject.value(QLatin1String("foreground")).toString(QLatin1String("auto")));
+				const QString fontStyle(definitionObject.value(QLatin1String("fontStyle")).toString(QLatin1String("auto")));
+				const QString fontWeight(definitionObject.value(QLatin1String("fontWeight")).toString(QLatin1String("auto")));
 				QTextCharFormat format;
 
 				if (foreground != QLatin1String("auto"))
@@ -78,7 +78,7 @@ SyntaxHighlighter::SyntaxHighlighter(QTextDocument *parent) : QSyntaxHighlighter
 					format.setFontWeight((fontWeight == QLatin1String("bold")) ? QFont::Bold : QFont::Normal);
 				}
 
-				if (definition.value(QLatin1String("isUnderlined")).toBool(false))
+				if (definitionObject.value(QLatin1String("isUnderlined")).toBool(false))
 				{
 					format.setUnderlineStyle(QTextCharFormat::SingleUnderline);
 				}
@@ -174,7 +174,7 @@ void SyntaxHighlighter::highlightBlock(const QString &text)
 		{
 			currentState = currentData.state;
 			currentStateBegin = position;
-			currentData.context = QString();
+			currentData.context.clear();
 			currentData.state = NoState;
 		}
 
@@ -187,7 +187,7 @@ void SyntaxHighlighter::highlightBlock(const QString &text)
 				setFormat(currentStateBegin, (position - currentStateBegin), m_formats[HtmlSyntax][currentState]);
 			}
 
-			buffer = QString();
+			buffer.clear();
 			previousState = currentState;
 			previousStateBegin = currentStateBegin;
 		}
@@ -209,12 +209,12 @@ MarginWidget::MarginWidget(SourceViewerWidget *parent) : QWidget(parent),
 	m_sourceViewer(parent),
 	m_lastClickedLine(-1)
 {
-	setAmount(m_sourceViewer->blockCount());
+	updateWidth();
 	setContextMenuPolicy(Qt::NoContextMenu);
 
-	connect(m_sourceViewer, SIGNAL(blockCountChanged(int)), this, SLOT(setAmount(int)));
-	connect(m_sourceViewer, SIGNAL(textChanged()), this, SLOT(setAmount()));
-	connect(m_sourceViewer, SIGNAL(updateRequest(QRect,int)), this, SLOT(updateNumbers(QRect,int)));
+	connect(m_sourceViewer, &SourceViewerWidget::updateRequest, this, &MarginWidget::updateNumbers);
+	connect(m_sourceViewer, &SourceViewerWidget::blockCountChanged, this, &MarginWidget::updateWidth);
+	connect(m_sourceViewer, &SourceViewerWidget::textChanged, this, &MarginWidget::updateWidth);
 }
 
 void MarginWidget::paintEvent(QPaintEvent *event)
@@ -223,8 +223,8 @@ void MarginWidget::paintEvent(QPaintEvent *event)
 	painter.fillRect(event->rect(), Qt::transparent);
 
 	QTextBlock block(m_sourceViewer->firstVisibleBlock());
-	int top(m_sourceViewer->blockBoundingGeometry(block).translated(m_sourceViewer->contentOffset()).top());
-	int bottom(top + m_sourceViewer->blockBoundingRect(block).height());
+	int top(m_sourceViewer->blockBoundingGeometry(block).translated(m_sourceViewer->contentOffset()).toRect().top());
+	int bottom(top + m_sourceViewer->blockBoundingRect(block).toRect().height());
 	const int right(width() - 5);
 	const int selectionStart(m_sourceViewer->document()->findBlock(m_sourceViewer->textCursor().selectionStart()).blockNumber());
 	const int selectionEnd(m_sourceViewer->document()->findBlock(m_sourceViewer->textCursor().selectionEnd()).blockNumber());
@@ -242,7 +242,7 @@ void MarginWidget::paintEvent(QPaintEvent *event)
 
 		block = block.next();
 		top = bottom;
-		bottom = (top + m_sourceViewer->blockBoundingRect(block).height());
+		bottom = (top + m_sourceViewer->blockBoundingRect(block).toRect().height());
 	}
 }
 
@@ -267,16 +267,14 @@ void MarginWidget::mousePressEvent(QMouseEvent *event)
 void MarginWidget::mouseMoveEvent(QMouseEvent *event)
 {
 	QTextCursor textCursor(m_sourceViewer->cursorForPosition(QPoint(1, event->y())));
-	int currentLine(textCursor.blockNumber());
+	const int currentLine(textCursor.blockNumber());
 
-	if (currentLine == m_lastClickedLine)
+	if (currentLine != m_lastClickedLine)
 	{
-		return;
+		textCursor.movePosition(((currentLine > m_lastClickedLine) ? QTextCursor::Up : QTextCursor::Down), QTextCursor::KeepAnchor, qAbs(m_lastClickedLine - currentLine));
+
+		m_sourceViewer->setTextCursor(textCursor);
 	}
-
-	textCursor.movePosition(((currentLine > m_lastClickedLine) ? QTextCursor::Up : QTextCursor::Down), QTextCursor::KeepAnchor, qAbs(m_lastClickedLine - currentLine));
-
-	m_sourceViewer->setTextCursor(textCursor);
 }
 
 void MarginWidget::mouseReleaseEvent(QMouseEvent *event)
@@ -298,19 +296,14 @@ void MarginWidget::updateNumbers(const QRect &rectangle, int offset)
 	}
 }
 
-void MarginWidget::setAmount(int amount)
+void MarginWidget::updateWidth()
 {
-	if (amount < 0 && m_sourceViewer)
-	{
-		amount = m_sourceViewer->blockCount();
-	}
-
 	int digits(1);
-	int max(qMax(1, amount));
+	int maximum(qMax(1, m_sourceViewer->blockCount()));
 
-	while (max >= 10)
+	while (maximum >= 10)
 	{
-		max /= 10;
+		maximum /= 10;
 
 		++digits;
 	}
@@ -326,7 +319,7 @@ bool MarginWidget::event(QEvent *event)
 
 	if (event->type() == QEvent::FontChange)
 	{
-		setAmount();
+		updateWidth();
 	}
 
 	return result;
@@ -345,9 +338,9 @@ SourceViewerWidget::SourceViewerWidget(QWidget *parent) : QPlainTextEdit(parent)
 	handleOptionChanged(SettingsManager::SourceViewer_ShowLineNumbersOption, SettingsManager::getOption(SettingsManager::SourceViewer_ShowLineNumbersOption));
 	handleOptionChanged(SettingsManager::SourceViewer_WrapLinesOption, SettingsManager::getOption(SettingsManager::SourceViewer_WrapLinesOption));
 
-	connect(this, SIGNAL(textChanged()), this, SLOT(updateSelection()));
-	connect(this, SIGNAL(cursorPositionChanged()), this, SLOT(updateTextCursor()));
-	connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int,QVariant)));
+	connect(this, &SourceViewerWidget::textChanged, this, &SourceViewerWidget::updateSelection);
+	connect(this, &SourceViewerWidget::cursorPositionChanged, this, &SourceViewerWidget::updateTextCursor);
+	connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &SourceViewerWidget::handleOptionChanged);
 }
 
 void SourceViewerWidget::resizeEvent(QResizeEvent *event)
@@ -426,46 +419,52 @@ void SourceViewerWidget::updateTextCursor()
 void SourceViewerWidget::updateSelection()
 {
 	QList<QTextEdit::ExtraSelection> extraSelections;
-	int findTextResultsAmount(0);
 
-	if (!m_findText.isEmpty())
+	if (m_findText.isEmpty())
 	{
-		QTextEdit::ExtraSelection selection;
-		selection.format.setBackground(QColor(255, 150, 50));
-		selection.format.setProperty(QTextFormat::FullWidthSelection, true);
-		selection.cursor = m_findTextSelection;
+		m_findTextResultsAmount = 0;
 
-		extraSelections.append(selection);
+		setExtraSelections(extraSelections);
 
-		QTextCursor textCursor(this->textCursor());
-		textCursor.setPosition(0);
+		return;
+	}
 
-		if (m_findFlags.testFlag(WebWidget::HighlightAllFind))
+	int findTextResultsAmount(0);
+	QTextEdit::ExtraSelection currentResultSelection;
+	currentResultSelection.format.setBackground(QColor(255, 150, 50));
+	currentResultSelection.format.setProperty(QTextFormat::FullWidthSelection, true);
+	currentResultSelection.cursor = m_findTextSelection;
+
+	extraSelections.append(currentResultSelection);
+
+	QTextCursor textCursor(this->textCursor());
+	textCursor.setPosition(0);
+
+	if (m_findFlags.testFlag(WebWidget::HighlightAllFind))
+	{
+		QTextDocument::FindFlags nativeFlags;
+
+		if (m_findFlags.testFlag(WebWidget::CaseSensitiveFind))
 		{
-			QTextDocument::FindFlags nativeFlags;
+			nativeFlags |= QTextDocument::FindCaseSensitively;
+		}
 
-			if (m_findFlags.testFlag(WebWidget::CaseSensitiveFind))
+		while (!textCursor.isNull())
+		{
+			textCursor = document()->find(m_findText, textCursor, nativeFlags);
+
+			if (!textCursor.isNull())
 			{
-				nativeFlags |= QTextDocument::FindCaseSensitively;
-			}
-
-			while (!textCursor.isNull())
-			{
-				textCursor = document()->find(m_findText, textCursor, nativeFlags);
-
-				if (!textCursor.isNull())
+				if (textCursor != m_findTextSelection)
 				{
-					if (textCursor != m_findTextSelection)
-					{
-						QTextEdit::ExtraSelection selection;
-						selection.format.setBackground(QColor(255, 255, 0));
-						selection.cursor = textCursor;
+					QTextEdit::ExtraSelection extraResultSelection;
+					extraResultSelection.format.setBackground(QColor(255, 255, 0));
+					extraResultSelection.cursor = textCursor;
 
-						extraSelections.append(selection);
-					}
-
-					++findTextResultsAmount;
+					extraSelections.append(extraResultSelection);
 				}
+
+				++findTextResultsAmount;
 			}
 		}
 	}
@@ -545,7 +544,7 @@ int SourceViewerWidget::findText(const QString &text, WebWidget::FindFlags flags
 		{
 			const QTextCursor currentTextCursor(textCursor());
 
-			disconnect(this, SIGNAL(cursorPositionChanged()), this, SLOT(updateTextCursor()));
+			disconnect(this, &SourceViewerWidget::cursorPositionChanged, this, &SourceViewerWidget::updateTextCursor);
 
 			setTextCursor(m_findTextAnchor);
 			ensureCursorVisible();
@@ -557,7 +556,7 @@ int SourceViewerWidget::findText(const QString &text, WebWidget::FindFlags flags
 			horizontalScrollBar()->setValue(position.x());
 			verticalScrollBar()->setValue(position.y());
 
-			connect(this, SIGNAL(cursorPositionChanged()), this, SLOT(updateTextCursor()));
+			connect(this, &SourceViewerWidget::cursorPositionChanged, this, &SourceViewerWidget::updateTextCursor);
 		}
 	}
 

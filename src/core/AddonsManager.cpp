@@ -54,22 +54,22 @@ void Addon::setEnabled(bool isEnabled)
 
 QString Addon::getName() const
 {
-	return QString();
+	return {};
 }
 
 QUrl Addon::getHomePage() const
 {
-	return QUrl();
+	return {};
 }
 
 QUrl Addon::getUpdateUrl() const
 {
-	return QUrl();
+	return {};
 }
 
 QIcon Addon::getIcon() const
 {
-	return QIcon();
+	return {};
 }
 
 Addon::AddonType Addon::getType() const
@@ -80,6 +80,16 @@ Addon::AddonType Addon::getType() const
 bool Addon::isEnabled() const
 {
 	return m_isEnabled;
+}
+
+bool Addon::canRemove() const
+{
+	return false;
+}
+
+bool Addon::remove()
+{
+	return false;
 }
 
 AddonsManager* AddonsManager::m_instance(nullptr);
@@ -110,16 +120,17 @@ AddonsManager::AddonsManager(QObject *parent) : QObject(parent)
 
 	SettingsManager::updateOptionDefinition(SettingsManager::Backends_WebOption, backends);
 
-	registerSpecialPage(SpecialPageInformation(QT_TRANSLATE_NOOP("addons", "Addons"), QString(), QUrl(QLatin1String("about:addons")), ThemesManager::createIcon(QLatin1String("preferences-plugin"), false)), QLatin1String("addons"));
-	registerSpecialPage(SpecialPageInformation(QT_TRANSLATE_NOOP("addons", "Bookmarks"), QString(), QUrl(QLatin1String("about:bookmarks")), ThemesManager::createIcon(QLatin1String("bookmarks"), false)), QLatin1String("bookmarks"));
-	registerSpecialPage(SpecialPageInformation(QT_TRANSLATE_NOOP("addons", "Cache"), QString(), QUrl(QLatin1String("about:cache")), ThemesManager::createIcon(QLatin1String("cache"), false)), QLatin1String("cache"));
-	registerSpecialPage(SpecialPageInformation(QT_TRANSLATE_NOOP("addons", "Advanced Configuration"), QString(), QUrl(QLatin1String("about:config")), ThemesManager::createIcon(QLatin1String("configuration"), false)), QLatin1String("config"));
-	registerSpecialPage(SpecialPageInformation(QT_TRANSLATE_NOOP("addons", "Cookies"), QString(), QUrl(QLatin1String("about:cookies")), ThemesManager::createIcon(QLatin1String("cookies"), false)), QLatin1String("cookies"));
-	registerSpecialPage(SpecialPageInformation(QT_TRANSLATE_NOOP("addons", "History"), QString(), QUrl(QLatin1String("about:history")), ThemesManager::createIcon(QLatin1String("view-history"), false)), QLatin1String("history"));
-	registerSpecialPage(SpecialPageInformation(QT_TRANSLATE_NOOP("addons", "Notes"), QString(), QUrl(QLatin1String("about:notes")), ThemesManager::createIcon(QLatin1String("notes"), false)), QLatin1String("notes"));
-	registerSpecialPage(SpecialPageInformation(QT_TRANSLATE_NOOP("addons", "Passwords"), QString(), QUrl(QLatin1String("about:passwords")), ThemesManager::createIcon(QLatin1String("dialog-password"), false)), QLatin1String("passwords"));
-	registerSpecialPage(SpecialPageInformation(QT_TRANSLATE_NOOP("addons", "Transfers"), QString(), QUrl(QLatin1String("about:transfers")), ThemesManager::createIcon(QLatin1String("transfers"), false)), QLatin1String("transfers"));
-	registerSpecialPage(SpecialPageInformation(QT_TRANSLATE_NOOP("addons", "Windows"), QString(), QUrl(QLatin1String("about:windows")), ThemesManager::createIcon(QLatin1String("window"), false)), QLatin1String("windows"));
+	registerSpecialPage(SpecialPageInformation(QT_TRANSLATE_NOOP("addons", "Addons"), {}, QUrl(QLatin1String("about:addons")), ThemesManager::createIcon(QLatin1String("preferences-plugin"), false), SpecialPageInformation::UniversalType), QLatin1String("addons"));
+	registerSpecialPage(SpecialPageInformation(QT_TRANSLATE_NOOP("addons", "Bookmarks"), {}, QUrl(QLatin1String("about:bookmarks")), ThemesManager::createIcon(QLatin1String("bookmarks"), false), SpecialPageInformation::UniversalType), QLatin1String("bookmarks"));
+	registerSpecialPage(SpecialPageInformation(QT_TRANSLATE_NOOP("addons", "Cache"), {}, QUrl(QLatin1String("about:cache")), ThemesManager::createIcon(QLatin1String("cache"), false), SpecialPageInformation::UniversalType), QLatin1String("cache"));
+	registerSpecialPage(SpecialPageInformation(QT_TRANSLATE_NOOP("addons", "Advanced Configuration"), {}, QUrl(QLatin1String("about:config")), ThemesManager::createIcon(QLatin1String("configuration"), false), SpecialPageInformation::UniversalType), QLatin1String("config"));
+	registerSpecialPage(SpecialPageInformation(QT_TRANSLATE_NOOP("addons", "Cookies"), {}, QUrl(QLatin1String("about:cookies")), ThemesManager::createIcon(QLatin1String("cookies"), false), SpecialPageInformation::UniversalType), QLatin1String("cookies"));
+	registerSpecialPage(SpecialPageInformation(QT_TRANSLATE_NOOP("addons", "History"), {}, QUrl(QLatin1String("about:history")), ThemesManager::createIcon(QLatin1String("view-history"), false), SpecialPageInformation::UniversalType), QLatin1String("history"));
+	registerSpecialPage(SpecialPageInformation(QT_TRANSLATE_NOOP("addons", "Notes"), {}, QUrl(QLatin1String("about:notes")), ThemesManager::createIcon(QLatin1String("notes"), false), SpecialPageInformation::UniversalType), QLatin1String("notes"));
+	registerSpecialPage(SpecialPageInformation(QT_TRANSLATE_NOOP("addons", "Page Information"), {}, {}, ThemesManager::createIcon(QLatin1String("dialog-information"), false), SpecialPageInformation::SidebarPanelType), QLatin1String("pageInformation"));
+	registerSpecialPage(SpecialPageInformation(QT_TRANSLATE_NOOP("addons", "Passwords"), {}, QUrl(QLatin1String("about:passwords")), ThemesManager::createIcon(QLatin1String("dialog-password"), false), SpecialPageInformation::UniversalType), QLatin1String("passwords"));
+	registerSpecialPage(SpecialPageInformation(QT_TRANSLATE_NOOP("addons", "Transfers"), {}, QUrl(QLatin1String("about:transfers")), ThemesManager::createIcon(QLatin1String("transfers"), false), SpecialPageInformation::UniversalType), QLatin1String("transfers"));
+	registerSpecialPage(SpecialPageInformation(QT_TRANSLATE_NOOP("addons", "Windows"), {}, QUrl(QLatin1String("about:windows")), ThemesManager::createIcon(QLatin1String("window"), false), SpecialPageInformation::UniversalType), QLatin1String("windows"));
 }
 
 void AddonsManager::createInstance()
@@ -146,17 +157,17 @@ void AddonsManager::loadUserScripts()
 
 	m_userScripts.clear();
 
-	QHash<QString, bool> enabledScripts;
+	QHash<QString, QJsonObject> metaData;
 	QFile file(SessionsManager::getWritableDataPath(QLatin1String("scripts/scripts.json")));
 
 	if (file.open(QIODevice::ReadOnly))
 	{
-		const QJsonObject settings(QJsonDocument::fromJson(file.readAll()).object());
+		const QJsonObject settingsObject(QJsonDocument::fromJson(file.readAll()).object());
 		QJsonObject::const_iterator iterator;
 
-		for (iterator = settings.constBegin(); iterator != settings.constEnd(); ++iterator)
+		for (iterator = settingsObject.constBegin(); iterator != settingsObject.constEnd(); ++iterator)
 		{
-			enabledScripts[iterator.key()] = iterator.value().toObject().value(QLatin1String("isEnabled")).toBool(false);
+			metaData[iterator.key()] = iterator.value().toObject();
 		}
 
 		file.close();
@@ -170,10 +181,16 @@ void AddonsManager::loadUserScripts()
 
 		if (QFile::exists(path))
 		{
-			UserScript *script(new UserScript(path, m_instance));
-			script->setEnabled(enabledScripts.value(scripts.at(i).fileName(), false));
+			const QJsonObject scriptObject(metaData.value(scripts.at(i).fileName()));
+			UserScript *script(new UserScript(path, QUrl(scriptObject.value(QLatin1String("downloadUrl")).toString()), m_instance));
+			script->setEnabled(scriptObject.value(QLatin1String("isEnabled")).toBool(false));
 
 			m_userScripts[scripts.at(i).fileName()] = script;
+
+			connect(script, &UserScript::metaDataChanged, m_instance, [=]()
+			{
+				emit m_instance->userScriptModified(script->getName());
+			});
 		}
 		else
 		{
@@ -182,6 +199,11 @@ void AddonsManager::loadUserScripts()
 	}
 
 	m_areUserScripsInitialized = true;
+}
+
+AddonsManager* AddonsManager::getInstance()
+{
+	return m_instance;
 }
 
 UserScript* AddonsManager::getUserScript(const QString &name)
@@ -246,9 +268,26 @@ QStringList AddonsManager::getWebBackends()
 	return m_webBackends.keys();
 }
 
-QStringList AddonsManager::getSpecialPages()
+QStringList AddonsManager::getSpecialPages(SpecialPageInformation::PageTypes types)
 {
-	return m_specialPages.keys();
+	if (types == SpecialPageInformation::UniversalType)
+	{
+		return m_specialPages.keys();
+	}
+
+	QMap<QString, SpecialPageInformation>::const_iterator iterator;
+	QStringList pages;
+	pages.reserve(m_specialPages.count());
+
+	for (iterator = m_specialPages.constBegin(); iterator != m_specialPages.constEnd(); ++iterator)
+	{
+		if (iterator.value().types & types)
+		{
+			pages.append(iterator.key());
+		}
+	}
+
+	return pages;
 }
 
 }

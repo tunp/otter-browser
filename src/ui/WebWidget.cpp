@@ -57,9 +57,15 @@ WebWidget::WebWidget(const QVariantMap &parameters, WebBackend *backend, Content
 {
 	Q_UNUSED(parameters)
 
-	connect(this, SIGNAL(loadingStateChanged(WebWidget::LoadingState)), this, SLOT(handleLoadingStateChange(WebWidget::LoadingState)));
-	connect(BookmarksManager::getModel(), SIGNAL(modelModified()), this, SLOT(notifyPageActionsChanged()));
-	connect(PasswordsManager::getInstance(), SIGNAL(passwordsModified()), this, SLOT(notifyFillPasswordActionStateChanged()));
+	connect(this, &WebWidget::loadingStateChanged, this, &WebWidget::handleLoadingStateChange);
+	connect(BookmarksManager::getModel(), &BookmarksModel::modelModified, this, [&]()
+	{
+		emit categorizedActionsStateChanged({ActionsManager::ActionDefinition::BookmarkCategory});
+	});
+	connect(PasswordsManager::getInstance(), &PasswordsManager::passwordsModified, this, [&]()
+	{
+		emit arbitraryActionsStateChanged({ActionsManager::FillPasswordAction});
+	});
 }
 
 void WebWidget::timerEvent(QTimerEvent *event)
@@ -133,7 +139,7 @@ void WebWidget::startTransfer(Transfer *transfer)
 				TransferDialog *transferDialog(new TransferDialog(transfer, this));
 				ContentsDialog *dialog(new ContentsDialog(ThemesManager::createIcon(QLatin1String("download")), transferDialog->windowTitle(), QString(), QString(), QDialogButtonBox::NoButton, transferDialog, this));
 
-				connect(transferDialog, SIGNAL(finished(int)), dialog, SLOT(close()));
+				connect(transferDialog, &TransferDialog::finished, dialog, &ContentsDialog::close);
 
 				showDialog(dialog, false);
 			}
@@ -160,7 +166,7 @@ void WebWidget::startTransfer(Transfer *transfer)
 			break;
 		case HandlersManager::HandlerDefinition::SaveAsTransfer:
 			{
-				const QString path(Utils::getSavePath(transfer->getSuggestedFileName(), handler.downloadsPath, QStringList(), true).path);
+				const QString path(Utils::getSavePath(transfer->getSuggestedFileName(), handler.downloadsPath, {}, true).path);
 
 				if (path.isEmpty())
 				{
@@ -175,6 +181,8 @@ void WebWidget::startTransfer(Transfer *transfer)
 				TransfersManager::addTransfer(transfer);
 			}
 
+			break;
+		default:
 			break;
 	}
 }
@@ -191,7 +199,7 @@ void WebWidget::clearOptions()
 		emit optionChanged(identifiers.at(i), SettingsManager::getOption(identifiers.at(i), url));
 	}
 
-	emit actionsStateChanged(QVector<int>({ActionsManager::ResetQuickPreferencesAction}));
+	emit arbitraryActionsStateChanged({ActionsManager::ResetQuickPreferencesAction});
 }
 
 void WebWidget::fillPassword(const PasswordsManager::PasswordInformation &password)
@@ -253,7 +261,7 @@ void WebWidget::handleToolTipEvent(QHelpEvent *event, QWidget *widget)
 		}
 	}
 
-	setStatusMessage((link.isEmpty() ? hitResult.title : link), true);
+	setStatusMessageOverride(link.isEmpty() ? hitResult.title : link);
 
 	if (!text.isEmpty())
 	{
@@ -287,7 +295,7 @@ void WebWidget::handleWindowCloseRequest()
 	ContentsDialog *dialog(new ContentsDialog(ThemesManager::createIcon(QLatin1String("dialog-warning")), tr("JavaScript"), tr("Webpage wants to close this tab, do you want to allow to close it?"), QString(), (QDialogButtonBox::Ok | QDialogButtonBox::Cancel), nullptr, this));
 	dialog->setCheckBox(tr("Do not show this message again"), false);
 
-	connect(this, SIGNAL(aboutToReload()), dialog, SLOT(close()));
+	connect(this, &WebWidget::aboutToReload, dialog, &ContentsDialog::close);
 	connect(dialog, &ContentsDialog::finished, [&](int result, bool isChecked)
 	{
 		const bool isAccepted(result == QDialog::Accepted);
@@ -306,24 +314,14 @@ void WebWidget::handleWindowCloseRequest()
 	showDialog(dialog, false);
 }
 
-void WebWidget::notifyFillPasswordActionStateChanged()
-{
-	emit actionsStateChanged(QVector<int>(ActionsManager::FillPasswordAction));
-}
-
 void WebWidget::notifyRedoActionStateChanged()
 {
-	emit actionsStateChanged(QVector<int>({ActionsManager::RedoAction}));
+	emit arbitraryActionsStateChanged({ActionsManager::RedoAction});
 }
 
 void WebWidget::notifyUndoActionStateChanged()
 {
-	emit actionsStateChanged(QVector<int>({ActionsManager::UndoAction}));
-}
-
-void WebWidget::notifyPageActionsChanged()
-{
-	emit actionsStateChanged(ActionsManager::ActionDefinition::BookmarkCategory);
+	emit arbitraryActionsStateChanged({ActionsManager::UndoAction});
 }
 
 void WebWidget::updateHitTestResult(const QPoint &position)
@@ -357,7 +355,7 @@ void WebWidget::showContextMenu(const QPoint &position)
 
 	updateHitTestResult(hitPosition);
 
-	emit actionsStateChanged(ActionsManager::ActionDefinition::EditingCategory);
+	emit categorizedActionsStateChanged({ActionsManager::ActionDefinition::EditingCategory});
 
 	QStringList includeSections;
 
@@ -458,18 +456,25 @@ void WebWidget::setClickPosition(const QPoint &position)
 	m_clickPosition = position;
 }
 
-void WebWidget::setStatusMessage(const QString &message, bool override)
+void WebWidget::setStatusMessage(const QString &message)
 {
 	const QString previousMessage(getStatusMessage());
 
-	if (override)
+	m_javaScriptStatusMessage = message;
+
+	const QString currentMessage(getStatusMessage());
+
+	if (currentMessage != previousMessage)
 	{
-		m_overridingStatusMessage = message;
+		emit statusMessageChanged(currentMessage);
 	}
-	else
-	{
-		m_javaScriptStatusMessage = message;
-	}
+}
+
+void WebWidget::setStatusMessageOverride(const QString &message)
+{
+	const QString previousMessage(getStatusMessage());
+
+	m_overridingStatusMessage = message;
 
 	const QString currentMessage(getStatusMessage());
 
@@ -544,7 +549,7 @@ void WebWidget::setOption(int identifier, const QVariant &value)
 		m_options[identifier] = value;
 	}
 
-	SessionsManager::markSessionModified();
+	SessionsManager::markSessionAsModified();
 
 	switch (identifier)
 	{
@@ -552,7 +557,7 @@ void WebWidget::setOption(int identifier, const QVariant &value)
 			{
 				const int reloadTime(value.toInt());
 
-				emit actionsStateChanged(QVector<int>({ActionsManager::ResetQuickPreferencesAction}));
+				emit arbitraryActionsStateChanged({ActionsManager::ResetQuickPreferencesAction});
 				emit optionChanged(identifier, (value.isNull() ? getOption(identifier) : value));
 
 				if (m_reloadTimer != 0)
@@ -575,11 +580,11 @@ void WebWidget::setOption(int identifier, const QVariant &value)
 
 			break;
 		case SettingsManager::Network_EnableReferrerOption:
-			emit actionsStateChanged(QVector<int>({ActionsManager::EnableReferrerAction}));
+			emit arbitraryActionsStateChanged({ActionsManager::EnableReferrerAction});
 
 			break;
 		case SettingsManager::Permissions_EnableJavaScriptOption:
-			emit actionsStateChanged(QVector<int>({ActionsManager::EnableJavaScriptAction}));
+			emit arbitraryActionsStateChanged({ActionsManager::EnableJavaScriptAction});
 
 			break;
 		default:
@@ -617,7 +622,7 @@ void WebWidget::setOptions(const QHash<int, QVariant> &options, const QStringLis
 		}
 	}
 
-	emit actionsStateChanged(QVector<int>({ActionsManager::ResetQuickPreferencesAction}));
+	emit arbitraryActionsStateChanged({ActionsManager::ResetQuickPreferencesAction});
 }
 
 void WebWidget::setRequestedUrl(const QUrl &url, bool isTyped, bool onlyUpdate)
@@ -652,7 +657,7 @@ WebBackend* WebWidget::getBackend() const
 
 QString WebWidget::getDescription() const
 {
-	return QString();
+	return {};
 }
 
 QString WebWidget::suggestSaveFileName(SaveFormat format) const
@@ -707,7 +712,7 @@ QString WebWidget::getFastForwardScript(bool isSelectingTheBestLink)
 
 		if (!file.open(QIODevice::ReadOnly))
 		{
-			return QString();
+			return {};
 		}
 
 		QString script(file.readAll());
@@ -740,22 +745,22 @@ QString WebWidget::getFastForwardScript(bool isSelectingTheBestLink)
 		m_fastForwardScript = script;
 	}
 
-	return QString(m_fastForwardScript).replace(QLatin1String("{isSelectingTheBestLink}"), QLatin1String(isSelectingTheBestLink ? "true" : "false"));
+	return QString(m_fastForwardScript).replace(QLatin1String("{isSelectingTheBestLink}"), (isSelectingTheBestLink ? QLatin1String("true") : QLatin1String("false")));
 }
 
 QString WebWidget::getActiveStyleSheet() const
 {
-	return QString();
+	return {};
 }
 
 QString WebWidget::getCharacterEncoding() const
 {
-	return QString();
+	return {};
 }
 
 QString WebWidget::getSelectedText() const
 {
-	return QString();
+	return {};
 }
 
 QString WebWidget::getStatusMessage() const
@@ -780,7 +785,7 @@ QVariant WebWidget::getPageInformation(PageInformation key) const
 		return m_loadingTime;
 	}
 
-	return QVariant();
+	return {};
 }
 
 QUrl WebWidget::getRequestedUrl() const
@@ -788,14 +793,23 @@ QUrl WebWidget::getRequestedUrl() const
 	return ((getUrl().isEmpty() || getLoadingState() == OngoingLoadingState) ? m_requestedUrl : getUrl());
 }
 
+QPixmap WebWidget::createThumbnail(const QSize &size)
+{
+	Q_UNUSED(size)
+
+	return {};
+}
+
 QPoint WebWidget::getClickPosition() const
 {
 	return m_clickPosition;
 }
 
-QRect WebWidget::getProgressBarGeometry() const
+QRect WebWidget::getGeometry(bool excludeScrollBars) const
 {
-	return (isVisible() ? QRect(QPoint(0, (height() - 30)), QSize(width(), 30)) : QRect());
+	Q_UNUSED(excludeScrollBars)
+
+	return geometry();
 }
 
 ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier, const QVariantMap &parameters) const
@@ -809,7 +823,7 @@ ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier
 
 			if (parameters.value(QLatin1String("clearGlobalHistory"), false).toBool())
 			{
-				state.text = QT_TRANSLATE_NOOP("actions", "Purge Tab History");
+				state.text = QCoreApplication::translate("actions", "Purge Tab History");
 			}
 
 			break;
@@ -834,7 +848,7 @@ ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier
 
 			break;
 		case ActionsManager::BookmarkLinkAction:
-			state.text = (BookmarksManager::hasBookmark(m_hitResult.linkUrl) ? QT_TRANSLATE_NOOP("actions", "Edit Link Bookmark…") : QT_TRANSLATE_NOOP("actions", "Bookmark Link…"));
+			state.text = (BookmarksManager::hasBookmark(m_hitResult.linkUrl) ? QCoreApplication::translate("actions", "Edit Link Bookmark…") : QCoreApplication::translate("actions", "Bookmark Link…"));
 			state.isEnabled = m_hitResult.linkUrl.isValid();
 
 			break;
@@ -882,12 +896,12 @@ ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier
 
 			break;
 		case ActionsManager::SaveMediaToDiskAction:
-			state.text = ((m_hitResult.tagName == QLatin1String("video")) ? QT_TRANSLATE_NOOP("actions", "Save Video…") : QT_TRANSLATE_NOOP("actions", "Save Audio…"));
+			state.text = ((m_hitResult.tagName == QLatin1String("video")) ? QCoreApplication::translate("actions", "Save Video…") : QCoreApplication::translate("actions", "Save Audio…"));
 			state.isEnabled = m_hitResult.mediaUrl.isValid();
 
 			break;
 		case ActionsManager::CopyMediaUrlToClipboardAction:
-			state.text = ((m_hitResult.tagName == QLatin1String("video")) ? QT_TRANSLATE_NOOP("actions", "Copy Video Link to Clipboard") : QT_TRANSLATE_NOOP("actions", "Copy Audio Link to Clipboard"));
+			state.text = ((m_hitResult.tagName == QLatin1String("video")) ? QCoreApplication::translate("actions", "Copy Video Link to Clipboard") : QCoreApplication::translate("actions", "Copy Audio Link to Clipboard"));
 			state.isEnabled = m_hitResult.mediaUrl.isValid();
 
 			break;
@@ -902,13 +916,13 @@ ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier
 
 			break;
 		case ActionsManager::MediaPlayPauseAction:
-			state.text = (m_hitResult.flags.testFlag(HitTestResult::MediaIsPausedTest) ? QT_TRANSLATE_NOOP("actions", "Play") : QT_TRANSLATE_NOOP("actions", "Pause"));
+			state.text = (m_hitResult.flags.testFlag(HitTestResult::MediaIsPausedTest) ? QCoreApplication::translate("actions", "Play") : QCoreApplication::translate("actions", "Pause"));
 			state.icon = ThemesManager::createIcon(m_hitResult.flags.testFlag(HitTestResult::MediaIsPausedTest) ? QLatin1String("media-playback-start") : QLatin1String("media-playback-pause"));
 			state.isEnabled = m_hitResult.mediaUrl.isValid();
 
 			break;
 		case ActionsManager::MediaMuteAction:
-			state.text = (m_hitResult.flags.testFlag(HitTestResult::MediaIsMutedTest) ? QT_TRANSLATE_NOOP("actions", "Unmute") : QT_TRANSLATE_NOOP("actions", "Mute"));
+			state.text = (m_hitResult.flags.testFlag(HitTestResult::MediaIsMutedTest) ? QCoreApplication::translate("actions", "Unmute") : QCoreApplication::translate("actions", "Mute"));
 			state.icon = ThemesManager::createIcon(m_hitResult.flags.testFlag(HitTestResult::MediaIsMutedTest) ? QLatin1String("audio-volume-medium") : QLatin1String("audio-volume-muted"));
 			state.isEnabled = m_hitResult.mediaUrl.isValid();
 
@@ -918,7 +932,7 @@ ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier
 				const qreal rate(parameters.value(QLatin1String("rate")).toReal());
 
 				state.text = tr("Playback Rate: %1x").arg(QLocale().toString(rate));
-				state.isChecked = (rate == m_hitResult.playbackRate);
+				state.isChecked = qFuzzyCompare(rate, m_hitResult.playbackRate);
 				state.isEnabled = m_hitResult.mediaUrl.isValid();
 			}
 
@@ -929,7 +943,7 @@ ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier
 			break;
 		case ActionsManager::MuteTabMediaAction:
 			state.icon = ThemesManager::createIcon(isAudioMuted() ? QLatin1String("audio-volume-muted") : QLatin1String("audio-volume-medium"));
-			state.text = (isAudioMuted() ? QT_TRANSLATE_NOOP("actions", "Unmute Tab Media") : QT_TRANSLATE_NOOP("actions", "Mute Tab Media"));
+			state.text = (isAudioMuted() ? QCoreApplication::translate("actions", "Unmute Tab Media") : QCoreApplication::translate("actions", "Mute Tab Media"));
 
 			break;
 		case ActionsManager::GoBackAction:
@@ -969,7 +983,7 @@ ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier
 				if (reloadTime < 0)
 				{
 					state.isChecked = (!m_options.contains(SettingsManager::Content_PageReloadTimeOption) || m_options[SettingsManager::Content_PageReloadTimeOption].toInt() < 0);
-					state.text = tr("Page Defaults");
+					state.text = tr("Page Default");
 				}
 				else
 				{
@@ -981,7 +995,7 @@ ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier
 					}
 					else
 					{
-						state.text = tr("Reload Every: %n seconds", "", reloadTime);
+						state.text = tr("Reload Every: %n second(s)", "", reloadTime);
 					}
 				}
 			}
@@ -1015,7 +1029,7 @@ ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier
 
 			break;
 		case ActionsManager::DeleteAction:
-			state.isEnabled = (m_hitResult.flags.testFlag(HitTestResult::IsContentEditableTest) && !m_hitResult.flags.testFlag(HitTestResult::IsEmptyTest));
+			state.isEnabled = (m_hitResult.flags.testFlag(HitTestResult::IsContentEditableTest) && !m_hitResult.flags.testFlag(HitTestResult::IsEmptyTest) && this->hasSelection() && !getSelectedText().trimmed().isEmpty());
 
 			break;
 		case ActionsManager::SelectAllAction:
@@ -1027,15 +1041,40 @@ ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier
 
 			break;
 		case ActionsManager::CheckSpellingAction:
-			state.isChecked = (m_hitResult.flags.testFlag(HitTestResult::IsSpellCheckEnabled));
-			state.isEnabled = (getOption(SettingsManager::Browser_EnableSpellCheckOption, getUrl()).toBool() && !getDictionaries().isEmpty());
+			{
+				const QVector<SpellCheckManager::DictionaryInformation> dictionaries(getDictionaries());
+
+				state.isEnabled = (getOption(SettingsManager::Browser_EnableSpellCheckOption, getUrl()).toBool() && !dictionaries.isEmpty());
+
+				if (parameters.contains(QLatin1String("dictionary")))
+				{
+					const QString dictionary(parameters[QLatin1String("dictionary")].toString());
+
+					state.text = dictionary;
+					state.isChecked = (dictionary == (getOption(SettingsManager::Browser_SpellCheckDictionaryOption).isNull() ? SpellCheckManager::getDefaultDictionary() : getOption(SettingsManager::Browser_SpellCheckDictionaryOption).toString()));
+
+					for (int i = 0; i < dictionaries.count(); ++i)
+					{
+						if (dictionaries.at(i).name == dictionary)
+						{
+							state.text = dictionaries.at(i).title;
+
+							break;
+						}
+					}
+				}
+				else
+				{
+					state.isChecked = (m_hitResult.flags.testFlag(HitTestResult::IsSpellCheckEnabled));
+				}
+			}
 
 			break;
 		case ActionsManager::SearchAction:
 			{
 				const SearchEnginesManager::SearchEngineDefinition searchEngine(SearchEnginesManager::getSearchEngine(parameters.contains(QLatin1String("searchEngine")) ? parameters[QLatin1String("searchEngine")].toString() : getOption(SettingsManager::Search_DefaultQuickSearchEngineOption).toString()));
 
-				state.text = (searchEngine.isValid() ? searchEngine.title : QT_TRANSLATE_NOOP("actions", "Search"));
+				state.text = (searchEngine.isValid() ? searchEngine.title : QCoreApplication::translate("actions", "Search"));
 				state.icon = (searchEngine.icon.isNull() ? ThemesManager::createIcon(QLatin1String("edit-find")) : searchEngine.icon);
 				state.isEnabled = searchEngine.isValid();
 			}
@@ -1046,7 +1085,7 @@ ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier
 
 			break;
 		case ActionsManager::BookmarkPageAction:
-			state.text = (BookmarksManager::hasBookmark(getUrl()) ? QT_TRANSLATE_NOOP("actions", "Edit Bookmark…") : QT_TRANSLATE_NOOP("actions", "Add Bookmark…"));
+			state.text = (BookmarksManager::hasBookmark(getUrl()) ? QCoreApplication::translate("actions", "Edit Bookmark…") : QCoreApplication::translate("actions", "Add Bookmark…"));
 
 			break;
 		case ActionsManager::LoadPluginsAction:
@@ -1091,17 +1130,17 @@ ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier
 
 WebWidget::LinkUrl WebWidget::getActiveFrame() const
 {
-	return LinkUrl();
+	return {};
 }
 
 WebWidget::LinkUrl WebWidget::getActiveImage() const
 {
-	return LinkUrl();
+	return {};
 }
 
 WebWidget::LinkUrl WebWidget::getActiveLink() const
 {
-	return LinkUrl();
+	return {};
 }
 
 WebWidget::SslInformation WebWidget::getSslInformation() const
@@ -1111,7 +1150,7 @@ WebWidget::SslInformation WebWidget::getSslInformation() const
 
 QStringList WebWidget::getStyleSheets() const
 {
-	return QStringList();
+	return {};
 }
 
 QVector<SpellCheckManager::DictionaryInformation> WebWidget::getDictionaries() const
@@ -1121,17 +1160,17 @@ QVector<SpellCheckManager::DictionaryInformation> WebWidget::getDictionaries() c
 
 QVector<WebWidget::LinkUrl> WebWidget::getFeeds() const
 {
-	return QVector<LinkUrl>();
+	return {};
 }
 
 QVector<WebWidget::LinkUrl> WebWidget::getSearchEngines() const
 {
-	return QVector<LinkUrl>();
+	return {};
 }
 
 QVector<NetworkManager::ResourceInformation> WebWidget::getBlockedRequests() const
 {
-	return QVector<NetworkManager::ResourceInformation>();
+	return {};
 }
 
 QHash<int, QVariant> WebWidget::getOptions() const
@@ -1139,9 +1178,14 @@ QHash<int, QVariant> WebWidget::getOptions() const
 	return m_options;
 }
 
-QHash<QByteArray, QByteArray> WebWidget::getHeaders() const
+QMap<QByteArray, QByteArray> WebWidget::getHeaders() const
 {
-	return QHash<QByteArray, QByteArray>();
+	return {};
+}
+
+QMultiMap<QString, QString> WebWidget::getMetaData() const
+{
+	return {};
 }
 
 WebWidget::HitTestResult WebWidget::getCurrentHitTestResult() const
@@ -1153,7 +1197,7 @@ WebWidget::HitTestResult WebWidget::getHitTestResult(const QPoint &position)
 {
 	Q_UNUSED(position)
 
-	return HitTestResult();
+	return {};
 }
 
 WebWidget::ContentStates WebWidget::getContentState() const

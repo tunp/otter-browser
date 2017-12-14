@@ -30,7 +30,7 @@
 namespace Otter
 {
 
-ContentsWidget::ContentsWidget(const QVariantMap &parameters, Window *window) : QWidget(window), ActionExecutor(),
+ContentsWidget::ContentsWidget(const QVariantMap &parameters, Window *window, QWidget *parent) : QWidget(parent), ActionExecutor(),
 	m_window(window),
 	m_layer(nullptr),
 	m_layerTimer(0),
@@ -38,7 +38,7 @@ ContentsWidget::ContentsWidget(const QVariantMap &parameters, Window *window) : 
 {
 	if (window)
 	{
-		connect(window, SIGNAL(aboutToClose()), this, SLOT(handleAboutToClose()));
+		connect(window, &Window::aboutToClose, this, &ContentsWidget::handleAboutToClose);
 	}
 }
 
@@ -109,6 +109,30 @@ void ContentsWidget::resizeEvent(QResizeEvent *event)
 	}
 }
 
+void ContentsWidget::mousePressEvent(QMouseEvent *event)
+{
+	if (event->button() == Qt::MiddleButton)
+	{
+		event->accept();
+	}
+	else
+	{
+		QWidget::mousePressEvent(event);
+	}
+}
+
+void ContentsWidget::mouseReleaseEvent(QMouseEvent *event)
+{
+	if (event->button() == Qt::MiddleButton)
+	{
+		event->accept();
+	}
+	else
+	{
+		QWidget::mouseReleaseEvent(event);
+	}
+}
+
 void ContentsWidget::triggerAction(int identifier, const QVariantMap &parameters)
 {
 	Q_UNUSED(parameters)
@@ -146,7 +170,7 @@ void ContentsWidget::triggerAction(int identifier, const QVariantMap &parameters
 					printPreviewDialog.resize(QApplication::activeWindow()->size());
 				}
 
-				connect(&printPreviewDialog, SIGNAL(paintRequested(QPrinter*)), this, SLOT(print(QPrinter*)));
+				connect(&printPreviewDialog, &QPrintPreviewDialog::paintRequested, this, &ContentsWidget::print);
 
 				printPreviewDialog.exec();
 			}
@@ -179,6 +203,11 @@ void ContentsWidget::triggerAction(int identifier, const QVariantMap &parameters
 		default:
 			break;
 	}
+}
+
+void ContentsWidget::print(QPrinter *printer)
+{
+	Q_UNUSED(printer)
 }
 
 void ContentsWidget::handleAboutToClose()
@@ -248,7 +277,7 @@ void ContentsWidget::showDialog(ContentsDialog *dialog, bool lockEventLoop)
 		m_layer->raise();
 	}
 
-	connect(dialog, SIGNAL(finished(int,bool)), this, SLOT(handleDialogFinished()));
+	connect(dialog, &ContentsDialog::finished, this, &ContentsWidget::handleDialogFinished);
 
 	dialog->setParent(m_layer);
 	dialog->show();
@@ -271,8 +300,8 @@ void ContentsWidget::showDialog(ContentsDialog *dialog, bool lockEventLoop)
 	{
 		QEventLoop eventLoop;
 
-		connect(dialog, SIGNAL(finished(int,bool)), &eventLoop, SLOT(quit()));
-		connect(this, SIGNAL(destroyed()), &eventLoop, SLOT(quit()));
+		connect(dialog, &ContentsDialog::finished, &eventLoop, &QEventLoop::quit);
+		connect(this, &ContentsWidget::destroyed, &eventLoop, &QEventLoop::quit);
 
 		eventLoop.exec();
 	}
@@ -315,14 +344,14 @@ void ContentsWidget::setParent(Window *window)
 {
 	if (m_window)
 	{
-		disconnect(m_window, SIGNAL(aboutToClose()), this, SLOT(handleAboutToClose()));
+		disconnect(m_window, &Window::aboutToClose, this, &ContentsWidget::handleAboutToClose);
 	}
 
 	m_window = window;
 
 	if (window)
 	{
-		connect(window, SIGNAL(aboutToClose()), this, SLOT(handleAboutToClose()));
+		connect(window, &Window::aboutToClose, this, &ContentsWidget::handleAboutToClose);
 	}
 
 	QWidget::setParent(window);
@@ -352,7 +381,7 @@ QString ContentsWidget::parseQuery(const QString &query) const
 
 QString ContentsWidget::getDescription() const
 {
-	return QString();
+	return {};
 }
 
 QString ContentsWidget::getVersion() const
@@ -362,19 +391,19 @@ QString ContentsWidget::getVersion() const
 
 QString ContentsWidget::getStatusMessage() const
 {
-	return QString();
+	return {};
 }
 
 QVariant ContentsWidget::getOption(int identifier) const
 {
 	Q_UNUSED(identifier)
 
-	return QVariant();
+	return {};
 }
 
 QPixmap ContentsWidget::createThumbnail()
 {
-	return QPixmap();
+	return {};
 }
 
 ActionsManager::ActionDefinition::State ContentsWidget::getActionState(int identifier, const QVariantMap &parameters) const

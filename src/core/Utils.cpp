@@ -120,7 +120,7 @@ QString matchUrl(const QUrl &url, const QString &prefix)
 		}
 	}
 
-	return QString();
+	return {};
 }
 
 QString createIdentifier(const QString &source, const QStringList &exclude, bool toLowerCase)
@@ -447,13 +447,13 @@ QString formatUnit(qint64 value, bool isSpeed, int precision, bool appendRaw)
 		{
 			if (value > 1073741824)
 			{
-				return QCoreApplication::translate("utils", (isSpeed ? "%1 GB/s" : "%1 GB")).arg((value / 1073741824.0), 0, 'f', precision) + (appendRaw ? (isSpeed ? QString(" (%1 B/s)") : QString(" (%1 B)")).arg(value) : QString());
+				return QCoreApplication::translate("utils", (isSpeed ? "%1 GB/s" : "%1 GB")).arg((value / 1073741824.0), 0, 'f', precision) + (appendRaw ? QString(isSpeed ? QLatin1String(" (%1 B/s)") : QLatin1String(" (%1 B)")).arg(value) : QString());
 			}
 
-			return QCoreApplication::translate("utils", (isSpeed ? "%1 MB/s" : "%1 MB")).arg((value / 1048576.0), 0, 'f', precision) + (appendRaw ? (isSpeed ? QString(" (%1 B/s)") : QString(" (%1 B)")).arg(value) : QString());
+			return QCoreApplication::translate("utils", (isSpeed ? "%1 MB/s" : "%1 MB")).arg((value / 1048576.0), 0, 'f', precision) + (appendRaw ? QString(isSpeed ? QLatin1String(" (%1 B/s)") : QLatin1String(" (%1 B)")).arg(value) : QString());
 		}
 
-		return QCoreApplication::translate("utils", (isSpeed ? "%1 KB/s" : "%1 KB")).arg((value / 1024.0), 0, 'f', precision) + (appendRaw ? (isSpeed ? QString(" (%1 B/s)") : QString(" (%1 B)")).arg(value) : QString());
+		return QCoreApplication::translate("utils", (isSpeed ? "%1 KB/s" : "%1 KB")).arg((value / 1024.0), 0, 'f', precision) + (appendRaw ? QString(isSpeed ? QLatin1String(" (%1 B/s)") : QLatin1String(" (%1 B)")).arg(value) : QString());
 	}
 
 	return QCoreApplication::translate("utils", (isSpeed ? "%1 B/s" : "%1 B")).arg(value);
@@ -497,7 +497,7 @@ QUrl normalizeUrl(QUrl url)
 
 	if (url.path() == QLatin1String("/"))
 	{
-		url.setPath(QString());
+		url.setPath({});
 	}
 
 	return url;
@@ -555,7 +555,7 @@ QVector<QUrl> extractUrls(const QMimeData *mimeData)
 		return mimeData->urls().toVector();
 	}
 
-	return QVector<QUrl>({QUrl(mimeData->property("x-url-string").toString())});
+	return {QUrl(mimeData->property("x-url-string").toString())};
 }
 
 QVector<ApplicationInformation> getApplicationsForMimeType(const QMimeType &mimeType)
@@ -567,7 +567,7 @@ QVector<ApplicationInformation> getApplicationsForMimeType(const QMimeType &mime
 		return integration->getApplicationsForMimeType(mimeType);
 	}
 
-	return QVector<ApplicationInformation>();
+	return {};
 }
 
 SaveInformation getSavePath(const QString &fileName, QString path, QStringList filters, bool forceAsk)
@@ -618,9 +618,9 @@ SaveInformation getSavePath(const QString &fileName, QString path, QStringList f
 
 		const bool isExisting(QFile::exists(path));
 
-		if (TransfersManager::isDownloading(QString(), path))
+		if (TransfersManager::isDownloading({}, path))
 		{
-			path = QString();
+			path.clear();
 
 			if (QMessageBox::warning(Application::getActiveWindow(), QCoreApplication::translate("utils", "Warning"), QCoreApplication::translate("utils", "This path is already used by different download, pick another one."), (QMessageBox::Ok | QMessageBox::Cancel)) == QMessageBox::Cancel)
 			{
@@ -629,7 +629,7 @@ SaveInformation getSavePath(const QString &fileName, QString path, QStringList f
 		}
 		else if ((isExisting && !QFileInfo(path).isWritable()) || (!isExisting && !QFileInfo(QFileInfo(path).dir().path()).isWritable()))
 		{
-			path = QString();
+			path.clear();
 
 			if (QMessageBox::warning(Application::getActiveWindow(), QCoreApplication::translate("utils", "Warning"), QCoreApplication::translate("utils", "Target path is not writable.\nSelect another one."), (QMessageBox::Ok | QMessageBox::Cancel)) == QMessageBox::Cancel)
 			{

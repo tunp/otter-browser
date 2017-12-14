@@ -39,7 +39,7 @@ class CacheContentsWidget final : public ContentsWidget
 	Q_OBJECT
 
 public:
-	explicit CacheContentsWidget(const QVariantMap &parameters, Window *window);
+	explicit CacheContentsWidget(const QVariantMap &parameters, Window *window, QWidget *parent);
 	~CacheContentsWidget();
 
 	void print(QPrinter *printer) override;
@@ -62,13 +62,13 @@ protected:
 
 protected slots:
 	void populateCache();
-	void addEntry(const QUrl &entry);
-	void removeEntry(const QUrl &entry);
 	void removeEntry();
 	void removeDomainEntries();
 	void removeDomainEntriesOrEntry();
 	void openEntry(const QModelIndex &index = {});
 	void copyEntryLink();
+	void handleEntryAdded(const QUrl &entry);
+	void handleEntryRemoved(const QUrl &entry);
 	void showContextMenu(const QPoint &position);
 	void updateActions();
 

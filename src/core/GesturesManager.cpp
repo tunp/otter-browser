@@ -44,15 +44,15 @@ MouseProfile::Gesture::Step::Step()
 {
 }
 
-MouseProfile::Gesture::Step::Step(QEvent::Type type, MouseGestures::MouseAction direction, Qt::KeyboardModifiers modifiers) : type(type),
-	modifiers(modifiers),
-	direction(direction)
+MouseProfile::Gesture::Step::Step(QEvent::Type typeValue, MouseGestures::MouseAction directionValue, Qt::KeyboardModifiers modifiersValue) : type(typeValue),
+	modifiers(modifiersValue),
+	direction(directionValue)
 {
 }
 
-MouseProfile::Gesture::Step::Step(QEvent::Type type, Qt::MouseButton button, Qt::KeyboardModifiers modifiers) : type(type),
-	button(button),
-	modifiers(modifiers)
+MouseProfile::Gesture::Step::Step(QEvent::Type typeValue, Qt::MouseButton buttonValue, Qt::KeyboardModifiers modifiersValue) : type(typeValue),
+	button(buttonValue),
+	modifiers(modifiersValue)
 {
 }
 
@@ -354,7 +354,7 @@ bool MouseProfile::Gesture::operator ==(const Gesture &other) const
 	return (steps == other.steps && parameters == other.parameters && action == other.action);
 }
 
-MouseProfile::MouseProfile(const QString &identifier, bool onlyMetaData) : Addon(),
+MouseProfile::MouseProfile(const QString &identifier, LoadMode mode) : Addon(),
 	m_identifier(identifier),
 	m_isModified(false)
 {
@@ -389,7 +389,7 @@ MouseProfile::MouseProfile(const QString &identifier, bool onlyMetaData) : Addon
 		}
 	}
 
-	if (onlyMetaData)
+	if (mode == MetaDataOnlyMode)
 	{
 		return;
 	}
@@ -576,7 +576,7 @@ bool MouseProfile::save()
 			gesturesArray.append(gestureObject);
 		}
 
-		contextsArray.append(QJsonObject({{QLatin1String("context"), QString(GesturesManager::getContextName(contextsIterator.key()))}, {QLatin1String("gestures"), gesturesArray}}));
+		contextsArray.append(QJsonObject({{QLatin1String("context"), GesturesManager::getContextName(contextsIterator.key())}, {QLatin1String("gestures"), gesturesArray}}));
 	}
 
 	settings.setArray(contextsArray);
@@ -609,7 +609,7 @@ bool GesturesManager::m_afterScroll(false);
 GesturesManager::GesturesManager(QObject *parent) : QObject(parent),
 	m_reloadTimer(0)
 {
-	connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int)));
+	connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &GesturesManager::handleOptionChanged);
 }
 
 void GesturesManager::createInstance()
@@ -779,7 +779,7 @@ void GesturesManager::releaseObject()
 	{
 		m_trackedObject->removeEventFilter(m_instance);
 
-		disconnect(m_trackedObject, SIGNAL(destroyed(QObject*)), m_instance, SLOT(endGesture()));
+		disconnect(m_trackedObject, &QObject::destroyed, m_instance, &GesturesManager::endGesture);
 	}
 
 	m_trackedObject = nullptr;
@@ -828,7 +828,7 @@ QString GesturesManager::getContextName(int identifier)
 		return name;
 	}
 
-	return QString();
+	return {};
 }
 
 MouseProfile::Gesture GesturesManager::matchGesture()
@@ -885,7 +885,7 @@ int GesturesManager::getContextIdentifier(const QString &name)
 {
 	if (!name.endsWith(QLatin1String("Context")))
 	{
-		return GesturesManager::staticMetaObject.enumerator(m_gesturesContextEnumerator).keyToValue(QString(name + QLatin1String("Context")).toLatin1());
+		return GesturesManager::staticMetaObject.enumerator(m_gesturesContextEnumerator).keyToValue((name + QLatin1String("Context")).toLatin1());
 	}
 
 	return GesturesManager::staticMetaObject.enumerator(m_gesturesContextEnumerator).keyToValue(name.toLatin1());
@@ -1001,7 +1001,7 @@ bool GesturesManager::startGesture(QObject *object, QEvent *event, QVector<Gestu
 	{
 		m_trackedObject->installEventFilter(m_instance);
 
-		connect(m_trackedObject, SIGNAL(destroyed(QObject*)), m_instance, SLOT(endGesture()));
+		connect(m_trackedObject, &QObject::destroyed, m_instance, &GesturesManager::endGesture);
 	}
 
 	return (m_trackedObject && m_instance->eventFilter(m_trackedObject, event));
@@ -1026,7 +1026,7 @@ bool GesturesManager::continueGesture(QObject *object)
 	m_trackedObject = object;
 	m_trackedObject->installEventFilter(m_instance);
 
-	connect(m_trackedObject, SIGNAL(destroyed(QObject*)), m_instance, SLOT(endGesture()));
+	connect(m_trackedObject, &QObject::destroyed, m_instance, &GesturesManager::endGesture);
 
 	return true;
 }

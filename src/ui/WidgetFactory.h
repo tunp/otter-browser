@@ -27,14 +27,18 @@
 namespace Otter
 {
 
+class ContentsWidget;
 class MainWindow;
+class ToolBarWidget;
 class Window;
 
 namespace WidgetFactory
 {
 
-QWidget* createToolBarItem(const ToolBarsManager::ToolBarDefinition::Entry &definition, QWidget *parent, Window *window = nullptr);
-QWidget* createSidebarPanel(const QString &panel, MainWindow *mainWindow = nullptr, int sidebar = -1);
+ToolBarWidget* createToolBar(int identifier, Window *window, QWidget *parent);
+QWidget* createToolBarItem(const ToolBarsManager::ToolBarDefinition::Entry &definition, Window *window, QWidget *parent);
+ContentsWidget* createContentsWidget(const QString &identifier, const QVariantMap &parameters, Window *window, QWidget *parent);
+ContentsWidget* createSidebarPanel(const QString &panel, int sidebar, MainWindow *mainWindow, QWidget *parent);
 
 }
 

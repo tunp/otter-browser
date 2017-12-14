@@ -19,17 +19,17 @@
 
 #include "ActionComboBoxWidget.h"
 #include "ItemViewWidget.h"
+#include "LineEditWidget.h"
 #include "../core/ActionsManager.h"
 
 #include <QtCore/QTimer>
-#include <QtWidgets/QLineEdit>
 #include <QtWidgets/QStylePainter>
 
 namespace Otter
 {
 
 ActionComboBoxWidget::ActionComboBoxWidget(QWidget *parent) : ComboBoxWidget(parent),
-	m_filterLineEdit(nullptr),
+	m_filterLineEditWidget(nullptr),
 	m_wasPopupVisible(false)
 {
 	setEditable(true);
@@ -48,10 +48,12 @@ ActionComboBoxWidget::ActionComboBoxWidget(QWidget *parent) : ComboBoxWidget(par
 			continue;
 		}
 
+		const QString name(ActionsManager::getActionName(definitions.at(i).identifier));
 		QStandardItem *item(new QStandardItem(definitions.at(i).getText(true)));
 		item->setData(QColor(Qt::transparent), Qt::DecorationRole);
-		item->setData(definitions.at(i).identifier, Qt::UserRole);
-		item->setToolTip(ActionsManager::getActionName(definitions.at(i).identifier));
+		item->setData(definitions.at(i).identifier, IdentifierRole);
+		item->setData(name, NameRole);
+		item->setToolTip(QStringLiteral("%1 (%2)").arg(item->text()).arg(name));
 		item->setFlags(item->flags() | Qt::ItemNeverHasChildren);
 
 		if (!definitions.at(i).defaultState.icon.isNull())
@@ -129,37 +131,48 @@ void ActionComboBoxWidget::setActionIdentifier(int action)
 
 int ActionComboBoxWidget::getActionIdentifier() const
 {
-	return ((currentIndex() >= 0) ? currentData(Qt::UserRole).toInt() : -1);
+	return ((currentIndex() >= 0) ? currentData(IdentifierRole).toInt() : -1);
 }
 
 bool ActionComboBoxWidget::eventFilter(QObject *object, QEvent *event)
 {
-	if (event->type() == QEvent::Show || event->type() == QEvent::Move || event->type() == QEvent::Resize)
+	switch (event->type())
 	{
-		if (!m_filterLineEdit)
-		{
-			m_filterLineEdit = new QLineEdit(getView()->viewport()->parentWidget());
-			m_filterLineEdit->setClearButtonEnabled(true);
-			m_filterLineEdit->setPlaceholderText(tr("Search…"));
+		case QEvent::Hide:
+			if (m_filterLineEditWidget)
+			{
+				m_filterLineEditWidget->clear();
+			}
 
-			getView()->setStyleSheet(QStringLiteral("QAbstractItemView {padding:0 0 %1px 0;}").arg(m_filterLineEdit->height()));
+			break;
+		case QEvent::Move:
+		case QEvent::Resize:
+		case QEvent::Show:
+			if (!m_filterLineEditWidget)
+			{
+				m_filterLineEditWidget = new LineEditWidget(getView()->viewport()->parentWidget());
+				m_filterLineEditWidget->setClearButtonEnabled(true);
+				m_filterLineEditWidget->setPlaceholderText(tr("Search…"));
 
-			connect(m_filterLineEdit, SIGNAL(textChanged(QString)), getView(), SLOT(setFilterString(QString)));
-		}
+				getView()->setFilterRoles({Qt::DisplayRole, NameRole});
+				getView()->setStyleSheet(QStringLiteral("QAbstractItemView {padding:0 0 %1px 0;}").arg(m_filterLineEditWidget->height()));
 
-		if (event->type() == QEvent::Show)
-		{
-			QTimer::singleShot(0, m_filterLineEdit, SLOT(setFocus()));
-		}
-		else
-		{
-			m_filterLineEdit->resize(getView()->width(), m_filterLineEdit->height());
-			m_filterLineEdit->move(0, (getView()->height() - m_filterLineEdit->height()));
-		}
-	}
-	else if (event->type() == QEvent::Hide && m_filterLineEdit)
-	{
-		m_filterLineEdit->clear();
+				connect(m_filterLineEditWidget, &LineEditWidget::textChanged, getView(), &ItemViewWidget::setFilterString);
+			}
+
+			if (event->type() == QEvent::Show)
+			{
+				QTimer::singleShot(0, m_filterLineEditWidget, static_cast<void(LineEditWidget::*)()>(&LineEditWidget::setFocus));
+			}
+			else
+			{
+				m_filterLineEditWidget->resize(getView()->width(), m_filterLineEditWidget->height());
+				m_filterLineEditWidget->move(0, (getView()->height() - m_filterLineEditWidget->height()));
+			}
+
+			break;
+		default:
+			break;
 	}
 
 	return QObject::eventFilter(object, event);

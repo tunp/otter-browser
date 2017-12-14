@@ -23,7 +23,7 @@
 #ifndef OTTER_WEBWIDGET_H
 #define OTTER_WEBWIDGET_H
 
-#include "../core/ActionsManager.h"
+#include "../core/ActionExecutor.h"
 #include "../core/NetworkManager.h"
 #include "../core/PasswordsManager.h"
 #include "../core/SessionsManager.h"
@@ -34,7 +34,7 @@
 #include <QtNetwork/QSslCipher>
 #include <QtNetwork/QSslError>
 #include <QtPrintSupport/QPrinter>
-#include <QtWidgets/QMenu>
+#include <QtWidgets/QWidget>
 
 namespace Otter
 {
@@ -117,10 +117,13 @@ public:
 	enum PageInformation
 	{
 		UnknownInformation = 0,
+		DocumentBytesReceivedInformation,
+		DocumentBytesTotalInformation,
 		DocumentLoadingProgressInformation,
+		DocumentMimeTypeInformation,
+		TotalBytesReceivedInformation,
+		TotalBytesTotalInformation,
 		TotalLoadingProgressInformation,
-		BytesReceivedInformation,
-		BytesTotalInformation,
 		RequestsBlockedInformation,
 		RequestsFinishedInformation,
 		RequestsStartedInformation,
@@ -161,40 +164,16 @@ public:
 		QRect geometry;
 		qreal playbackRate = 1;
 		HitTestFlags flags = NoFlagsTest;
-
-		explicit HitTestResult(const QVariant &result)
-		{
-			const QVariantMap map(result.toMap());
-			const QVariantMap geometryMap(map.value(QLatin1String("geometry")).toMap());
-
-			title = map.value(QLatin1String("title")).toString();
-			tagName = map.value(QLatin1String("tagName")).toString();
-			alternateText = map.value(QLatin1String("alternateText")).toString();
-			longDescription = map.value(QLatin1String("longDescription")).toString();
-			formUrl = QUrl(map.value(QLatin1String("formUrl")).toString());
-			frameUrl = QUrl(map.value(QLatin1String("frameUrl")).toString());
-			imageUrl = QUrl(map.value(QLatin1String("imageUrl")).toString());
-			linkUrl = QUrl(map.value(QLatin1String("linkUrl")).toString());
-			mediaUrl = QUrl(map.value(QLatin1String("mediaUrl")).toString());
-			geometry = QRect(geometryMap.value(QLatin1String("x")).toInt(), geometryMap.value(QLatin1String("y")).toInt(), geometryMap.value(QLatin1String("w")).toInt(), geometryMap.value(QLatin1String("h")).toInt());
-			position = map.value(QLatin1String("position")).toPoint();
-			playbackRate = map.value(QLatin1String("playbackRate")).toReal();
-			flags = static_cast<HitTestFlags>(map.value(QLatin1String("flags")).toInt());
-		}
-
-		HitTestResult()
-		{
-		}
 	};
 
-	struct LinkUrl
+	struct LinkUrl final
 	{
 		QString title;
 		QString mimeType;
 		QUrl url;
 	};
 
-	struct SslInformation
+	struct SslInformation final
 	{
 		QSslCipher cipher;
 		QVector<QSslCertificate> certificates;
@@ -222,10 +201,10 @@ public:
 	virtual QUrl getUrl() const = 0;
 	QUrl getRequestedUrl() const;
 	virtual QIcon getIcon() const = 0;
-	virtual QPixmap createThumbnail() = 0;
+	virtual QPixmap createThumbnail(const QSize &size = {});
 	QPoint getClickPosition() const;
 	virtual QPoint getScrollPosition() const = 0;
-	virtual QRect getProgressBarGeometry() const;
+	virtual QRect getGeometry(bool excludeScrollBars = false) const;
 	ActionsManager::ActionDefinition::State getActionState(int identifier, const QVariantMap &parameters = {}) const override;
 	virtual LinkUrl getActiveFrame() const;
 	virtual LinkUrl getActiveImage() const;
@@ -239,7 +218,8 @@ public:
 	virtual QVector<LinkUrl> getSearchEngines() const;
 	virtual QVector<NetworkManager::ResourceInformation> getBlockedRequests() const;
 	QHash<int, QVariant> getOptions() const;
-	virtual QHash<QByteArray, QByteArray> getHeaders() const;
+	virtual QMap<QByteArray, QByteArray> getHeaders() const;
+	virtual QMultiMap<QString, QString> getMetaData() const;
 	virtual WebWidget::ContentStates getContentState() const;
 	virtual WebWidget::LoadingState getLoadingState() const = 0;
 	quint64 getWindowIdentifier() const;
@@ -299,11 +279,10 @@ protected:
 protected slots:
 	void handleLoadingStateChange(WebWidget::LoadingState state);
 	void handleWindowCloseRequest();
-	void notifyFillPasswordActionStateChanged();
 	void notifyRedoActionStateChanged();
 	void notifyUndoActionStateChanged();
-	void notifyPageActionsChanged();
-	void setStatusMessage(const QString &message, bool override = false);
+	void setStatusMessage(const QString &message);
+	void setStatusMessageOverride(const QString &message);
 
 private:
 	ContentsWidget *m_parent;
@@ -326,22 +305,20 @@ signals:
 	void aboutToReload();
 	void needsAttention();
 	void requestedCloseWindow();
-	void requestedOpenUrl(const QUrl &url, SessionsManager::OpenHints hints);
 	void requestedNewWindow(WebWidget *widget, SessionsManager::OpenHints hints);
-	void requestedSearch(const QString &query, const QString &search, SessionsManager::OpenHints hints);
 	void requestedPopupWindow(const QUrl &parentUrl, const QUrl &popupUrl);
-	void requestedPermission(WebWidget::FeaturePermission feature, const QUrl &url, bool cancel);
+	void requestedPermission(WebWidget::FeaturePermission feature, const QUrl &url, bool isCancellation);
 	void requestedSavePassword(const PasswordsManager::PasswordInformation &password, bool isUpdate);
 	void requestedGeometryChange(const QRect &geometry);
 	void requestedInspectorVisibilityChange(bool isVisible);
-	void progressBarGeometryChanged();
+	void geometryChanged();
 	void statusMessageChanged(const QString &message);
 	void titleChanged(const QString &title);
 	void urlChanged(const QUrl &url);
 	void iconChanged(const QIcon &icon);
 	void requestBlocked(const NetworkManager::ResourceInformation &request);
-	void actionsStateChanged(const QVector<int> &identifiers);
-	void actionsStateChanged(ActionsManager::ActionDefinition::ActionCategories categories);
+	void arbitraryActionsStateChanged(const QVector<int> &identifiers);
+	void categorizedActionsStateChanged(const QVector<int> &categories);
 	void contentStateChanged(WebWidget::ContentStates state);
 	void loadingStateChanged(WebWidget::LoadingState state);
 	void pageInformationChanged(WebWidget::PageInformation, const QVariant &value);

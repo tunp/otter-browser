@@ -47,11 +47,11 @@ NavigationActionWidget::NavigationActionWidget(Window *window, const ToolBarsMan
 
 	if (toolBar && toolBar->getIdentifier() != ToolBarsManager::AddressBar)
 	{
-		connect(toolBar, SIGNAL(windowChanged(Window*)), this, SLOT(setWindow(Window*)));
+		connect(toolBar, &ToolBarWidget::windowChanged, this, &NavigationActionWidget::setWindow);
 	}
 
-	connect(menu(), SIGNAL(aboutToShow()), this, SLOT(updateMenu()));
-	connect(menu(), SIGNAL(triggered(QAction*)), this, SLOT(goToHistoryIndex(QAction*)));
+	connect(menu(), &QMenu::aboutToShow, this, &NavigationActionWidget::updateMenu);
+	connect(menu(), &QMenu::triggered, this, &NavigationActionWidget::goToHistoryIndex);
 }
 
 void NavigationActionWidget::goToHistoryIndex(QAction *action)
@@ -123,18 +123,15 @@ bool NavigationActionWidget::event(QEvent *event)
 
 					ActionExecutor::Object executor(m_window, m_window);
 					QMenu menu(this);
-					Action *purgeTabHistoryAction(new Action(ActionsManager::ClearTabHistoryAction, {{QLatin1String("clearGlobalHistory"), true}}, executor, &menu));
-					purgeTabHistoryAction->setOverrideText(QT_TRANSLATE_NOOP("actions", "Purge Tab History"));
-
 					menu.addAction(new Action(ActionsManager::ClearTabHistoryAction, {}, executor, &menu));
-					menu.addAction(purgeTabHistoryAction);
+					menu.addAction(new Action(ActionsManager::ClearTabHistoryAction, {{QLatin1String("clearGlobalHistory"), true}}, {{QLatin1String("text"), QT_TRANSLATE_NOOP("actions", "Purge Tab History")}}, executor, &menu));
 
 					const ToolBarWidget *toolBar(qobject_cast<ToolBarWidget*>(parentWidget()));
 
 					if (toolBar)
 					{
 						menu.addSeparator();
-						menu.addActions(ToolBarWidget::createCustomizationMenu(toolBar->getIdentifier(), QVector<QAction*>(), &menu)->actions());
+						menu.addActions(ToolBarWidget::createCustomizationMenu(toolBar->getIdentifier(), {}, &menu)->actions());
 					}
 
 					menu.exec(contextMenuEvent->globalPos());
@@ -211,9 +208,9 @@ bool NavigationActionWidget::eventFilter(QObject *object, QEvent *event)
 			if (action && action->data().type() == QVariant::Int)
 			{
 				QMenu contextMenu(menu());
-				QAction *removeEntryAction(contextMenu.addAction(tr("Remove Entry"), nullptr, nullptr, QKeySequence(Qt::Key_Delete)));
-				QAction *purgeEntryAction(contextMenu.addAction(tr("Purge Entry"), nullptr, nullptr, QKeySequence(Qt::ShiftModifier | Qt::Key_Delete)));
-				QAction *selectedAction(contextMenu.exec(contextMenuEvent->globalPos()));
+				const QAction *removeEntryAction(contextMenu.addAction(tr("Remove Entry"), nullptr, nullptr, QKeySequence(Qt::Key_Delete)));
+				const QAction *purgeEntryAction(contextMenu.addAction(tr("Purge Entry"), nullptr, nullptr, QKeySequence(Qt::ShiftModifier | Qt::Key_Delete)));
+				const QAction *selectedAction(contextMenu.exec(contextMenuEvent->globalPos()));
 
 				if (selectedAction == removeEntryAction)
 				{

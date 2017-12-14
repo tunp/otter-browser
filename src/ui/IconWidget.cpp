@@ -22,6 +22,7 @@
 #include "../core/ThemesManager.h"
 #include "../core/Utils.h"
 
+#include <QtCore/QtMath>
 #include <QtWidgets/QFileDialog>
 #include <QtWidgets/QInputDialog>
 #include <QtWidgets/QMenu>
@@ -37,35 +38,21 @@ IconWidget::IconWidget(QWidget *parent) : QToolButton(parent)
 	setMinimumSize(16, 16);
 	setMaximumSize(64, 64);
 
-	connect(menu(), SIGNAL(aboutToShow()), this, SLOT(updateMenu()));
+	connect(menu(), &QMenu::aboutToShow, this, &IconWidget::updateMenu);
 }
 
 void IconWidget::resizeEvent(QResizeEvent *event)
 {
 	QToolButton::resizeEvent(event);
 
-	const int iconSize(qMin(height(), width()) * 0.9);
+	const int iconSize(qCeil(qMin(height(), width()) * 0.9));
 
 	setIconSize(QSize(iconSize, iconSize));
 }
 
-QIcon IconWidget::createIcon(const QString &data) const
-{
-	if (data.startsWith(QLatin1String("data:image/")))
-	{
-		return QIcon(Utils::loadPixmapFromDataUri(data));
-	}
-
-	return ThemesManager::createIcon(data);
-}
-
 void IconWidget::clear()
 {
-	m_icon = QString();
-
-	QToolButton::setIcon(QIcon());
-
-	emit iconChanged(QIcon());
+	setIcon({});
 }
 
 void IconWidget::reset()
@@ -75,30 +62,21 @@ void IconWidget::reset()
 
 void IconWidget::selectFromFile()
 {
-	const QString path(QFileDialog::getOpenFileName(this, tr("Select Icon"), QString(), Utils::formatFileTypes(QStringList(tr("Images (*.png *.jpg *.bmp *.gif *.ico)")))));
+	const QString path(QFileDialog::getOpenFileName(this, tr("Select Icon"), QString(), Utils::formatFileTypes({tr("Images (*.png *.jpg *.bmp *.gif *.ico)")})));
 
-	if (path.isEmpty())
+	if (!path.isEmpty())
 	{
-		return;
+		setIcon(QIcon(QPixmap(path)));
 	}
-
-	const QPixmap pixmap(path);
-	const QIcon icon(pixmap);
-
-	m_icon = Utils::savePixmapAsDataUri(pixmap);
-
-	QToolButton::setIcon(icon);
-
-	emit iconChanged(icon);
 }
 
 void IconWidget::selectFromTheme()
 {
-	const QString name(QInputDialog::getText(this, tr("Select Icon"), tr("Icon Name:"), QLineEdit::Normal, (m_icon.startsWith(QLatin1String("data:")) ? QString() : m_icon)));
+	const QString name(QInputDialog::getText(this, tr("Select Icon"), tr("Icon Name:")));
 
 	if (!name.isEmpty())
 	{
-		setIcon(name);
+		setIcon(ThemesManager::createIcon(name));
 	}
 }
 
@@ -108,68 +86,31 @@ void IconWidget::updateMenu()
 	menu()->addAction(tr("Select From File…"), this, SLOT(selectFromFile()));
 	menu()->addAction(tr("Select From Theme…"), this, SLOT(selectFromTheme()));
 
-	if (!m_defaultIcon.isEmpty())
+	if (!m_defaultIcon.isNull())
 	{
 		menu()->addSeparator();
-		menu()->addAction(tr("Reset"), this, SLOT(reset()))->setEnabled(m_icon != m_defaultIcon);
+		menu()->addAction(tr("Reset"), this, SLOT(reset()))->setEnabled(Utils::savePixmapAsDataUri(icon().pixmap(16, 16)) != Utils::savePixmapAsDataUri(m_defaultIcon.pixmap(16, 16)));
 	}
 
 	menu()->addSeparator();
 	menu()->addAction(ThemesManager::createIcon(QLatin1String("edit-clear")), tr("Clear"), this, SLOT(clear()))->setEnabled(!icon().isNull());
 }
 
-void IconWidget::setIcon(const QString &data)
-{
-	m_icon = data;
-
-	if (data.isEmpty())
-	{
-		clear();
-
-		return;
-	}
-
-	const QIcon icon(createIcon(data));
-
-	QToolButton::setIcon(icon);
-
-	emit iconChanged(icon);
-}
-
 void IconWidget::setIcon(const QIcon &icon)
 {
-	if (icon.isNull())
-	{
-		clear();
-
-		return;
-	}
-
-	m_icon = Utils::savePixmapAsDataUri(icon.pixmap(16, 16));
-
 	QToolButton::setIcon(icon);
 
 	emit iconChanged(icon);
-}
-
-void IconWidget::setDefaultIcon(const QString &data)
-{
-	m_defaultIcon = data;
-
-	if (m_icon.isEmpty())
-	{
-		setIcon(m_defaultIcon);
-	}
 }
 
 void IconWidget::setDefaultIcon(const QIcon &icon)
 {
-	setDefaultIcon(Utils::savePixmapAsDataUri(icon.pixmap(16, 16)));
-}
+	m_defaultIcon = icon;
 
-QString IconWidget::getIcon() const
-{
-	return m_icon;
+	if (icon.isNull())
+	{
+		setIcon(icon);
+	}
 }
 
 int IconWidget::heightForWidth(int width) const

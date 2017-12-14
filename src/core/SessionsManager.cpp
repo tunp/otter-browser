@@ -60,7 +60,7 @@ void SessionsManager::timerEvent(QTimerEvent *event)
 
 		if (!m_isPrivate)
 		{
-			saveSession(QString(), QString(), nullptr, false);
+			saveSession({}, {}, nullptr, false);
 		}
 	}
 }
@@ -92,25 +92,33 @@ void SessionsManager::clearClosedWindows()
 	emit m_instance->closedWindowsChanged();
 }
 
-void SessionsManager::storeClosedWindow(MainWindow *window)
+void SessionsManager::storeClosedWindow(MainWindow *mainWindow)
 {
-	if (!window || window->isPrivate())
+	if (!mainWindow || mainWindow->isPrivate())
 	{
 		return;
 	}
 
-	SessionMainWindow session(window->getSession());
-	session.geometry = window->saveGeometry();
+	SessionMainWindow session(mainWindow->getSession());
+	session.geometry = mainWindow->saveGeometry();
 
 	if (!session.windows.isEmpty())
 	{
+		const int limit(SettingsManager::getOption(SettingsManager::History_ClosedTabsLimitAmountOption).toInt());
+
 		m_closedWindows.prepend(session);
+
+		if (m_closedWindows.count() > limit)
+		{
+			m_closedWindows.resize(limit);
+			m_closedWindows.squeeze();
+		}
 
 		emit m_instance->closedWindowsChanged();
 	}
 }
 
-void SessionsManager::markSessionModified()
+void SessionsManager::markSessionAsModified()
 {
 	if (!m_isPrivate && !m_isDirty && m_sessionPath == QLatin1String("default"))
 	{
@@ -281,6 +289,62 @@ SessionInformation SessionsManager::getSession(const QString &path)
 			sessionMainWindow.index = (sessionMainWindow.windows.count() - 1);
 		}
 
+		if (mainWindowObject.contains(QLatin1String("toolBars")))
+		{
+			const QJsonArray toolBarsArray(mainWindowObject.value(QLatin1String("toolBars")).toArray());
+
+			sessionMainWindow.hasToolBarsState = true;
+			sessionMainWindow.toolBars.reserve(toolBarsArray.count());
+
+			for (int j = 0; j < toolBarsArray.count(); ++j)
+			{
+				const QJsonObject toolBarObject(toolBarsArray.at(j).toObject());
+				ToolBarState toolBarState;
+				toolBarState.identifier = ToolBarsManager::getToolBarIdentifier(toolBarObject.value(QLatin1String("identifier")).toString());
+
+				if (toolBarObject.contains(QLatin1String("location")))
+				{
+					const QString location(toolBarObject.value(QLatin1String("location")).toString());
+
+					if (location == QLatin1String("top"))
+					{
+						toolBarState.location = Qt::TopToolBarArea;
+					}
+					else if (location == QLatin1String("bottom"))
+					{
+						toolBarState.location = Qt::BottomToolBarArea;
+					}
+					else if (location == QLatin1String("left"))
+					{
+						toolBarState.location = Qt::LeftToolBarArea;
+					}
+					else if (location == QLatin1String("right"))
+					{
+						toolBarState.location = Qt::RightToolBarArea;
+					}
+				}
+
+				if (toolBarObject.contains(QLatin1String("normalVisibility")))
+				{
+					toolBarState.normalVisibility = ((toolBarObject.value(QLatin1String("normalVisibility")).toString() == QLatin1String("hidden")) ? ToolBarState::AlwaysHiddenToolBar : ToolBarState::AlwaysVisibleToolBar);
+				}
+
+				if (toolBarObject.contains(QLatin1String("fullScreenVisibility")))
+				{
+					toolBarState.fullScreenVisibility = ((toolBarObject.value(QLatin1String("fullScreenVisibility")).toString() == QLatin1String("hidden")) ? ToolBarState::AlwaysHiddenToolBar : ToolBarState::AlwaysVisibleToolBar);
+				}
+
+				if (toolBarObject.contains(QLatin1String("row")))
+				{
+					toolBarState.row = toolBarObject.value(QLatin1String("row")).toInt(-1);
+				}
+
+				sessionMainWindow.toolBars.append(toolBarState);
+			}
+
+			sessionMainWindow.toolBars.squeeze();
+		}
+
 		session.windows.append(sessionMainWindow);
 	}
 
@@ -309,7 +373,7 @@ QStringList SessionsManager::getClosedWindows()
 
 QStringList SessionsManager::getSessions()
 {
-	QStringList entries(QDir(m_profilePath + QLatin1String("/sessions/")).entryList(QStringList(QLatin1String("*.json")), QDir::Files));
+	QStringList entries(QDir(m_profilePath + QLatin1String("/sessions/")).entryList({QLatin1String("*.json")}, QDir::Files));
 
 	for (int i = 0; i < entries.count(); ++i)
 	{
@@ -331,22 +395,21 @@ QStringList SessionsManager::getSessions()
 	return entries;
 }
 
-SessionsManager::OpenHints SessionsManager::calculateOpenHints(OpenHints hints, Qt::MouseButton button, int modifiers)
+SessionsManager::OpenHints SessionsManager::calculateOpenHints(OpenHints hints, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
 {
 	const bool useNewTab(!hints.testFlag(NewWindowOpen) && SettingsManager::getOption(SettingsManager::Browser_OpenLinksInNewTabOption).toBool());
-	const Qt::KeyboardModifiers keyboardModifiers((modifiers == -1) ? QGuiApplication::keyboardModifiers() : static_cast<Qt::KeyboardModifiers>(modifiers));
 
-	if (button == Qt::MiddleButton && keyboardModifiers.testFlag(Qt::AltModifier))
+	if (button == Qt::MiddleButton && modifiers.testFlag(Qt::AltModifier))
 	{
 		return ((useNewTab ? NewTabOpen : NewWindowOpen) | BackgroundOpen | EndOpen);
 	}
 
-	if (keyboardModifiers.testFlag(Qt::ControlModifier) || button == Qt::MiddleButton)
+	if (modifiers.testFlag(Qt::ControlModifier) || button == Qt::MiddleButton)
 	{
 		return ((useNewTab ? NewTabOpen : NewWindowOpen) | BackgroundOpen);
 	}
 
-	if (keyboardModifiers.testFlag(Qt::ShiftModifier))
+	if (modifiers.testFlag(Qt::ShiftModifier))
 	{
 		return (useNewTab ? NewTabOpen : NewWindowOpen);
 	}
@@ -362,6 +425,11 @@ SessionsManager::OpenHints SessionsManager::calculateOpenHints(OpenHints hints, 
 	}
 
 	return hints;
+}
+
+SessionsManager::OpenHints SessionsManager::calculateOpenHints(OpenHints hints, Qt::MouseButton button)
+{
+	return calculateOpenHints(hints, button, QGuiApplication::keyboardModifiers());
 }
 
 SessionsManager::OpenHints SessionsManager::calculateOpenHints(const QVariantMap &parameters)
@@ -422,16 +490,14 @@ bool SessionsManager::restoreClosedWindow(int index)
 		return false;
 	}
 
-	Application::createWindow(QVariantMap(), m_closedWindows[index]);
-
-	m_closedWindows.removeAt(index);
+	Application::createWindow(QVariantMap(), m_closedWindows.takeAt(index));
 
 	emit m_instance->closedWindowsChanged();
 
 	return true;
 }
 
-bool SessionsManager::restoreSession(const SessionInformation &session, MainWindow *window, bool isPrivate)
+bool SessionsManager::restoreSession(const SessionInformation &session, MainWindow *mainWindow, bool isPrivate)
 {
 	if (session.windows.isEmpty())
 	{
@@ -458,9 +524,9 @@ bool SessionsManager::restoreSession(const SessionInformation &session, MainWind
 
 	for (int i = 0; i < session.windows.count(); ++i)
 	{
-		if (window && i == 0)
+		if (mainWindow && i == 0)
 		{
-			window->restore(session.windows.first());
+			mainWindow->restoreSession(session.windows.first());
 		}
 		else
 		{
@@ -471,7 +537,7 @@ bool SessionsManager::restoreSession(const SessionInformation &session, MainWind
 	return true;
 }
 
-bool SessionsManager::saveSession(const QString &path, const QString &title, MainWindow *window, bool isClean)
+bool SessionsManager::saveSession(const QString &path, const QString &title, MainWindow *mainWindow, bool isClean)
 {
 	if (m_isPrivate && path.isEmpty())
 	{
@@ -485,9 +551,9 @@ bool SessionsManager::saveSession(const QString &path, const QString &title, Mai
 
 	QVector<MainWindow*> windows;
 
-	if (window)
+	if (mainWindow)
 	{
-		windows.append(window);
+		windows.append(mainWindow);
 	}
 	else
 	{
@@ -622,6 +688,62 @@ bool SessionsManager::saveSession(const SessionInformation &session)
 		}
 
 		mainWindowObject.insert(QLatin1String("windows"), windowsArray);
+
+		if (sessionEntry.hasToolBarsState)
+		{
+			QJsonArray toolBarsArray;
+
+			for (int j = 0; j < sessionEntry.toolBars.count(); ++j)
+			{
+				QJsonObject toolBarObject({{QLatin1String("identifier"), ToolBarsManager::getToolBarName(sessionEntry.toolBars.at(j).identifier)}});
+
+				if (sessionEntry.toolBars.at(j).location != Qt::NoToolBarArea)
+				{
+					QString location;
+
+					switch (sessionEntry.toolBars.at(j).location)
+					{
+						case Qt::BottomToolBarArea:
+							location = QLatin1String("bottom");
+
+							break;
+						case Qt::LeftToolBarArea:
+							location = QLatin1String("left");
+
+							break;
+						case Qt::RightToolBarArea:
+							location = QLatin1String("right");
+
+							break;
+						default:
+							location = QLatin1String("top");
+
+							break;
+					}
+
+					toolBarObject.insert(QLatin1String("location"), location);
+				}
+
+				if (sessionEntry.toolBars.at(j).normalVisibility != ToolBarState::UnspecifiedVisibilityToolBar)
+				{
+					toolBarObject.insert(QLatin1String("normalVisibility"), ((sessionEntry.toolBars.at(j).normalVisibility == ToolBarState::AlwaysHiddenToolBar) ? QLatin1String("hidden") : QLatin1String("visible")));
+				}
+
+				if (sessionEntry.toolBars.at(j).fullScreenVisibility != ToolBarState::UnspecifiedVisibilityToolBar)
+				{
+					toolBarObject.insert(QLatin1String("fullScreenVisibility"), ((sessionEntry.toolBars.at(j).fullScreenVisibility == ToolBarState::AlwaysHiddenToolBar) ? QLatin1String("hidden") : QLatin1String("visible")));
+				}
+
+				if (sessionEntry.toolBars.at(j).row >= 0)
+				{
+					toolBarObject.insert(QLatin1String("row"), sessionEntry.toolBars.at(j).row);
+				}
+
+				toolBarsArray.append(toolBarObject);
+			}
+
+			mainWindowObject.insert(QLatin1String("toolBars"), toolBarsArray);
+		}
 
 		mainWindowsArray.append(mainWindowObject);
 	}

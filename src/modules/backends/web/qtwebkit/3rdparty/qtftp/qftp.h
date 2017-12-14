@@ -150,12 +150,15 @@ private:
     Q_DISABLE_COPY(QFtp)
     QScopedPointer<QFtpPrivate> d;
 
-    Q_PRIVATE_SLOT(d, void _q_startNextCommand())
-    Q_PRIVATE_SLOT(d, void _q_piFinished(const QString&))
-    Q_PRIVATE_SLOT(d, void _q_piServerReplyCode(int))
-    Q_PRIVATE_SLOT(d, void _q_piError(int, const QString&))
-    Q_PRIVATE_SLOT(d, void _q_piConnectState(int))
-    Q_PRIVATE_SLOT(d, void _q_piFtpReply(int, const QString&))
+private Q_SLOTS:
+    void _q_startNextCommand();
+    void _q_piFinished(const QString&);
+    void _q_piServerReplyCode(int);
+    void _q_piError(int, const QString&);
+    void _q_piConnectState(int);
+    void _q_piFtpReply(int, const QString&);
+
+friend class QFtpPrivate;
 };
 
 QT_END_NAMESPACE

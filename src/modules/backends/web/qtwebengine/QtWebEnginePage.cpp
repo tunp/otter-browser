@@ -1,7 +1,7 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
 * Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
-* Copyright (C) 2016 Jan Bajer aka bajasoft <jbajer@gmail.com>
+* Copyright (C) 2016 - 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -23,10 +23,12 @@
 #include "QtWebEngineWebWidget.h"
 #include "../../../../core/Console.h"
 #include "../../../../core/ContentBlockingManager.h"
+#include "../../../../core/ContentBlockingProfile.h"
 #include "../../../../core/ThemesManager.h"
 #include "../../../../core/UserScript.h"
 #include "../../../../core/Utils.h"
 #include "../../../../ui/ContentsDialog.h"
+#include "../../../../ui/LineEditWidget.h"
 
 #include <QtCore/QFile>
 #include <QtCore/QRegularExpression>
@@ -35,7 +37,6 @@
 #include <QtWebEngineWidgets/QWebEngineScript>
 #include <QtWebEngineWidgets/QWebEngineScriptCollection>
 #include <QtWebEngineWidgets/QWebEngineSettings>
-#include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMessageBox>
 
 namespace Otter
@@ -50,13 +51,101 @@ QtWebEnginePage::QtWebEnginePage(bool isPrivate, QtWebEngineWebWidget *parent) :
 {
 	if (isPrivate && m_widget)
 	{
-		connect(profile(), SIGNAL(downloadRequested(QWebEngineDownloadItem*)), m_widget->getBackend(), SLOT(downloadFile(QWebEngineDownloadItem*)));
+		connect(profile(), &QWebEngineProfile::downloadRequested, qobject_cast<QtWebEngineWebBackend*>(m_widget->getBackend()), &QtWebEngineWebBackend::handleDownloadRequested);
 	}
 
-	connect(this, SIGNAL(loadFinished(bool)), this, SLOT(pageLoadFinished()));
+	connect(this, &QtWebEnginePage::loadFinished, this, &QtWebEnginePage::handleLoadFinished);
 }
 
-void QtWebEnginePage::pageLoadFinished()
+void QtWebEnginePage::validatePopup(const QUrl &url)
+{
+	QtWebEnginePage *page(qobject_cast<QtWebEnginePage*>(sender()));
+
+	if (page)
+	{
+		m_popups.removeAll(page);
+
+		page->deleteLater();
+	}
+
+	const QVector<int> profiles(ContentBlockingManager::getProfileList(m_widget->getOption(SettingsManager::ContentBlocking_ProfilesOption, m_widget->getUrl()).toStringList()));
+
+	if (!profiles.isEmpty())
+	{
+		const ContentBlockingManager::CheckResult result(ContentBlockingManager::checkUrl(profiles, m_widget->getUrl(), url, NetworkManager::PopupType));
+
+		if (result.isBlocked)
+		{
+			Console::addMessage(QCoreApplication::translate("main", "Request blocked by rule from profile %1:\n%2").arg(ContentBlockingManager::getProfile(result.profile)->getTitle()).arg(result.rule), Console::NetworkCategory, Console::LogLevel, url.url(), -1, (m_widget ? m_widget->getWindowIdentifier() : 0));
+
+			return;
+		}
+	}
+
+	const QString popupsPolicy(SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanOpenWindowsOption, (m_widget ? m_widget->getRequestedUrl() : QUrl())).toString());
+
+	if (popupsPolicy == QLatin1String("ask"))
+	{
+		emit requestedPopupWindow(m_widget->getUrl(), url);
+	}
+	else
+	{
+		QtWebEngineWebWidget *widget(createWidget((popupsPolicy == QLatin1String("openAllInBackground")) ? (SessionsManager::NewTabOpen | SessionsManager::BackgroundOpen) : SessionsManager::NewTabOpen));
+		widget->setUrl(url);
+	}
+}
+
+void QtWebEnginePage::markAsPopup()
+{
+	m_isPopup = true;
+}
+
+void QtWebEnginePage::javaScriptAlert(const QUrl &url, const QString &message)
+{
+	if (m_isIgnoringJavaScriptPopups)
+	{
+		return;
+	}
+
+	if (!m_widget || !m_widget->parentWidget())
+	{
+		QWebEnginePage::javaScriptAlert(url, message);
+
+		return;
+	}
+
+	emit m_widget->needsAttention();
+
+	ContentsDialog dialog(ThemesManager::createIcon(QLatin1String("dialog-information")), tr("JavaScript"), message, {}, QDialogButtonBox::Ok, nullptr, m_widget);
+	dialog.setCheckBox(tr("Disable JavaScript popups"), false);
+
+	connect(m_widget, &QtWebEngineWebWidget::aboutToReload, &dialog, &ContentsDialog::close);
+
+	m_widget->showDialog(&dialog);
+
+	if (dialog.getCheckBoxState())
+	{
+		m_isIgnoringJavaScriptPopups = true;
+	}
+}
+
+void QtWebEnginePage::javaScriptConsoleMessage(JavaScriptConsoleMessageLevel level, const QString &note, int line, const QString &source)
+{
+	Console::MessageLevel mappedLevel(Console::LogLevel);
+
+	if (level == QWebEnginePage::WarningMessageLevel)
+	{
+		mappedLevel = Console::WarningLevel;
+	}
+	else if (level == QWebEnginePage::ErrorMessageLevel)
+	{
+		mappedLevel = Console::ErrorLevel;
+	}
+
+	Console::addMessage(note, Console::JavaScriptCategory, mappedLevel, source, line, (m_widget ? m_widget->getWindowIdentifier() : 0));
+}
+
+void QtWebEnginePage::handleLoadFinished()
 {
 	m_isIgnoringJavaScriptPopups = false;
 
@@ -146,112 +235,32 @@ void QtWebEnginePage::pageLoadFinished()
 	});
 }
 
-void QtWebEnginePage::removePopup(const QUrl &url)
-{
-	QtWebEnginePage *page(qobject_cast<QtWebEnginePage*>(sender()));
-
-	if (page)
-	{
-		m_popups.removeAll(page);
-
-		page->deleteLater();
-	}
-
-	emit requestedPopupWindow(requestedUrl(), url);
-}
-
-void QtWebEnginePage::markAsPopup()
-{
-	m_isPopup = true;
-}
-
-void QtWebEnginePage::javaScriptAlert(const QUrl &url, const QString &message)
-{
-	if (m_isIgnoringJavaScriptPopups)
-	{
-		return;
-	}
-
-	if (!m_widget || !m_widget->parentWidget())
-	{
-		QWebEnginePage::javaScriptAlert(url, message);
-
-		return;
-	}
-
-	emit m_widget->needsAttention();
-
-	ContentsDialog dialog(ThemesManager::createIcon(QLatin1String("dialog-information")), tr("JavaScript"), message, QString(), QDialogButtonBox::Ok, nullptr, m_widget);
-	dialog.setCheckBox(tr("Disable JavaScript popups"), false);
-
-	connect(m_widget, SIGNAL(aboutToReload()), &dialog, SLOT(close()));
-
-	m_widget->showDialog(&dialog);
-
-	if (dialog.getCheckBoxState())
-	{
-		m_isIgnoringJavaScriptPopups = true;
-	}
-}
-
-void QtWebEnginePage::javaScriptConsoleMessage(JavaScriptConsoleMessageLevel level, const QString &note, int line, const QString &source)
-{
-	Console::MessageLevel mappedLevel(Console::LogLevel);
-
-	if (level == QWebEnginePage::WarningMessageLevel)
-	{
-		mappedLevel = Console::WarningLevel;
-	}
-	else if (level == QWebEnginePage::ErrorMessageLevel)
-	{
-		mappedLevel = Console::ErrorLevel;
-	}
-
-	Console::addMessage(note, Console::JavaScriptCategory, mappedLevel, source, line, (m_widget ? m_widget->getWindowIdentifier() : 0));
-}
-
 QWebEnginePage* QtWebEnginePage::createWindow(QWebEnginePage::WebWindowType type)
 {
-	if (type == QWebEnginePage::WebDialog)
+	if (type != QWebEnginePage::WebDialog)
 	{
 		QtWebEngineWebWidget *widget(nullptr);
+		const QString popupsPolicy((m_widget ? m_widget->getOption(SettingsManager::Permissions_ScriptsCanOpenWindowsOption) : SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanOpenWindowsOption)).toString());
 
 		if (!m_widget || m_widget->getLastUrlClickTime().isNull() || m_widget->getLastUrlClickTime().secsTo(QDateTime::currentDateTime()) > 1)
 		{
-			const QString popupsPolicy((m_widget ? m_widget->getOption(SettingsManager::Permissions_ScriptsCanOpenWindowsOption) : SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanOpenWindowsOption)).toString());
-
 			if (popupsPolicy == QLatin1String("blockAll"))
 			{
 				return nullptr;
 			}
 
-			if (popupsPolicy == QLatin1String("ask"))
+			if (popupsPolicy == QLatin1String("ask") || !m_widget->getOption(SettingsManager::ContentBlocking_ProfilesOption, m_widget->getUrl()).isNull())
 			{
 				QtWebEnginePage *page(new QtWebEnginePage(false, nullptr));
 				page->markAsPopup();
 
-				connect(page, SIGNAL(aboutToNavigate(QUrl, QWebEnginePage::NavigationType)), this, SLOT(removePopup(QUrl)));
+				connect(page, &QtWebEnginePage::aboutToNavigate, this, &QtWebEnginePage::validatePopup);
 
 				return page;
 			}
 		}
 
-		if (m_widget)
-		{
-			widget = qobject_cast<QtWebEngineWebWidget*>(m_widget->clone(false, m_widget->isPrivate(), SettingsManager::getOption(SettingsManager::Sessions_OptionsExludedFromInheritingOption).toStringList()));
-		}
-		else if (profile()->isOffTheRecord())
-		{
-			widget = new QtWebEngineWebWidget({{QLatin1String("hints"), SessionsManager::PrivateOpen}}, nullptr, nullptr);
-		}
-		else
-		{
-			widget = new QtWebEngineWebWidget({}, nullptr, nullptr);
-		}
-
-		widget->pageLoadStarted();
-
-		emit requestedNewWindow(widget, SessionsManager::calculateOpenHints(SessionsManager::NewTabOpen));
+		widget = createWidget(SessionsManager::calculateOpenHints((popupsPolicy == QLatin1String("openAllInBackground")) ? (SessionsManager::NewTabOpen | SessionsManager::BackgroundOpen) : SessionsManager::NewTabOpen));
 
 		return widget->getPage();
 	}
@@ -259,11 +268,35 @@ QWebEnginePage* QtWebEnginePage::createWindow(QWebEnginePage::WebWindowType type
 	return QWebEnginePage::createWindow(type);
 }
 
+QtWebEngineWebWidget* QtWebEnginePage::createWidget(SessionsManager::OpenHints hints)
+{
+	QtWebEngineWebWidget *widget(nullptr);
+
+	if (m_widget)
+	{
+		widget = qobject_cast<QtWebEngineWebWidget*>(m_widget->clone(false, m_widget->isPrivate(), SettingsManager::getOption(SettingsManager::Sessions_OptionsExludedFromInheritingOption).toStringList()));
+	}
+	else if (profile()->isOffTheRecord())
+	{
+		widget = new QtWebEngineWebWidget({{QLatin1String("hints"), SessionsManager::PrivateOpen}}, nullptr, nullptr);
+	}
+	else
+	{
+		widget = new QtWebEngineWebWidget({}, nullptr, nullptr);
+	}
+
+	widget->pageLoadStarted();
+
+	emit requestedNewWindow(widget, hints);
+
+	return widget;
+}
+
 QString QtWebEnginePage::createJavaScriptList(QStringList rules) const
 {
 	if (rules.isEmpty())
 	{
-		return QString();
+		return {};
 	}
 
 	for (int i = 0; i < rules.count(); ++i)
@@ -278,7 +311,7 @@ QStringList QtWebEnginePage::chooseFiles(QWebEnginePage::FileSelectionMode mode,
 {
 	Q_UNUSED(acceptedMimeTypes)
 
-	return Utils::getOpenPaths(oldFiles, QStringList(), (mode == QWebEnginePage::FileSelectOpenMultiple));
+	return Utils::getOpenPaths(oldFiles, {}, (mode == QWebEnginePage::FileSelectOpenMultiple));
 }
 
 bool QtWebEnginePage::acceptNavigationRequest(const QUrl &url, QWebEnginePage::NavigationType type, bool isMainFrame)
@@ -314,7 +347,7 @@ bool QtWebEnginePage::acceptNavigationRequest(const QUrl &url, QWebEnginePage::N
 			ContentsDialog dialog(ThemesManager::createIcon(QLatin1String("dialog-warning")), tr("Question"), tr("Are you sure that you want to send form data again?"), tr("Do you want to resend data?"), (QDialogButtonBox::Yes | QDialogButtonBox::Cancel), nullptr, m_widget);
 			dialog.setCheckBox(tr("Do not show this message again"), false);
 
-			connect(m_widget, SIGNAL(aboutToReload()), &dialog, SLOT(close()));
+			connect(m_widget, &QtWebEngineWebWidget::aboutToReload, &dialog, &ContentsDialog::close);
 
 			m_widget->showDialog(&dialog);
 
@@ -396,10 +429,10 @@ bool QtWebEnginePage::javaScriptConfirm(const QUrl &url, const QString &message)
 
 	emit m_widget->needsAttention();
 
-	ContentsDialog dialog(ThemesManager::createIcon(QLatin1String("dialog-information")), tr("JavaScript"), message, QString(), (QDialogButtonBox::Ok | QDialogButtonBox::Cancel), nullptr, m_widget);
+	ContentsDialog dialog(ThemesManager::createIcon(QLatin1String("dialog-information")), tr("JavaScript"), message, {}, (QDialogButtonBox::Ok | QDialogButtonBox::Cancel), nullptr, m_widget);
 	dialog.setCheckBox(tr("Disable JavaScript popups"), false);
 
-	connect(m_widget, SIGNAL(aboutToReload()), &dialog, SLOT(close()));
+	connect(m_widget, &QtWebEngineWebWidget::aboutToReload, &dialog, &ContentsDialog::close);
 
 	m_widget->showDialog(&dialog);
 
@@ -426,7 +459,7 @@ bool QtWebEnginePage::javaScriptPrompt(const QUrl &url, const QString &message, 
 	emit m_widget->needsAttention();
 
 	QWidget *widget(new QWidget(m_widget));
-	QLineEdit *lineEdit(new QLineEdit(defaultValue, widget));
+	LineEditWidget *lineEdit(new LineEditWidget(defaultValue, widget));
 	QLabel *label(new QLabel(message, widget));
 	label->setBuddy(lineEdit);
 	label->setTextFormat(Qt::PlainText);
@@ -436,10 +469,10 @@ bool QtWebEnginePage::javaScriptPrompt(const QUrl &url, const QString &message, 
 	layout->addWidget(label);
 	layout->addWidget(lineEdit);
 
-	ContentsDialog dialog(ThemesManager::createIcon(QLatin1String("dialog-information")), tr("JavaScript"), QString(), QString(), (QDialogButtonBox::Ok | QDialogButtonBox::Cancel), widget, m_widget);
+	ContentsDialog dialog(ThemesManager::createIcon(QLatin1String("dialog-information")), tr("JavaScript"), {}, {}, (QDialogButtonBox::Ok | QDialogButtonBox::Cancel), widget, m_widget);
 	dialog.setCheckBox(tr("Disable JavaScript popups"), false);
 
-	connect(m_widget, SIGNAL(aboutToReload()), &dialog, SLOT(close()));
+	connect(m_widget, &QtWebEngineWebWidget::aboutToReload, &dialog, &ContentsDialog::close);
 
 	m_widget->showDialog(&dialog);
 

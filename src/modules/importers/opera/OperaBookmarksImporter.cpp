@@ -36,19 +36,11 @@ OperaBookmarksImporter::OperaBookmarksImporter(QObject *parent): BookmarksImport
 {
 }
 
-OperaBookmarksImporter::~OperaBookmarksImporter()
-{
-	if (m_optionsWidget)
-	{
-		m_optionsWidget->deleteLater();
-	}
-}
-
-QWidget* OperaBookmarksImporter::getOptionsWidget()
+QWidget* OperaBookmarksImporter::createOptionsWidget(QWidget *parent)
 {
 	if (!m_optionsWidget)
 	{
-		m_optionsWidget = new BookmarksImporterWidget();
+		m_optionsWidget = new BookmarksImporterWidget(parent);
 	}
 
 	return m_optionsWidget;
@@ -56,12 +48,12 @@ QWidget* OperaBookmarksImporter::getOptionsWidget()
 
 QString OperaBookmarksImporter::getTitle() const
 {
-	return QString(tr("Opera Bookmarks"));
+	return tr("Opera Bookmarks");
 }
 
 QString OperaBookmarksImporter::getDescription() const
 {
-	return QString(tr("Imports bookmarks from Opera Browser version 12 or earlier"));
+	return tr("Imports bookmarks from Opera Browser version 12 or earlier");
 }
 
 QString OperaBookmarksImporter::getVersion() const
@@ -106,7 +98,7 @@ QUrl OperaBookmarksImporter::getHomePage() const
 
 QStringList OperaBookmarksImporter::getFileFilters() const
 {
-	return QStringList(tr("Opera bookmarks files (bookmarks.adr)"));
+	return {tr("Opera bookmarks files (bookmarks.adr)")};
 }
 
 bool OperaBookmarksImporter::import(const QString &path)
@@ -115,6 +107,8 @@ bool OperaBookmarksImporter::import(const QString &path)
 
 	if (!file.open(QIODevice::ReadOnly))
 	{
+		emit importFinished(BookmarksImport, FailedImport, 0);
+
 		return false;
 	}
 
@@ -125,8 +119,12 @@ bool OperaBookmarksImporter::import(const QString &path)
 
 	if (line != QLatin1String("Opera Hotlist version 2.0"))
 	{
+		emit importFinished(BookmarksImport, FailedImport, 0);
+
 		return false;
 	}
+
+	emit importStarted(BookmarksImport, -1);
 
 	if (m_optionsWidget)
 	{
@@ -145,12 +143,13 @@ bool OperaBookmarksImporter::import(const QString &path)
 		}
 		else
 		{
-			setAllowDuplicates(m_optionsWidget->allowDuplicates());
+			setAllowDuplicates(m_optionsWidget->areDuplicatesAllowed());
 			setImportFolder(m_optionsWidget->getTargetFolder());
 		}
 	}
 
 	const int estimatedAmount((file.size() > 0) ? (file.size() / 250) : 0);
+	int totalAmount(0);
 
 	BookmarksManager::getModel()->beginImport(getImportFolder(), estimatedAmount, qMin(estimatedAmount, 100));
 
@@ -173,16 +172,22 @@ bool OperaBookmarksImporter::import(const QString &path)
 		{
 			bookmark = BookmarksManager::addBookmark(BookmarksModel::UrlBookmark, {}, getCurrentFolder());
 			type = UrlEntry;
+
+			++totalAmount;
 		}
 		else if (line.startsWith(QLatin1String("#FOLDER")))
 		{
 			bookmark = BookmarksManager::addBookmark(BookmarksModel::FolderBookmark, {}, getCurrentFolder());
 			type = FolderStartEntry;
+
+			++totalAmount;
 		}
 		else if (line.startsWith(QLatin1String("#SEPERATOR")))
 		{
 			bookmark = BookmarksManager::addBookmark(BookmarksModel::SeparatorBookmark, {}, getCurrentFolder());
 			type = SeparatorEntry;
+
+			++totalAmount;
 		}
 		else if (line == QLatin1String("-"))
 		{
@@ -248,6 +253,8 @@ bool OperaBookmarksImporter::import(const QString &path)
 	}
 
 	BookmarksManager::getModel()->endImport();
+
+	emit importFinished(BookmarksImport, SuccessfullImport, totalAmount);
 
 	file.close();
 

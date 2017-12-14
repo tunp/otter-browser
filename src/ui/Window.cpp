@@ -22,23 +22,14 @@
 #include "Window.h"
 #include "MainWindow.h"
 #include "OpenAddressDialog.h"
+#include "WidgetFactory.h"
 #include "../core/Application.h"
 #include "../core/HistoryManager.h"
 #include "../core/SettingsManager.h"
 #include "../core/Utils.h"
 #include "../modules/widgets/address/AddressWidget.h"
 #include "../modules/widgets/search/SearchWidget.h"
-#include "../modules/windows/addons/AddonsContentsWidget.h"
-#include "../modules/windows/bookmarks/BookmarksContentsWidget.h"
-#include "../modules/windows/cache/CacheContentsWidget.h"
-#include "../modules/windows/cookies/CookiesContentsWidget.h"
-#include "../modules/windows/configuration/ConfigurationContentsWidget.h"
-#include "../modules/windows/history/HistoryContentsWidget.h"
-#include "../modules/windows/notes/NotesContentsWidget.h"
-#include "../modules/windows/passwords/PasswordsContentsWidget.h"
-#include "../modules/windows/transfers/TransfersContentsWidget.h"
 #include "../modules/windows/web/WebContentsWidget.h"
-#include "../modules/windows/windows/WindowsContentsWidget.h"
 
 #include <QtCore/QTimer>
 #include <QtGui/QPainter>
@@ -91,8 +82,9 @@ Window::Window(const QVariantMap &parameters, ContentsWidget *widget, MainWindow
 		setContentsWidget(widget);
 	}
 
-	connect(this, SIGNAL(titleChanged(QString)), this, SLOT(setWindowTitle(QString)));
-	connect(this, SIGNAL(iconChanged(QIcon)), this, SLOT(handleIconChanged(QIcon)));
+	connect(this, &Window::titleChanged, this, &Window::setWindowTitle);
+	connect(this, &Window::iconChanged, this, &Window::handleIconChanged);
+	connect(mainWindow, &MainWindow::toolBarStateChanged, this, &Window::handleToolBarStateChanged);
 }
 
 void Window::timerEvent(QTimerEvent *event)
@@ -158,9 +150,9 @@ void Window::triggerAction(int identifier, const QVariantMap &parameters)
 
 			break;
 		case ActionsManager::DetachTabAction:
-			if (m_mainWindow->getWindowCount() > 1)
+			if (m_mainWindow->getWindowCount() > 1 || parameters.value(QLatin1String("minimalInterface")).toBool())
 			{
-				m_mainWindow->moveWindow(this);
+				m_mainWindow->moveWindow(this, nullptr, parameters);
 			}
 
 			break;
@@ -233,28 +225,22 @@ void Window::triggerAction(int identifier, const QVariantMap &parameters)
 				}
 				else if (identifier == ActionsManager::ActivateAddressFieldAction || identifier == ActionsManager::ActivateSearchFieldAction)
 				{
-					OpenAddressDialog dialog(this);
+					OpenAddressDialog dialog(ActionExecutor::Object(this, this), this);
 
 					if (identifier == ActionsManager::ActivateSearchFieldAction)
 					{
 						dialog.setText(QLatin1String("? "));
 					}
 
-					connect(&dialog, SIGNAL(requestedLoadUrl(QUrl,SessionsManager::OpenHints)), this, SLOT(handleOpenUrlRequest(QUrl,SessionsManager::OpenHints)));
-					connect(&dialog, SIGNAL(requestedOpenBookmark(BookmarksItem*,SessionsManager::OpenHints)), this, SIGNAL(requestedOpenBookmark(BookmarksItem*,SessionsManager::OpenHints)));
-					connect(&dialog, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)), this, SLOT(handleSearchRequest(QString,QString,SessionsManager::OpenHints)));
-
-					dialog.exec();
+					if (dialog.exec() == QDialog::Accepted && dialog.getResult().type == InputInterpreter::InterpreterResult::SearchType)
+					{
+						handleSearchRequest(dialog.getResult().searchQuery, dialog.getResult().searchEngine, SessionsManager::calculateOpenHints(SessionsManager::CurrentTabOpen));
+					}
 				}
 			}
 
 			break;
 		case ActionsManager::FullScreenAction:
-			if (m_addressBar)
-			{
-				m_addressBar->setVisible(m_addressBar->shouldBeVisible(m_mainWindow->isFullScreen()));
-			}
-
 			if (m_contentsWidget)
 			{
 				m_contentsWidget->triggerAction(identifier, parameters);
@@ -272,7 +258,7 @@ void Window::clear()
 {
 	if (!m_contentsWidget || m_contentsWidget->close())
 	{
-		setContentsWidget(new WebContentsWidget(m_parameters, QHash<int, QVariant>(), nullptr, this));
+		setContentsWidget(new WebContentsWidget(m_parameters, {}, nullptr, this, this));
 
 		m_isAboutToClose = false;
 
@@ -324,7 +310,7 @@ void Window::requestClose()
 
 		emit aboutToClose();
 
-		QTimer::singleShot(50, this, SLOT(notifyRequestedCloseWindow()));
+		QTimer::singleShot(50, this, &Window::notifyRequestedCloseWindow);
 	}
 }
 
@@ -346,7 +332,7 @@ void Window::search(const QString &query, const QString &searchEngine)
 			parameters[QLatin1String("hints")] = SessionsManager::PrivateOpen;
 		}
 
-		widget = new WebContentsWidget(parameters, QHash<int, QVariant>(), nullptr, this);
+		widget = new WebContentsWidget(parameters, {}, nullptr, this, this);
 
 		setContentsWidget(widget);
 	}
@@ -388,23 +374,6 @@ void Window::handleIconChanged(const QIcon &icon)
 	}
 }
 
-void Window::handleOpenUrlRequest(const QUrl &url, SessionsManager::OpenHints hints)
-{
-	if (hints == SessionsManager::DefaultOpen || hints == SessionsManager::CurrentTabOpen)
-	{
-		setUrl(url);
-
-		return;
-	}
-
-	if (isPrivate())
-	{
-		hints |= SessionsManager::PrivateOpen;
-	}
-
-	emit requestedOpenUrl(url, hints);
-}
-
 void Window::handleSearchRequest(const QString &query, const QString &searchEngine, SessionsManager::OpenHints hints)
 {
 	if ((getType() == QLatin1String("web") && Utils::isUrlEmpty(getUrl())) || (hints == SessionsManager::DefaultOpen || hints == SessionsManager::CurrentTabOpen))
@@ -429,6 +398,14 @@ void Window::handleGeometryChangeRequest(const QRect &geometry)
 		subWindow->showNormal();
 		subWindow->resize(geometry.size() + (subWindow->geometry().size() - m_contentsWidget->size()));
 		subWindow->move(geometry.topLeft());
+	}
+}
+
+void Window::handleToolBarStateChanged(int identifier, const ToolBarState &state)
+{
+	if (m_addressBar && identifier == ToolBarsManager::AddressBar)
+	{
+		m_addressBar->setState(state);
 	}
 }
 
@@ -478,7 +455,7 @@ void Window::setOption(int identifier, const QVariant &value)
 			m_session.options[identifier] = value;
 		}
 
-		SessionsManager::markSessionModified();
+		SessionsManager::markSessionAsModified();
 
 		emit optionChanged(identifier, value);
 	}
@@ -497,46 +474,7 @@ void Window::setUrl(const QUrl &url, bool isTyped)
 			return;
 		}
 
-		if (url.path() == QLatin1String("addons"))
-		{
-			newWidget = new AddonsContentsWidget(QVariantMap(), this);
-		}
-		else if (url.path() == QLatin1String("bookmarks"))
-		{
-			newWidget = new BookmarksContentsWidget(QVariantMap(), this);
-		}
-		else if (url.path() == QLatin1String("cache"))
-		{
-			newWidget = new CacheContentsWidget(QVariantMap(), this);
-		}
-		else if (url.path() == QLatin1String("config"))
-		{
-			newWidget = new ConfigurationContentsWidget(QVariantMap(), this);
-		}
-		else if (url.path() == QLatin1String("cookies"))
-		{
-			newWidget = new CookiesContentsWidget(QVariantMap(), this);
-		}
-		else if (url.path() == QLatin1String("history"))
-		{
-			newWidget = new HistoryContentsWidget(QVariantMap(), this);
-		}
-		else if (url.path() == QLatin1String("notes"))
-		{
-			newWidget = new NotesContentsWidget(QVariantMap(), this);
-		}
-		else if (url.path() == QLatin1String("passwords"))
-		{
-			newWidget = new PasswordsContentsWidget(QVariantMap(), this);
-		}
-		else if (url.path() == QLatin1String("transfers"))
-		{
-			newWidget = new TransfersContentsWidget(QVariantMap(), this);
-		}
-		else if (url.path() == QLatin1String("windows"))
-		{
-			newWidget = new WindowsContentsWidget(QVariantMap(), this);
-		}
+		newWidget = WidgetFactory::createContentsWidget(url.path(), {}, this, this);
 
 		if (newWidget && !newWidget->canClone())
 		{
@@ -548,7 +486,7 @@ void Window::setUrl(const QUrl &url, bool isTyped)
 
 	if (!newWidget && (!m_contentsWidget || m_contentsWidget->getType() != QLatin1String("web")))
 	{
-		newWidget = new WebContentsWidget(m_parameters, m_session.options, nullptr, this);
+		newWidget = new WebContentsWidget(m_parameters, m_session.options, nullptr, this, this);
 	}
 
 	if (newWidget)
@@ -593,7 +531,7 @@ void Window::setPinned(bool isPinned)
 	{
 		m_isPinned = isPinned;
 
-		emit actionsStateChanged(QVector<int>({ActionsManager::PinTabAction, ActionsManager::CloseTabAction}));
+		emit arbitraryActionsStateChanged({ActionsManager::PinTabAction, ActionsManager::CloseTabAction});
 		emit isPinnedChanged(isPinned);
 	}
 }
@@ -629,9 +567,10 @@ void Window::setContentsWidget(ContentsWidget *widget)
 	if (!m_addressBar)
 	{
 		m_addressBar = new WindowToolBarWidget(ToolBarsManager::AddressBar, this);
-		m_addressBar->setVisible(m_addressBar->shouldBeVisible(m_mainWindow->isFullScreen()));
+		m_addressBar->setState(m_mainWindow->getToolBarState(ToolBarsManager::AddressBar));
 
 		layout()->addWidget(m_addressBar);
+		layout()->setAlignment(m_addressBar, Qt::AlignTop);
 	}
 
 	layout()->addWidget(m_contentsWidget);
@@ -658,11 +597,11 @@ void Window::setContentsWidget(ContentsWidget *widget)
 		}
 		else
 		{
-			AddressWidget *addressWidget(findAddressWidget());
+			const AddressWidget *addressWidget(findAddressWidget());
 
 			if (Utils::isUrlEmpty(m_contentsWidget->getUrl()) && addressWidget)
 			{
-				QTimer::singleShot(100, addressWidget, SLOT(setFocus()));
+				QTimer::singleShot(100, addressWidget, static_cast<void(AddressWidget::*)()>(&AddressWidget::setFocus));
 			}
 		}
 	}
@@ -670,32 +609,34 @@ void Window::setContentsWidget(ContentsWidget *widget)
 	m_session = SessionWindow();
 
 	emit titleChanged(m_contentsWidget->getTitle());
-	emit urlChanged(m_contentsWidget->getUrl());
+	emit urlChanged(m_contentsWidget->getUrl(), false);
 	emit iconChanged(m_contentsWidget->getIcon());
 	emit actionsStateChanged();
 	emit loadingStateChanged(m_contentsWidget->getLoadingState());
 	emit canZoomChanged(m_contentsWidget->canZoom());
 
-	connect(m_contentsWidget, SIGNAL(aboutToNavigate()), this, SIGNAL(aboutToNavigate()));
-	connect(m_contentsWidget, SIGNAL(needsAttention()), this, SIGNAL(needsAttention()));
-	connect(m_contentsWidget, SIGNAL(requestedOpenUrl(QUrl,SessionsManager::OpenHints)), this, SIGNAL(requestedOpenUrl(QUrl,SessionsManager::OpenHints)));
-	connect(m_contentsWidget, SIGNAL(requestedNewWindow(ContentsWidget*,SessionsManager::OpenHints)), this, SIGNAL(requestedNewWindow(ContentsWidget*,SessionsManager::OpenHints)));
-	connect(m_contentsWidget, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)), this, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)));
-	connect(m_contentsWidget, SIGNAL(requestedGeometryChange(QRect)), this, SLOT(handleGeometryChangeRequest(QRect)));
-	connect(m_contentsWidget, SIGNAL(statusMessageChanged(QString)), this, SIGNAL(statusMessageChanged(QString)));
-	connect(m_contentsWidget, SIGNAL(titleChanged(QString)), this, SIGNAL(titleChanged(QString)));
-	connect(m_contentsWidget, SIGNAL(urlChanged(QUrl)), this, SIGNAL(urlChanged(QUrl)));
-	connect(m_contentsWidget, SIGNAL(iconChanged(QIcon)), this, SIGNAL(iconChanged(QIcon)));
-	connect(m_contentsWidget, SIGNAL(requestBlocked(NetworkManager::ResourceInformation)), this, SIGNAL(requestBlocked(NetworkManager::ResourceInformation)));
-	connect(m_contentsWidget, SIGNAL(actionsStateChanged(QVector<int>)), this, SIGNAL(actionsStateChanged(QVector<int>)));
-	connect(m_contentsWidget, SIGNAL(actionsStateChanged(ActionsManager::ActionDefinition::ActionCategories)), this, SIGNAL(actionsStateChanged(ActionsManager::ActionDefinition::ActionCategories)));
-	connect(m_contentsWidget, SIGNAL(contentStateChanged(WebWidget::ContentStates)), this, SIGNAL(contentStateChanged(WebWidget::ContentStates)));
-	connect(m_contentsWidget, SIGNAL(loadingStateChanged(WebWidget::LoadingState)), this, SIGNAL(loadingStateChanged(WebWidget::LoadingState)));
-	connect(m_contentsWidget, SIGNAL(pageInformationChanged(WebWidget::PageInformation,QVariant)), this, SIGNAL(pageInformationChanged(WebWidget::PageInformation,QVariant)));
-	connect(m_contentsWidget, SIGNAL(optionChanged(int,QVariant)), this, SIGNAL(optionChanged(int,QVariant)));
-	connect(m_contentsWidget, SIGNAL(zoomChanged(int)), this, SIGNAL(zoomChanged(int)));
-	connect(m_contentsWidget, SIGNAL(canZoomChanged(bool)), this, SIGNAL(canZoomChanged(bool)));
-	connect(m_contentsWidget, SIGNAL(webWidgetChanged()), this, SLOT(updateNavigationBar()));
+	connect(m_contentsWidget, &ContentsWidget::aboutToNavigate, this, &Window::aboutToNavigate);
+	connect(m_contentsWidget, &ContentsWidget::needsAttention, this, &Window::needsAttention);
+	connect(m_contentsWidget, &ContentsWidget::requestedNewWindow, this, &Window::requestedNewWindow);
+	connect(m_contentsWidget, &ContentsWidget::requestedSearch, this, &Window::requestedSearch);
+	connect(m_contentsWidget, &ContentsWidget::requestedGeometryChange, this, &Window::handleGeometryChangeRequest);
+	connect(m_contentsWidget, &ContentsWidget::statusMessageChanged, this, &Window::statusMessageChanged);
+	connect(m_contentsWidget, &ContentsWidget::titleChanged, this, &Window::titleChanged);
+	connect(m_contentsWidget, &ContentsWidget::urlChanged, this, [&](const QUrl &url)
+	{
+		emit urlChanged(url, false);
+	});
+	connect(m_contentsWidget, &ContentsWidget::iconChanged, this, &Window::iconChanged);
+	connect(m_contentsWidget, &ContentsWidget::requestBlocked, this, &Window::requestBlocked);
+	connect(m_contentsWidget, &ContentsWidget::arbitraryActionsStateChanged, this, &Window::arbitraryActionsStateChanged);
+	connect(m_contentsWidget, &ContentsWidget::categorizedActionsStateChanged, this, &Window::categorizedActionsStateChanged);
+	connect(m_contentsWidget, &ContentsWidget::contentStateChanged, this, &Window::contentStateChanged);
+	connect(m_contentsWidget, &ContentsWidget::loadingStateChanged, this, &Window::loadingStateChanged);
+	connect(m_contentsWidget, &ContentsWidget::pageInformationChanged, this, &Window::pageInformationChanged);
+	connect(m_contentsWidget, &ContentsWidget::optionChanged, this, &Window::optionChanged);
+	connect(m_contentsWidget, &ContentsWidget::zoomChanged, this, &Window::zoomChanged);
+	connect(m_contentsWidget, &ContentsWidget::canZoomChanged, this, &Window::canZoomChanged);
+	connect(m_contentsWidget, &ContentsWidget::webWidgetChanged, this, &Window::updateNavigationBar);
 }
 
 AddressWidget* Window::findAddressWidget() const
@@ -755,12 +696,12 @@ WebWidget* Window::getWebWidget()
 
 QString Window::getTitle() const
 {
-	return (m_contentsWidget ? m_contentsWidget->getTitle() : m_session.getTitle());
+	return ((m_contentsWidget && !m_isAboutToClose) ? m_contentsWidget->getTitle() : m_session.getTitle());
 }
 
 QLatin1String Window::getType() const
 {
-	return (m_contentsWidget ? m_contentsWidget->getType() : QLatin1String("unknown"));
+	return ((m_contentsWidget && !m_isAboutToClose) ? m_contentsWidget->getType() : QLatin1String("unknown"));
 }
 
 QVariant Window::getOption(int identifier) const
@@ -775,17 +716,17 @@ QVariant Window::getOption(int identifier) const
 
 QUrl Window::getUrl() const
 {
-	return (m_contentsWidget ? m_contentsWidget->getUrl() : m_session.getUrl());
+	return ((m_contentsWidget && !m_isAboutToClose) ? m_contentsWidget->getUrl() : m_session.getUrl());
 }
 
 QIcon Window::getIcon() const
 {
-	return (m_contentsWidget ? m_contentsWidget->getIcon() : HistoryManager::getIcon(m_session.getUrl()));
+	return ((m_contentsWidget && !m_isAboutToClose) ? m_contentsWidget->getIcon() : HistoryManager::getIcon(m_session.getUrl()));
 }
 
 QPixmap Window::createThumbnail() const
 {
-	return (m_contentsWidget ? m_contentsWidget->createThumbnail() : QPixmap());
+	return ((m_contentsWidget && !m_isAboutToClose) ? m_contentsWidget->createThumbnail() : QPixmap());
 }
 
 QDateTime Window::getLastActivity() const
@@ -804,11 +745,11 @@ ActionsManager::ActionDefinition::State Window::getActionState(int identifier, c
 
 			break;
 		case ActionsManager::DetachTabAction:
-			state.isEnabled = (m_mainWindow->getWindowCount() > 1);
+			state.isEnabled = (m_mainWindow->getWindowCount() > 1 || parameters.value(QLatin1String("minimalInterface")).toBool());
 
 			break;
 		case ActionsManager::PinTabAction:
-			state.text = (m_isPinned ? QT_TRANSLATE_NOOP("actions", "Unpin Tab") : QT_TRANSLATE_NOOP("actions", "Pin Tab"));
+			state.text = (m_isPinned ? QCoreApplication::translate("actions", "Unpin Tab") : QCoreApplication::translate("actions", "Pin Tab"));
 
 			break;
 		case ActionsManager::CloseTabAction:
@@ -932,12 +873,12 @@ QSize Window::sizeHint() const
 
 WebWidget::LoadingState Window::getLoadingState() const
 {
-	return (m_contentsWidget ? m_contentsWidget->getLoadingState() : WebWidget::DeferredLoadingState);
+	return ((m_contentsWidget && !m_isAboutToClose) ? m_contentsWidget->getLoadingState() : WebWidget::DeferredLoadingState);
 }
 
 WebWidget::ContentStates Window::getContentState() const
 {
-	return (m_contentsWidget ? m_contentsWidget->getContentState() : WebWidget::UnknownContentState);
+	return ((m_contentsWidget && !m_isAboutToClose) ? m_contentsWidget->getContentState() : WebWidget::UnknownContentState);
 }
 
 quint64 Window::getIdentifier() const
@@ -947,17 +888,17 @@ quint64 Window::getIdentifier() const
 
 int Window::getZoom() const
 {
-	return (m_contentsWidget ? m_contentsWidget->getZoom() : m_session.getZoom());
+	return ((m_contentsWidget && !m_isAboutToClose) ? m_contentsWidget->getZoom() : m_session.getZoom());
 }
 
 bool Window::canClone() const
 {
-	return (m_contentsWidget ? m_contentsWidget->canClone() : false);
+	return ((m_contentsWidget && !m_isAboutToClose) ? m_contentsWidget->canClone() : false);
 }
 
 bool Window::canZoom() const
 {
-	return (m_contentsWidget ? m_contentsWidget->canZoom() : false);
+	return ((m_contentsWidget && !m_isAboutToClose) ? m_contentsWidget->canZoom() : false);
 }
 
 bool Window::isAboutToClose() const
@@ -977,7 +918,7 @@ bool Window::isPinned() const
 
 bool Window::isPrivate() const
 {
-	return (m_contentsWidget ? m_contentsWidget->isPrivate() : SessionsManager::calculateOpenHints(m_parameters).testFlag(SessionsManager::PrivateOpen));
+	return ((m_contentsWidget && !m_isAboutToClose) ? m_contentsWidget->isPrivate() : SessionsManager::calculateOpenHints(m_parameters).testFlag(SessionsManager::PrivateOpen));
 }
 
 bool Window::event(QEvent *event)
@@ -993,7 +934,7 @@ bool Window::event(QEvent *event)
 				Q_UNUSED(oldState)
 				Q_UNUSED(newState)
 
-				emit actionsStateChanged(QVector<int>({ActionsManager::MaximizeTabAction, ActionsManager::MinimizeTabAction, ActionsManager::RestoreTabAction}));
+				emit arbitraryActionsStateChanged({ActionsManager::MaximizeTabAction, ActionsManager::MinimizeTabAction, ActionsManager::RestoreTabAction});
 			});
 		}
 	}

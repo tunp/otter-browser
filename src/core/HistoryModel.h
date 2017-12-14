@@ -28,11 +28,16 @@
 namespace Otter
 {
 
-class HistoryEntryItem : public QStandardItem
+class HistoryEntryItem final : public QStandardItem
 {
 public:
 	void setData(const QVariant &value, int role) override;
 	void setItemData(const QVariant &value, int role);
+	QString getTitle() const;
+	QUrl getUrl() const;
+	QDateTime getTimeVisited() const;
+	QIcon getIcon() const;
+	quint64 getIdentifier() const;
 
 protected:
 	explicit HistoryEntryItem();
@@ -59,7 +64,7 @@ public:
 		TypedHistory
 	};
 
-	struct HistoryEntryMatch
+	struct HistoryEntryMatch final
 	{
 		HistoryEntryItem *entry = nullptr;
 		QString match;

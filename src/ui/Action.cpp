@@ -20,7 +20,10 @@
 #include "Action.h"
 #include "MainWindow.h"
 #include "../core/Application.h"
+#include "../core/Console.h"
 #include "../core/ThemesManager.h"
+
+#include <QtCore/QMetaMethod>
 
 namespace Otter
 {
@@ -40,6 +43,40 @@ Action::Action(int identifier, const QVariantMap &parameters, ActionExecutor::Ob
 {
 	initialize();
 	setExecutor(executor);
+}
+
+Action::Action(int identifier, const QVariantMap &parameters, const QVariantMap &options, ActionExecutor::Object executor, QObject *parent) : QAction(parent),
+	m_parameters(parameters),
+	m_flags(NoFlags),
+	m_identifier(identifier)
+{
+	initialize();
+	setExecutor(executor);
+
+	if (options.contains(QLatin1String("icon")))
+	{
+		const QVariant data(options[QLatin1String("icon")]);
+
+		if (data.type() == QVariant::Icon)
+		{
+			setIcon(data.value<QIcon>());
+		}
+		else
+		{
+			setIcon(ThemesManager::createIcon(data.toString()));
+		}
+
+		m_flags |= IsOverridingIconFlag;
+	}
+
+	if (options.contains(QLatin1String("text")))
+	{
+		m_overrideText = options[QLatin1String("text")].toString();
+
+		m_flags |= IsOverridingTextFlag;
+
+		setState(getState());
+	}
 }
 
 void Action::initialize()
@@ -77,13 +114,18 @@ void Action::initialize()
 			setCheckable(true);
 		}
 
-		connect(this, SIGNAL(triggered(bool)), this, SLOT(triggerAction(bool)));
+		if (definition.flags.testFlag(ActionsManager::ActionDefinition::IsDeprecatedFlag))
+		{
+			Console::addMessage(tr("Creating instance of deprecated action: %1").arg(ActionsManager::getActionName(m_identifier)), Console::OtherCategory, Console::WarningLevel);
+		}
+
+		connect(this, &Action::triggered, this, &Action::triggerAction);
 	}
 
 	updateIcon();
 	updateState();
 
-	connect(ActionsManager::getInstance(), SIGNAL(shortcutsChanged()), this, SLOT(updateShortcut()));
+	connect(ActionsManager::getInstance(), &ActionsManager::shortcutsChanged, this, &Action::updateShortcut);
 }
 
 void Action::triggerAction(bool isChecked)
@@ -104,7 +146,7 @@ void Action::triggerAction(bool isChecked)
 	}
 }
 
-void Action::handleActionsStateChanged(const QVector<int> &identifiers)
+void Action::handleArbitraryActionsStateChanged(const QVector<int> &identifiers)
 {
 	if (identifiers.contains(m_identifier))
 	{
@@ -112,11 +154,9 @@ void Action::handleActionsStateChanged(const QVector<int> &identifiers)
 	}
 }
 
-void Action::handleActionsStateChanged(ActionsManager::ActionDefinition::ActionCategories categories)
+void Action::handleCategorizedActionsStateChanged(const QVector<int> &categories)
 {
-	const ActionsManager::ActionDefinition::ActionCategory category(getDefinition().category);
-
-	if (category != ActionsManager::ActionDefinition::OtherCategory && categories.testFlag(category))
+	if (categories.contains(getDefinition().category))
 	{
 		updateState();
 	}
@@ -187,23 +227,11 @@ void Action::updateState()
 void Action::setExecutor(ActionExecutor::Object executor)
 {
 	const ActionsManager::ActionDefinition definition(getDefinition());
+	const QMetaMethod updateStateMethod(metaObject()->method(metaObject()->indexOfMethod("updateState()")));
 
 	if (m_executor.isValid())
 	{
-		if (m_executor.getObject()->metaObject()->indexOfSignal("actionsStateChanged()") >= 0)
-		{
-			disconnect(m_executor.getObject(), SIGNAL(actionsStateChanged()), this, SLOT(updateState()));
-		}
-
-		if (m_executor.getObject()->metaObject()->indexOfSignal("actionsStateChanged(QVector<int>)") >= 0)
-		{
-			disconnect(m_executor.getObject(), SIGNAL(actionsStateChanged(QVector<int>)), this, SLOT(handleActionsStateChanged(QVector<int>)));
-		}
-
-		if (definition.category != ActionsManager::ActionDefinition::OtherCategory && m_executor.getObject()->metaObject()->indexOfSignal("actionsStateChanged(ActionsManager::ActionDefinition::ActionCategories)") >= 0)
-		{
-			disconnect(m_executor.getObject(), SIGNAL(actionsStateChanged(ActionsManager::ActionDefinition::ActionCategories)), this, SLOT(handleActionsStateChanged(ActionsManager::ActionDefinition::ActionCategories)));
-		}
+		m_executor.disconnectSignals(this, &updateStateMethod, &updateStateMethod, &updateStateMethod);
 	}
 
 	if (executor.isValid())
@@ -244,37 +272,8 @@ void Action::setExecutor(ActionExecutor::Object executor)
 
 	if (executor.isValid())
 	{
-		if (executor.getObject()->metaObject()->indexOfSignal("actionsStateChanged()") >= 0)
-		{
-			connect(executor.getObject(), SIGNAL(actionsStateChanged()), this, SLOT(updateState()));
-		}
-
-		if (executor.getObject()->metaObject()->indexOfSignal("actionsStateChanged(QVector<int>)") >= 0)
-		{
-			connect(executor.getObject(), SIGNAL(actionsStateChanged(QVector<int>)), this, SLOT(handleActionsStateChanged(QVector<int>)));
-		}
-
-		if (definition.category != ActionsManager::ActionDefinition::OtherCategory && executor.getObject()->metaObject()->indexOfSignal("actionsStateChanged(ActionsManager::ActionDefinition::ActionCategories)") >= 0)
-		{
-			connect(executor.getObject(), SIGNAL(actionsStateChanged(ActionsManager::ActionDefinition::ActionCategories)), this, SLOT(handleActionsStateChanged(ActionsManager::ActionDefinition::ActionCategories)));
-		}
+		m_executor.connectSignals(this, &updateStateMethod, &updateStateMethod, &updateStateMethod);
 	}
-}
-
-void Action::setOverrideText(const QString &text)
-{
-	m_overrideText = text;
-
-	m_flags |= IsOverridingTextFlag;
-
-	setState(getState());
-}
-
-void Action::setOverrideIcon(const QIcon &icon)
-{
-	m_flags |= IsOverridingIconFlag;
-
-	setIcon(icon);
 }
 
 void Action::setState(const ActionsManager::ActionDefinition::State &state)

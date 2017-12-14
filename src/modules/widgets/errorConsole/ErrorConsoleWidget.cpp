@@ -44,14 +44,11 @@ ErrorConsoleWidget::ErrorConsoleWidget(QWidget *parent) : QWidget(parent),
 
 	if (toolBar)
 	{
-		connect(m_ui->closeButton, &QToolButton::clicked, [&]()
-		{
-			const ToolBarWidget *toolBar(qobject_cast<ToolBarWidget*>(parentWidget()));
+		const int identifier(toolBar->getIdentifier());
 
-			if (toolBar)
-			{
-				Application::getInstance()->triggerAction(ActionsManager::ShowToolBarAction, {{QLatin1String("toolBar"), toolBar->getIdentifier()}, {QLatin1String("isChecked"), false}});
-			}
+		connect(m_ui->closeButton, &QToolButton::clicked, [=]()
+		{
+			Application::getInstance()->triggerAction(ActionsManager::ShowToolBarAction, {{QLatin1String("toolBar"), identifier}, {QLatin1String("isChecked"), false}});
 		});
 	}
 	else
@@ -83,15 +80,15 @@ ErrorConsoleWidget::ErrorConsoleWidget(QWidget *parent) : QWidget(parent),
 
 	m_ui->scopeButton->setMenu(menu);
 
-	connect(menu, SIGNAL(triggered(QAction*)), this, SLOT(filterCategories()));
-	connect(m_ui->networkButton, SIGNAL(clicked()), this, SLOT(filterCategories()));
-	connect(m_ui->securityButton, SIGNAL(clicked()), this, SLOT(filterCategories()));
-	connect(m_ui->cssButton, SIGNAL(clicked()), this, SLOT(filterCategories()));
-	connect(m_ui->javaScriptButton, SIGNAL(clicked()), this, SLOT(filterCategories()));
-	connect(m_ui->otherButton, SIGNAL(clicked()), this, SLOT(filterCategories()));
-	connect(m_ui->clearButton, SIGNAL(clicked()), this, SLOT(clear()));
-	connect(m_ui->filterLineEdit, SIGNAL(textChanged(QString)), this, SLOT(filterMessages(QString)));
-	connect(m_ui->consoleView, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(showContextMenu(QPoint)));
+	connect(menu, &QMenu::triggered, this, &ErrorConsoleWidget::filterCategories);
+	connect(m_ui->networkButton, &QToolButton::clicked, this, &ErrorConsoleWidget::filterCategories);
+	connect(m_ui->securityButton, &QToolButton::clicked, this, &ErrorConsoleWidget::filterCategories);
+	connect(m_ui->cssButton, &QToolButton::clicked, this, &ErrorConsoleWidget::filterCategories);
+	connect(m_ui->javaScriptButton, &QToolButton::clicked, this, &ErrorConsoleWidget::filterCategories);
+	connect(m_ui->otherButton, &QToolButton::clicked, this, &ErrorConsoleWidget::filterCategories);
+	connect(m_ui->clearButton, &QToolButton::clicked, this, &ErrorConsoleWidget::clear);
+	connect(m_ui->filterLineEditWidget, &LineEditWidget::textChanged, this, &ErrorConsoleWidget::filterMessages);
+	connect(m_ui->consoleView, &QTreeView::customContextMenuRequested, this, &ErrorConsoleWidget::showContextMenu);
 }
 
 ErrorConsoleWidget::~ErrorConsoleWidget()
@@ -107,7 +104,7 @@ void ErrorConsoleWidget::showEvent(QShowEvent *event)
 
 		if (mainWindow)
 		{
-			connect(mainWindow, SIGNAL(currentWindowChanged(quint64)), this, SLOT(filterCategories()));
+			connect(mainWindow, &MainWindow::currentWindowChanged, this, &ErrorConsoleWidget::filterCategories);
 		}
 
 		m_model = new QStandardItemModel(this);
@@ -122,7 +119,7 @@ void ErrorConsoleWidget::showEvent(QShowEvent *event)
 
 		m_ui->consoleView->setModel(m_model);
 
-		connect(Console::getInstance(), SIGNAL(messageAdded(Console::Message)), this, SLOT(addMessage(Console::Message)));
+		connect(Console::getInstance(), &Console::messageAdded, this, &ErrorConsoleWidget::addMessage);
 	}
 
 	QWidget::showEvent(event);
@@ -199,7 +196,7 @@ void ErrorConsoleWidget::addMessage(const Console::Message &message)
 	m_model->appendRow(messageItem);
 	m_model->sort(0, Qt::DescendingOrder);
 
-	applyFilters(messageItem->index(), m_ui->filterLineEdit->text(), getCategories(), getCurrentWindow());
+	applyFilters(messageItem->index(), m_ui->filterLineEditWidget->text(), getCategories(), getCurrentWindow());
 }
 
 void ErrorConsoleWidget::clear()
@@ -239,7 +236,7 @@ void ErrorConsoleWidget::filterCategories()
 
 	for (int i = 0; i < m_model->rowCount(); ++i)
 	{
-		applyFilters(m_model->index(i, 0), m_ui->filterLineEdit->text(), categories, currentWindow);
+		applyFilters(m_model->index(i, 0), m_ui->filterLineEditWidget->text(), categories, currentWindow);
 	}
 }
 

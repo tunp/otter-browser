@@ -51,11 +51,12 @@ protected:
 
 	void showEvent(QShowEvent *event) override;
 	void contextMenuEvent(QContextMenuEvent *event) override;
+	bool viewportEvent(QEvent *event) override;
 
 protected slots:
 	void toggleColumnVisibility(QAction *action);
 	void toggleSort(QAction *action);
-	void toggleSort(int column);
+	void handleSectionClicked(int column);
 
 signals:
 	void sortChanged(int column, Qt::SortOrder order);
@@ -70,7 +71,7 @@ public:
 	enum ViewMode
 	{
 		ListViewMode = 0,
-		TreeViewMode = 1
+		TreeViewMode
 	};
 
 	explicit ItemViewWidget(QWidget *parent = nullptr);
@@ -78,6 +79,7 @@ public:
 	void setData(const QModelIndex &index, const QVariant &value, int role);
 	void setModel(QAbstractItemModel *model) override;
 	void setModel(QAbstractItemModel *model, bool useSortProxy);
+	void setSortRoleMapping(const QMap<int, int> &mapping);
 	void setViewMode(ViewMode mode);
 	QStandardItemModel* getSourceModel() const;
 	QSortFilterProxyModel* getProxyModel() const;
@@ -100,7 +102,6 @@ public:
 
 public slots:
 	void insertRow(const QList<QStandardItem*> &items = {});
-	void insertRow(QStandardItem *item);
 	void removeRow();
 	void moveUpRow();
 	void moveDownRow();
@@ -126,7 +127,6 @@ protected slots:
 	void saveState();
 	void handleOptionChanged(int identifier, const QVariant &value);
 	void notifySelectionChanged();
-	void updateDropSelection();
 	void updateFilter();
 
 private:
@@ -134,13 +134,13 @@ private:
 	QStandardItemModel *m_sourceModel;
 	QSortFilterProxyModel *m_proxyModel;
 	QString m_filterString;
+	QMap<int, int> m_sortRoleMapping;
 	QSet<QModelIndex> m_expandedBranches;
 	QSet<int> m_filterRoles;
 	ViewMode m_viewMode;
 	Qt::SortOrder m_sortOrder;
 	int m_sortColumn;
 	int m_dragRow;
-	int m_dropRow;
 	bool m_canGatherExpanded;
 	bool m_isExclusive;
 	bool m_isModified;

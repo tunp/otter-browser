@@ -1,7 +1,7 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
 * Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
-* Copyright (C) 2015 - 2016 Jan Bajer aka bajasoft <jbajer@gmail.com>
+* Copyright (C) 2015 - 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -85,6 +85,7 @@ QTranslator* Application::m_qtTranslator(nullptr);
 QTranslator* Application::m_applicationTranslator(nullptr);
 QLocalServer* Application::m_localServer(nullptr);
 QPointer<MainWindow> Application::m_activeWindow(nullptr);
+QPointer<QObject> Application::m_nonMenuFocusObject(nullptr);
 QString Application::m_localePath;
 QCommandLineParser Application::m_commandLineParser;
 QVector<MainWindow*> Application::m_windows;
@@ -92,7 +93,8 @@ bool Application::m_isAboutToQuit(false);
 bool Application::m_isHidden(false);
 bool Application::m_isUpdating(false);
 
-Application::Application(int &argc, char **argv) : QApplication(argc, argv), ActionExecutor()
+Application::Application(int &argc, char **argv) : QApplication(argc, argv), ActionExecutor(),
+	m_updateCheckTimer(nullptr)
 {
 	setApplicationName(QLatin1String("Otter"));
 	setApplicationDisplayName(QLatin1String("Otter Browser"));
@@ -120,9 +122,9 @@ Application::Application(int &argc, char **argv) : QApplication(argc, argv), Act
 	m_commandLineParser.addHelpOption();
 	m_commandLineParser.addVersionOption();
 	m_commandLineParser.addPositionalArgument(QLatin1String("url"), QCoreApplication::translate("main", "URL to open"), QLatin1String("[url]"));
-	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("cache"), QCoreApplication::translate("main", "Uses <path> as cache directory"), QLatin1String("path"), QString()));
-	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("profile"), QCoreApplication::translate("main", "Uses <path> as profile directory"), QLatin1String("path"), QString()));
-	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("session"), QCoreApplication::translate("main", "Restores session <session> if it exists"), QLatin1String("session"), QString()));
+	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("cache"), QCoreApplication::translate("main", "Uses <path> as cache directory"), QLatin1String("path"), {}));
+	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("profile"), QCoreApplication::translate("main", "Uses <path> as profile directory"), QLatin1String("path"), {}));
+	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("session"), QCoreApplication::translate("main", "Restores session <session> if it exists"), QLatin1String("session"), {}));
 	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("private-session"), QCoreApplication::translate("main", "Starts private session")));
 	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("session-chooser"), QCoreApplication::translate("main", "Forces session chooser dialog")));
 	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("portable"), QCoreApplication::translate("main", "Sets profile and cache paths to directories inside the same directory as that of application binary")));
@@ -214,7 +216,11 @@ Application::Application(int &argc, char **argv) : QApplication(argc, argv), Act
 		QStringList rawReportOptions(m_commandLineParser.positionalArguments());
 		ReportOptions reportOptions(BasicReport);
 
-		if (rawReportOptions.isEmpty() || rawReportOptions.contains(QLatin1String("full")))
+		if (rawReportOptions.isEmpty() || rawReportOptions.contains(QLatin1String("standard")))
+		{
+			reportOptions = StandardReport;
+		}
+		else if (rawReportOptions.contains(QLatin1String("full")))
 		{
 			reportOptions = FullReport;
 		}
@@ -294,7 +300,7 @@ Application::Application(int &argc, char **argv) : QApplication(argc, argv), Act
 
 	m_localServer = new QLocalServer(this);
 
-	connect(m_localServer, SIGNAL(newConnection()), this, SLOT(handleNewConnection()));
+	connect(m_localServer, &QLocalServer::newConnection, this, &Application::handleNewConnection);
 
 	m_localServer->setSocketOptions(QLocalServer::UserAccessOption);
 
@@ -461,9 +467,15 @@ Application::Application(int &argc, char **argv) : QApplication(argc, argv), Act
 	{
 		UpdateChecker *updateChecker(new UpdateChecker(this));
 
-		connect(updateChecker, SIGNAL(finished(QVector<UpdateChecker::UpdateInformation>)), this, SLOT(handleUpdateCheckResult(QVector<UpdateChecker::UpdateInformation>)));
+		connect(updateChecker, &UpdateChecker::finished, this, &Application::handleUpdateCheckResult);
 
-		LongTermTimer::runTimer((interval * SECONDS_IN_DAY), this, SLOT(periodicUpdateCheck()));
+		if (!m_updateCheckTimer)
+		{
+			m_updateCheckTimer = new LongTermTimer(this);
+			m_updateCheckTimer->start(static_cast<quint64>(interval * 1000 * SECONDS_IN_DAY));
+
+			connect(m_updateCheckTimer, &LongTermTimer::timeout, this, &Application::periodicUpdateCheck);
+		}
 	}
 
 	Style *style(ThemesManager::createStyle(SettingsManager::getOption(SettingsManager::Interface_WidgetStyleOption).toString()));
@@ -489,8 +501,9 @@ Application::Application(int &argc, char **argv) : QApplication(argc, argv), Act
 	QDesktopServices::setUrlHandler(QLatin1String("http"), this, "openUrl");
 	QDesktopServices::setUrlHandler(QLatin1String("https"), this, "openUrl");
 
-	connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int,QVariant)));
-	connect(this, SIGNAL(aboutToQuit()), this, SLOT(handleAboutToQuit()));
+	connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &Application::handleOptionChanged);
+	connect(this, &Application::aboutToQuit, this, &Application::handleAboutToQuit);
+	connect(this, &Application::focusObjectChanged, this, &Application::handleFocusObjectChanged);
 }
 
 Application::~Application()
@@ -543,12 +556,60 @@ void Application::triggerAction(int identifier, const QVariantMap &parameters, Q
 			}
 
 			return;
-		case ActionsManager::NewWindowAction:
-			createWindow();
+		case ActionsManager::SetOptionAction:
+			{
+				const QString mode(parameters.value(QLatin1String("mode"), QLatin1String("set")).toString());
+				const QUrl url(parameters.contains(QLatin1String("host")) ? QUrl::fromUserInput(parameters.value(QLatin1String("host")).toString()) : QUrl());
+				const int option(SettingsManager::getOptionIdentifier(parameters.value(QLatin1String("option")).toString()));
+
+				if (mode == QLatin1String("set"))
+				{
+					SettingsManager::setOption(option, parameters.value(QLatin1String("value")), url);
+				}
+				else if (mode == QLatin1String("reset"))
+				{
+					SettingsManager::setOption(option, {}, url);
+				}
+				else if (mode == QLatin1String("toggle"))
+				{
+					const SettingsManager::OptionDefinition definition(SettingsManager::getOptionDefinition(option));
+
+					if (definition.type == SettingsManager::BooleanType)
+					{
+						SettingsManager::setOption(option, !SettingsManager::getOption(option, url).toBool(), url);
+					}
+				}
+			}
 
 			return;
+		case ActionsManager::NewWindowAction:
 		case ActionsManager::NewWindowPrivateAction:
-			createWindow({{QLatin1String("hints"), SessionsManager::PrivateOpen}});
+			{
+				SessionMainWindow session;
+
+				if (m_activeWindow)
+				{
+					session.hasToolBarsState = true;
+
+					if (parameters.value(QLatin1String("minimalInterface")).toBool())
+					{
+						session.toolBars = {m_activeWindow->getToolBarState(ToolBarsManager::AddressBar), m_activeWindow->getToolBarState(ToolBarsManager::ProgressBar)};
+					}
+					else
+					{
+						session.toolBars = m_activeWindow->getSession().toolBars;
+					}
+				}
+
+				QVariantMap mutableParameters(parameters);
+
+				if (identifier == ActionsManager::NewWindowPrivateAction)
+				{
+					mutableParameters[QLatin1String("hints")] = SessionsManager::PrivateOpen;
+				}
+
+				createWindow(mutableParameters, session);
+			}
 
 			return;
 		case ActionsManager::ClosePrivateTabsPanicAction:
@@ -636,7 +697,7 @@ void Application::triggerAction(int identifier, const QVariantMap &parameters, Q
 			return;
 		case ActionsManager::DiagnosticReportAction:
 			{
-				ReportDialog *dialog(new ReportDialog(Application::FullReport, m_activeWindow));
+				ReportDialog *dialog(new ReportDialog(Application::StandardReport, m_activeWindow));
 				dialog->setAttribute(Qt::WA_DeleteOnClose, true);
 				dialog->show();
 			}
@@ -681,7 +742,7 @@ void Application::triggerAction(int identifier, const QVariantMap &parameters, Q
 
 	const ActionsManager::ActionDefinition::ActionScope scope(ActionsManager::getActionDefinition(identifier).scope);
 
-	if (scope == ActionsManager::ActionDefinition::MainWindowScope || scope == ActionsManager::ActionDefinition::WindowScope)
+	if (scope == ActionsManager::ActionDefinition::MainWindowScope || scope == ActionsManager::ActionDefinition::WindowScope || scope == ActionsManager::ActionDefinition::EditorScope)
 	{
 		MainWindow *mainWindow(nullptr);
 
@@ -765,13 +826,13 @@ void Application::openUrl(const QUrl &url)
 	}
 }
 
-void Application::removeWindow(MainWindow *window)
+void Application::removeWindow(MainWindow *mainWindow)
 {
-	m_windows.removeAll(window);
+	m_windows.removeAll(mainWindow);
 
-	window->deleteLater();
+	mainWindow->deleteLater();
 
-	emit m_instance->windowRemoved(window);
+	emit m_instance->windowRemoved(mainWindow);
 
 	if (m_windows.isEmpty())
 	{
@@ -783,13 +844,16 @@ void Application::periodicUpdateCheck()
 {
 	UpdateChecker *updateChecker(new UpdateChecker(this));
 
-	connect(updateChecker, SIGNAL(finished(QVector<UpdateChecker::UpdateInformation>)), this, SLOT(handleUpdateCheckResult(QVector<UpdateChecker::UpdateInformation>)));
+	connect(updateChecker, &UpdateChecker::finished, this, &Application::handleUpdateCheckResult);
 
 	const int interval(SettingsManager::getOption(SettingsManager::Updates_CheckIntervalOption).toInt());
 
-	if (interval > 0 && !SettingsManager::getOption(SettingsManager::Updates_ActiveChannelsOption).toStringList().isEmpty())
+	if (!m_updateCheckTimer && interval > 0 && !SettingsManager::getOption(SettingsManager::Updates_ActiveChannelsOption).toStringList().isEmpty())
 	{
-		LongTermTimer::runTimer((interval * SECONDS_IN_DAY), this, SLOT(periodicUpdateCheck()));
+		m_updateCheckTimer = new LongTermTimer(this);
+		m_updateCheckTimer->start(static_cast<quint64>(interval * 1000 * SECONDS_IN_DAY));
+
+		connect(m_updateCheckTimer, &LongTermTimer::timeout, this, &Application::periodicUpdateCheck);
 	}
 }
 
@@ -809,13 +873,19 @@ void Application::handleOptionChanged(int identifier, const QVariant &value)
 			}
 
 			break;
+		case SettingsManager::Browser_LocaleOption:
+			setLocale(value.toString());
+
+			break;
 		case SettingsManager::Interface_LockToolBarsOption:
-			emit actionsStateChanged(QVector<int>({ActionsManager::LockToolBarsAction}));
+			emit arbitraryActionsStateChanged({ActionsManager::LockToolBarsAction});
 
 			break;
 		case SettingsManager::Network_WorkOfflineOption:
-			emit actionsStateChanged(QVector<int>({ActionsManager::WorkOfflineAction}));
+			emit arbitraryActionsStateChanged({ActionsManager::WorkOfflineAction});
 
+			break;
+		default:
 			break;
 	}
 }
@@ -830,7 +900,7 @@ void Application::handleAboutToQuit()
 	}
 
 	QStringList clearSettings(SettingsManager::getOption(SettingsManager::History_ClearOnCloseOption).toStringList());
-	clearSettings.removeAll(QString());
+	clearSettings.removeAll({});
 
 	if (!clearSettings.isEmpty())
 	{
@@ -893,9 +963,9 @@ void Application::handleNewConnection()
 
 	if (session.isEmpty())
 	{
-		const MainWindow *window(getWindows().isEmpty() ? nullptr : getWindow());
+		const MainWindow *mainWindow(getWindows().isEmpty() ? nullptr : getWindow());
 
-		if (!window || !SettingsManager::getOption(SettingsManager::Browser_OpenLinksInNewTabOption).toBool() || (isPrivate && !window->isPrivate()))
+		if (!mainWindow || !SettingsManager::getOption(SettingsManager::Browser_OpenLinksInNewTabOption).toBool() || (isPrivate && !mainWindow->isPrivate()))
 		{
 			QVariantMap parameters;
 
@@ -927,12 +997,20 @@ void Application::handleNewConnection()
 		}
 	}
 
-	handlePositionalArguments(&m_commandLineParser);
+	handlePositionalArguments(&m_commandLineParser, true);
 
 	delete socket;
 }
 
-void Application::handlePositionalArguments(QCommandLineParser *parser)
+void Application::handleFocusObjectChanged(QObject *object)
+{
+	if (!object || (object && !object->inherits("QMenu")))
+	{
+		m_nonMenuFocusObject = object;
+	}
+}
+
+void Application::handlePositionalArguments(QCommandLineParser *parser, bool forceOpen)
 {
 	SessionsManager::OpenHints openHints(SessionsManager::DefaultOpen);
 
@@ -953,14 +1031,14 @@ void Application::handlePositionalArguments(QCommandLineParser *parser)
 		openHints = SessionsManager::NewTabOpen;
 	}
 
-	const QStringList urls((openHints == SessionsManager::DefaultOpen || !parser->positionalArguments().isEmpty()) ? parser->positionalArguments() : QStringList(QString()));
+	const QStringList urls((openHints == SessionsManager::DefaultOpen || !parser->positionalArguments().isEmpty()) ? parser->positionalArguments() : QStringList({}));
 
-	if (urls.isEmpty())
+	if (!forceOpen && urls.isEmpty())
 	{
 		return;
 	}
 
-	MainWindow *window(nullptr);
+	MainWindow *mainWindow(nullptr);
 
 	if (openHints.testFlag(SessionsManager::NewWindowOpen))
 	{
@@ -971,33 +1049,67 @@ void Application::handlePositionalArguments(QCommandLineParser *parser)
 			parameters[QLatin1String("hints")] = SessionsManager::PrivateOpen;
 		}
 
-		for (int i = 0; i < urls.count(); ++i)
+		if (urls.isEmpty())
 		{
-			window = createWindow(parameters);
-
-			if (!urls.at(i).isEmpty())
+			mainWindow = createWindow(parameters);
+		}
+		else
+		{
+			for (int i = 0; i < urls.count(); ++i)
 			{
-				window->openUrl(urls.at(i));
+				mainWindow = createWindow(parameters);
+
+				if (!urls.at(i).isEmpty())
+				{
+					mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), urls.at(i)}, {QLatin1String("needsInterpretation"), true}});
+				}
 			}
 		}
 	}
 	else
 	{
-		window = getWindow();
+		mainWindow = getWindow();
 
-		if (window)
+		if (mainWindow)
 		{
-			for (int i = 0; i < urls.count(); ++i)
+			if (mainWindow->isSessionRestored())
 			{
-				window->openUrl(urls.at(i), openHints.testFlag(SessionsManager::PrivateOpen));
+				if (urls.isEmpty())
+				{
+					mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("hints"), QVariant(openHints)}});
+				}
+				else
+				{
+					for (int i = 0; i < urls.count(); ++i)
+					{
+						mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), urls.at(i)}, {QLatin1String("needsInterpretation"), true}, {QLatin1String("hints"), QVariant(openHints)}});
+					}
+				}
+			}
+			else
+			{
+				connect(mainWindow, &MainWindow::sessionRestored, [=]()
+				{
+					if (urls.isEmpty())
+					{
+						mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("hints"), QVariant(openHints)}});
+					}
+					else
+					{
+						for (int i = 0; i < urls.count(); ++i)
+						{
+							mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), urls.at(i)}, {QLatin1String("needsInterpretation"), true}, {QLatin1String("hints"), QVariant(openHints)}});
+						}
+					}
+				});
 			}
 		}
 	}
 
-	if (window)
+	if (mainWindow)
 	{
-		window->raise();
-		window->activateWindow();
+		mainWindow->raise();
+		mainWindow->activateWindow();
 
 		if (m_isHidden)
 		{
@@ -1005,30 +1117,28 @@ void Application::handlePositionalArguments(QCommandLineParser *parser)
 		}
 		else
 		{
-			window->raiseWindow();
+			mainWindow->raiseWindow();
 		}
 	}
 }
 
-void Application::handleUpdateCheckResult(const QVector<UpdateChecker::UpdateInformation> &availableUpdates)
+void Application::handleUpdateCheckResult(const QVector<UpdateChecker::UpdateInformation> &availableUpdates, int latestVersionIndex)
 {
 	if (availableUpdates.isEmpty())
 	{
 		return;
 	}
 
-	const int latestVersion(availableUpdates.count() - 1);
-
 	if (SettingsManager::getOption(SettingsManager::Updates_AutomaticInstallOption).toBool())
 	{
-		new Updater(availableUpdates.at(latestVersion), this);
+		new Updater(availableUpdates.at(latestVersionIndex), this);
 	}
 	else
 	{
-		Notification *notification(NotificationsManager::createNotification(NotificationsManager::UpdateAvailableEvent, tr("New update %1 from %2 channel is available!").arg(availableUpdates.at(latestVersion).version).arg(availableUpdates.at(latestVersion).channel)));
+		Notification *notification(NotificationsManager::createNotification(NotificationsManager::UpdateAvailableEvent, tr("New update %1 from %2 channel is available!").arg(availableUpdates.at(latestVersionIndex).version).arg(availableUpdates.at(latestVersionIndex).channel)));
 		notification->setData(QVariant::fromValue<QVector<UpdateChecker::UpdateInformation> >(availableUpdates));
 
-		connect(notification, SIGNAL(clicked()), this, SLOT(showUpdateDetails()));
+		connect(notification, &Notification::clicked, this, &Application::showUpdateDetails);
 	}
 }
 
@@ -1100,44 +1210,44 @@ void Application::setLocale(const QString &locale)
 	QLocale::setDefault(Utils::createLocale(identifier));
 }
 
-MainWindow* Application::createWindow(const QVariantMap &parameters, const SessionMainWindow &windows)
+MainWindow* Application::createWindow(const QVariantMap &parameters, const SessionMainWindow &session)
 {
-	MainWindow *window(new MainWindow(parameters, windows));
+	MainWindow *mainWindow(new MainWindow(parameters, session));
 
-	m_windows.prepend(window);
+	m_windows.prepend(mainWindow);
 
-	const bool inBackground(SessionsManager::calculateOpenHints(parameters).testFlag(SessionsManager::BackgroundOpen));
+	const bool inBackground(parameters.contains(QLatin1String("hints")) ? SessionsManager::calculateOpenHints(parameters).testFlag(SessionsManager::BackgroundOpen) : false);
 
 	if (inBackground)
 	{
-		window->setAttribute(Qt::WA_ShowWithoutActivating, true);
+		mainWindow->setAttribute(Qt::WA_ShowWithoutActivating, true);
 	}
 	else
 	{
-		m_activeWindow = window;
+		m_activeWindow = mainWindow;
 	}
 
-	window->show();
+	mainWindow->show();
 
 	if (inBackground)
 	{
-		window->lower();
-		window->setAttribute(Qt::WA_ShowWithoutActivating, false);
+		mainWindow->lower();
+		mainWindow->setAttribute(Qt::WA_ShowWithoutActivating, false);
 	}
 
 	if (parameters.contains(QLatin1String("url")))
 	{
-		window->openUrl(parameters[QLatin1String("url")].toString());
+		mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), parameters[QLatin1String("url")].toString()}, {QLatin1String("needsInterpretation"), true}});
 	}
 
-	emit m_instance->windowAdded(window);
+	emit m_instance->windowAdded(mainWindow);
 
-	connect(window, &MainWindow::activated, [&](MainWindow *window)
+	connect(mainWindow, &MainWindow::activated, [=]()
 	{
-		m_activeWindow = window;
+		m_activeWindow = mainWindow;
 	});
 
-	return window;
+	return mainWindow;
 }
 
 Application* Application::getInstance()
@@ -1160,9 +1270,21 @@ MainWindow* Application::getActiveWindow()
 	return m_activeWindow;
 }
 
+QObject* Application::getFocusObject(bool ignoreMenus)
+{
+	return (ignoreMenus ? m_nonMenuFocusObject.data() : focusObject());
+}
+
 Style* Application::getStyle()
 {
-	return qobject_cast<Style*>(QApplication::style());
+	Style *style(qobject_cast<Style*>(QApplication::style()));
+
+	if (style)
+	{
+		return style;
+	}
+
+	return QApplication::style()->findChild<Style*>();
 }
 
 PlatformIntegration* Application::getPlatformIntegration()
@@ -1335,6 +1457,7 @@ ActionsManager::ActionDefinition::State Application::getActionState(int identifi
 
 	switch (definition.scope)
 	{
+		case ActionsManager::ActionDefinition::EditorScope:
 		case ActionsManager::ActionDefinition::WindowScope:
 		case ActionsManager::ActionDefinition::MainWindowScope:
 			if (m_activeWindow)
@@ -1353,6 +1476,62 @@ ActionsManager::ActionDefinition::State Application::getActionState(int identifi
 
 	switch (identifier)
 	{
+		case ActionsManager::RunMacroAction:
+			state.isEnabled = parameters.contains(QLatin1String("actions"));
+
+			break;
+		case ActionsManager::SetOptionAction:
+			if (!parameters.isEmpty())
+			{
+				const QString mode(parameters.value(QLatin1String("mode"), QLatin1String("set")).toString());
+				const QString host(parameters.value(QLatin1String("host")).toString());
+				const QString name(parameters.value(QLatin1String("option")).toString());
+
+				state.isEnabled = true;
+
+				if (mode == QLatin1String("set"))
+				{
+					if (host.isEmpty())
+					{
+						state.text = QCoreApplication::translate("actions", "Set %1").arg(name);
+					}
+					else
+					{
+						state.text = QCoreApplication::translate("actions", "Set %1 for %2").arg(name).arg(host);
+					}
+				}
+				else if (mode == QLatin1String("reset"))
+				{
+					if (host.isEmpty())
+					{
+						state.text = QCoreApplication::translate("actions", "Reset %1").arg(name);
+					}
+					else
+					{
+						state.text = QCoreApplication::translate("actions", "Reset %1 for %2").arg(name).arg(host);
+					}
+				}
+				else if (mode == QLatin1String("toggle"))
+				{
+					if (SettingsManager::getOptionDefinition(SettingsManager::getOptionIdentifier(name)).type == SettingsManager::BooleanType)
+					{
+						if (host.isEmpty())
+						{
+							state.text = QCoreApplication::translate("actions", "Toggle %1").arg(name);
+						}
+						else
+						{
+							state.text = QCoreApplication::translate("actions", "Toggle %1 for %2").arg(name).arg(host);
+						}
+					}
+					else
+					{
+						state.isEnabled = false;
+					}
+				}
+			}
+
+			break;
 		case ActionsManager::ReopenWindowAction:
 			if (!SessionsManager::getClosedWindows().isEmpty())
 			{

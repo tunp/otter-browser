@@ -35,16 +35,10 @@ namespace Otter
 {
 
 HtmlBookmarksImporter::HtmlBookmarksImporter(QObject *parent) : BookmarksImporter(parent),
-	m_optionsWidget(nullptr)
+	m_optionsWidget(nullptr),
+	m_currentAmount(0),
+	m_totalAmount(-1)
 {
-}
-
-HtmlBookmarksImporter::~HtmlBookmarksImporter()
-{
-	if (m_optionsWidget)
-	{
-		m_optionsWidget->deleteLater();
-	}
 }
 
 #ifdef OTTER_ENABLE_QTWEBKIT
@@ -57,6 +51,10 @@ void HtmlBookmarksImporter::processElement(const QWebElement &element)
 		if (entryElement.tagName().toLower() == QLatin1String("hr"))
 		{
 			BookmarksManager::addBookmark(BookmarksModel::SeparatorBookmark, {}, getCurrentFolder());
+
+			++m_currentAmount;
+
+			emit importProgress(BookmarksImport, m_totalAmount, m_currentAmount);
 		}
 		else
 		{
@@ -138,6 +136,10 @@ void HtmlBookmarksImporter::processElement(const QWebElement &element)
 
 				BookmarksItem *bookmark(BookmarksManager::addBookmark(type, metaData, getCurrentFolder()));
 
+				++m_currentAmount;
+
+				emit importProgress(BookmarksImport, m_totalAmount, m_currentAmount);
+
 				if (type == BookmarksModel::FolderBookmark)
 				{
 					setCurrentFolder(bookmark);
@@ -160,11 +162,11 @@ void HtmlBookmarksImporter::processElement(const QWebElement &element)
 }
 #endif
 
-QWidget* HtmlBookmarksImporter::getOptionsWidget()
+QWidget* HtmlBookmarksImporter::createOptionsWidget(QWidget *parent)
 {
 	if (!m_optionsWidget)
 	{
-		m_optionsWidget = new BookmarksImporterWidget();
+		m_optionsWidget = new BookmarksImporterWidget(parent);
 	}
 
 	return m_optionsWidget;
@@ -172,12 +174,12 @@ QWidget* HtmlBookmarksImporter::getOptionsWidget()
 
 QString HtmlBookmarksImporter::getTitle() const
 {
-	return QString(tr("HTML Bookmarks"));
+	return tr("HTML Bookmarks");
 }
 
 QString HtmlBookmarksImporter::getDescription() const
 {
-	return QString(tr("Imports bookmarks from HTML file (Netscape format)."));
+	return tr("Imports bookmarks from HTML file (Netscape format).");
 }
 
 QString HtmlBookmarksImporter::getVersion() const
@@ -222,7 +224,7 @@ QDateTime HtmlBookmarksImporter::getDateTime(const QWebElement &element, const Q
 
 QStringList HtmlBookmarksImporter::getFileFilters() const
 {
-	return QStringList(tr("HTML files (*.htm *.html)"));
+	return {tr("HTML files (*.htm *.html)")};
 }
 
 bool HtmlBookmarksImporter::import(const QString &path)
@@ -232,6 +234,8 @@ bool HtmlBookmarksImporter::import(const QString &path)
 
 	if (!file.open(QIODevice::ReadOnly))
 	{
+		emit importFinished(BookmarksImport, FailedImport, 0);
+
 		return false;
 	}
 
@@ -248,7 +252,7 @@ bool HtmlBookmarksImporter::import(const QString &path)
 		}
 		else
 		{
-			setAllowDuplicates(m_optionsWidget->allowDuplicates());
+			setAllowDuplicates(m_optionsWidget->areDuplicatesAllowed());
 			setImportFolder(m_optionsWidget->getTargetFolder());
 		}
 	}
@@ -257,11 +261,17 @@ bool HtmlBookmarksImporter::import(const QString &path)
 	page.settings()->setAttribute(QWebSettings::JavascriptEnabled, false);
 	page.mainFrame()->setHtml(file.readAll());
 
+	m_totalAmount = page.mainFrame()->findAllElements(QLatin1String("dt, hr")).count();
+
+	emit importStarted(BookmarksImport, m_totalAmount);
+
 	BookmarksManager::getModel()->beginImport(getImportFolder(), page.mainFrame()->findAllElements(QLatin1String("a[href]")).count(), page.mainFrame()->findAllElements(QLatin1String("a[shortcuturl]")).count());
 
 	processElement(page.mainFrame()->documentElement().findFirst(QLatin1String("dl")));
 
 	BookmarksManager::getModel()->endImport();
+
+	emit importFinished(BookmarksImport, SuccessfullImport, m_totalAmount);
 
 	file.close();
 

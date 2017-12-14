@@ -1,7 +1,7 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
 * Copyright (C) 2015 Jan Bajer aka bajasoft <jbajer@gmail.com>
-* Copyright (C) 2015 - 2016 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -29,14 +29,15 @@
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QBoxLayout>
 #include <QtWidgets/QDesktopWidget>
-#include <QtWidgets/QStyleOptionFrame>
+#include <QtWidgets/QStyleOption>
 
 namespace Otter
 {
 
 NotificationDialog::NotificationDialog(Notification *notification, QWidget *parent) : QDialog(parent),
 	m_notification(notification),
-	m_closeLabel(nullptr)
+	m_closeLabel(nullptr),
+	m_closeTimer(0)
 {
 	QFrame *notificationFrame(new QFrame(this));
 	notificationFrame->setObjectName(QLatin1String("notificationFrame"));
@@ -93,8 +94,9 @@ NotificationDialog::NotificationDialog(Notification *notification, QWidget *pare
 	setWindowOpacity(0);
 	setWindowFlags(Qt::WindowStaysOnTopHint | Qt::Tool | Qt::FramelessWindowHint);
 	setFocusPolicy(Qt::NoFocus);
-	setAttribute(Qt::WA_ShowWithoutActivating);
-	setAttribute(Qt::WA_TranslucentBackground);
+	setAttribute(Qt::WA_DeleteOnClose, true);
+	setAttribute(Qt::WA_ShowWithoutActivating, true);
+	setAttribute(Qt::WA_TranslucentBackground, true);
 	adjustSize();
 
 	m_animation = new QPropertyAnimation(this, QStringLiteral("windowOpacity").toLatin1());
@@ -107,15 +109,29 @@ NotificationDialog::NotificationDialog(Notification *notification, QWidget *pare
 
 	if (visibilityDuration > 0)
 	{
-		QTimer::singleShot((visibilityDuration * 1000), this, SLOT(aboutToClose()));
+		m_closeTimer = startTimer(visibilityDuration * 1000);
 	}
 }
 
-void NotificationDialog::closeEvent(QCloseEvent *event)
+void NotificationDialog::timerEvent(QTimerEvent *event)
 {
-	deleteLater();
+	if (event->timerId() == m_closeTimer)
+	{
+		killTimer(m_closeTimer);
 
-	event->accept();
+		m_closeTimer = 0;
+
+		m_animation->setStartValue(1.0);
+		m_animation->setEndValue(0.0);
+		m_animation->start();
+
+		connect(m_animation, &QPropertyAnimation::finished, this, [&]()
+		{
+			m_notification->markAsIgnored();
+
+			close();
+		});
+	}
 }
 
 void NotificationDialog::resizeEvent(QResizeEvent *event)
@@ -129,22 +145,6 @@ void NotificationDialog::resizeEvent(QResizeEvent *event)
 	setGeometry(QStyle::alignedRect(Qt::LeftToRight, (Qt::AlignBottom | Qt::AlignRight), size(), geometry));
 }
 
-void NotificationDialog::aboutToClose()
-{
-	m_animation->setStartValue(1.0);
-	m_animation->setEndValue(0.0);
-	m_animation->start();
-
-	connect(m_animation, SIGNAL(finished()), this, SLOT(clean()));
-}
-
-void NotificationDialog::clean()
-{
-	m_notification->markIgnored();
-
-	close();
-}
-
 bool NotificationDialog::eventFilter(QObject *object, QEvent *event)
 {
 	if (event->type() == QEvent::MouseButtonPress)
@@ -153,20 +153,18 @@ bool NotificationDialog::eventFilter(QObject *object, QEvent *event)
 
 		if (mouseEvent && mouseEvent->button() == Qt::LeftButton)
 		{
+			m_animation->stop();
+
 			if (object == m_closeLabel)
 			{
-				m_notification->markIgnored();
-
-				m_animation->stop();
+				m_notification->markAsIgnored();
 
 				close();
 
 				return true;
 			}
 
-			m_notification->markClicked();
-
-			m_animation->stop();
+			m_notification->markAsClicked();
 
 			close();
 		}

@@ -22,7 +22,8 @@
 #define OTTER_OPENADDRESSDIALOG_H
 
 #include "Dialog.h"
-#include "../core/SessionsManager.h"
+#include "../core/ActionExecutor.h"
+#include "../core/InputInterpreter.h"
 
 namespace Otter
 {
@@ -34,17 +35,17 @@ namespace Ui
 
 class AddressWidget;
 class BookmarksItem;
-class InputInterpreter;
 
 class OpenAddressDialog final : public Dialog
 {
 	Q_OBJECT
 
 public:
-	explicit OpenAddressDialog(QWidget *parent = nullptr);
+	explicit OpenAddressDialog(ActionExecutor::Object executor, QWidget *parent = nullptr);
 	~OpenAddressDialog();
 
 	void setText(const QString &text);
+	InputInterpreter::InterpreterResult getResult() const;
 
 protected:
 	void changeEvent(QEvent *event) override;
@@ -55,13 +56,9 @@ protected slots:
 
 private:
 	AddressWidget *m_addressWidget;
-	InputInterpreter *m_inputInterpreter;
+	ActionExecutor::Object m_executor;
+	InputInterpreter::InterpreterResult m_result;
 	Ui::OpenAddressDialog *m_ui;
-
-signals:
-	void requestedOpenBookmark(BookmarksItem *bookmark, SessionsManager::OpenHints hints);
-	void requestedLoadUrl(const QUrl &url, SessionsManager::OpenHints hints);
-	void requestedSearch(const QString &query, const QString &searchEngine, SessionsManager::OpenHints hints);
 };
 
 }

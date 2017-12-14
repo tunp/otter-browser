@@ -21,7 +21,9 @@
 #include "OptionWidget.h"
 #include "ColorWidget.h"
 #include "IconWidget.h"
+#include "LineEditWidget.h"
 #include "FilePathWidget.h"
+#include "../core/ThemesManager.h"
 
 #include <QtWidgets/QHBoxLayout>
 
@@ -35,7 +37,7 @@ OptionWidget::OptionWidget(const QVariant &value, SettingsManager::OptionType ty
 	m_iconWidget(nullptr),
 	m_comboBox(nullptr),
 	m_fontComboBox(nullptr),
-	m_lineEdit(nullptr),
+	m_lineEditWidget(nullptr),
 	m_spinBox(nullptr),
 	m_resetButton(nullptr),
 	m_type(type)
@@ -49,7 +51,7 @@ OptionWidget::OptionWidget(const QVariant &value, SettingsManager::OptionType ty
 			m_comboBox->addItem(tr("Yes"), QLatin1String("true"));
 			m_comboBox->setCurrentIndex(value.toBool() ? 1 : 0);
 
-			connect(m_comboBox, SIGNAL(currentTextChanged(QString)), this, SLOT(markAsModified()));
+			connect(m_comboBox, &QComboBox::currentTextChanged, this, &OptionWidget::markAsModified);
 
 			break;
 		case SettingsManager::ColorType:
@@ -57,7 +59,7 @@ OptionWidget::OptionWidget(const QVariant &value, SettingsManager::OptionType ty
 
 			m_colorWidget->setColor(value.value<QColor>());
 
-			connect(m_colorWidget, SIGNAL(colorChanged(QColor)), this, SLOT(markAsModified()));
+			connect(m_colorWidget, &ColorWidget::colorChanged, this, &OptionWidget::markAsModified);
 
 			break;
 		case SettingsManager::EnumerationType:
@@ -65,7 +67,7 @@ OptionWidget::OptionWidget(const QVariant &value, SettingsManager::OptionType ty
 			m_comboBox->addItem(value.toString(), value);
 			m_comboBox->setCurrentIndex(0);
 
-			connect(m_comboBox, SIGNAL(currentTextChanged(QString)), this, SLOT(markAsModified()));
+			connect(m_comboBox, &QComboBox::currentTextChanged, this, &OptionWidget::markAsModified);
 
 			break;
 		case SettingsManager::FontType:
@@ -74,7 +76,7 @@ OptionWidget::OptionWidget(const QVariant &value, SettingsManager::OptionType ty
 			m_fontComboBox->setCurrentFont(QFont(value.toString()));
 			m_fontComboBox->lineEdit()->selectAll();
 
-			connect(m_fontComboBox, SIGNAL(currentFontChanged(QFont)), this, SLOT(markAsModified()));
+			connect(m_fontComboBox, &QFontComboBox::currentFontChanged, this, &OptionWidget::markAsModified);
 
 			break;
 		case SettingsManager::IconType:
@@ -82,14 +84,14 @@ OptionWidget::OptionWidget(const QVariant &value, SettingsManager::OptionType ty
 
 			if (value.type() == QVariant::String)
 			{
-				m_iconWidget->setIcon(value.toString());
+				m_iconWidget->setIcon(ThemesManager::createIcon(value.toString()));
 			}
 			else
 			{
 				m_iconWidget->setIcon(value.value<QIcon>());
 			}
 
-			connect(m_iconWidget, SIGNAL(iconChanged(QIcon)), this, SLOT(markAsModified()));
+			connect(m_iconWidget, &IconWidget::iconChanged, this, &OptionWidget::markAsModified);
 
 			break;
 		case SettingsManager::IntegerType:
@@ -100,7 +102,7 @@ OptionWidget::OptionWidget(const QVariant &value, SettingsManager::OptionType ty
 			m_spinBox->setValue(value.toInt());
 			m_spinBox->selectAll();
 
-			connect(m_spinBox, SIGNAL(valueChanged(int)), this, SLOT(markAsModified()));
+			connect(m_spinBox, static_cast<void(QSpinBox::*)(int)>(&QSpinBox::valueChanged), this, &OptionWidget::markAsModified);
 
 			break;
 		case SettingsManager::PathType:
@@ -109,21 +111,21 @@ OptionWidget::OptionWidget(const QVariant &value, SettingsManager::OptionType ty
 			m_filePathWidget->setPath(value.toString());
 			m_filePathWidget->setSelectFile(false);
 
-			connect(m_filePathWidget, SIGNAL(pathChanged(QString)), this, SLOT(markAsModified()));
+			connect(m_filePathWidget, &FilePathWidget::pathChanged, this, &OptionWidget::markAsModified);
 
 			break;
 		default:
-			m_widget = m_lineEdit = new QLineEdit(((value.type() == QVariant::StringList) ? value.toStringList().join(QLatin1String(", ")) : value.toString()), this);
+			m_widget = m_lineEditWidget = new LineEditWidget(((value.type() == QVariant::StringList) ? value.toStringList().join(QLatin1String(", ")) : value.toString()), this);
 
-			m_lineEdit->setClearButtonEnabled(true);
-			m_lineEdit->selectAll();
+			m_lineEditWidget->setClearButtonEnabled(true);
+			m_lineEditWidget->selectAll();
 
 			if (type == SettingsManager::PasswordType)
 			{
-				m_lineEdit->setEchoMode(QLineEdit::PasswordEchoOnEdit);
+				m_lineEditWidget->setEchoMode(QLineEdit::PasswordEchoOnEdit);
 			}
 
-			connect(m_lineEdit, SIGNAL(textChanged(QString)), this, SLOT(markAsModified()));
+			connect(m_lineEditWidget, &LineEditWidget::textChanged, this, &OptionWidget::markAsModified);
 
 			break;
 	}
@@ -183,7 +185,7 @@ void OptionWidget::setDefaultValue(const QVariant &value)
 		}
 		else
 		{
-			m_iconWidget->setDefaultIcon(value.toString());
+			m_iconWidget->setDefaultIcon(ThemesManager::createIcon(value.toString()));
 		}
 	}
 
@@ -194,7 +196,7 @@ void OptionWidget::setDefaultValue(const QVariant &value)
 
 		layout()->addWidget(m_resetButton);
 
-		connect(m_resetButton, SIGNAL(clicked()), this, SLOT(reset()));
+		connect(m_resetButton, &QPushButton::clicked, this, &OptionWidget::reset);
 	}
 }
 
@@ -220,16 +222,16 @@ void OptionWidget::setValue(const QVariant &value)
 	{
 		if (value.type() == QVariant::String)
 		{
-			m_iconWidget->setIcon(value.toString());
+			m_iconWidget->setIcon(ThemesManager::createIcon(value.toString()));
 		}
 		else
 		{
 			m_iconWidget->setIcon(value.value<QIcon>());
 		}
 	}
-	else if (m_lineEdit)
+	else if (m_lineEditWidget)
 	{
-		m_lineEdit->setText((value.type() == QVariant::StringList) ? value.toStringList().join(QLatin1String(", ")) : value.toString());
+		m_lineEditWidget->setText((value.type() == QVariant::StringList) ? value.toStringList().join(QLatin1String(", ")) : value.toString());
 	}
 	else if (m_spinBox)
 	{
@@ -263,7 +265,7 @@ void OptionWidget::setChoices(const QStringList &choices)
 	setValue(value);
 }
 
-void OptionWidget::setChoices(const QVector<SettingsManager::OptionDefinition::ChoiceDefinition> &choices)
+void OptionWidget::setChoices(const QVector<SettingsManager::OptionDefinition::Choice> &choices)
 {
 	if (!m_comboBox)
 	{
@@ -348,22 +350,22 @@ QVariant OptionWidget::getValue() const
 
 	if (m_iconWidget)
 	{
-		return m_iconWidget->getIcon();
+		return m_iconWidget->icon();
 	}
 
-	if (m_lineEdit)
+	if (m_lineEditWidget)
 	{
-		if (m_lineEdit->text().isEmpty())
+		if (m_lineEditWidget->text().isEmpty())
 		{
-			return QVariant();
+			return {};
 		}
 
 		if (m_type == SettingsManager::ListType)
 		{
-			return m_lineEdit->text().split(QLatin1String(", "), QString::SkipEmptyParts);
+			return m_lineEditWidget->text().split(QLatin1String(", "), QString::SkipEmptyParts);
 		}
 
-		return m_lineEdit->text();
+		return m_lineEditWidget->text();
 	}
 
 	if (m_spinBox)
@@ -371,7 +373,7 @@ QVariant OptionWidget::getValue() const
 		return m_spinBox->value();
 	}
 
-	return QVariant();
+	return {};
 }
 
 }

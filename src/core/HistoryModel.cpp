@@ -22,6 +22,7 @@
 #include "Console.h"
 #include "JsonSettings.h"
 #include "SessionsManager.h"
+#include "ThemesManager.h"
 #include "Utils.h"
 
 #include <QtCore/QFile>
@@ -52,6 +53,31 @@ void HistoryEntryItem::setItemData(const QVariant &value, int role)
 	QStandardItem::setData(value, role);
 }
 
+QString HistoryEntryItem::getTitle() const
+{
+	return (data(HistoryModel::TitleRole).isNull() ? QCoreApplication::translate("Otter::HistoryEntryItem", "(Untitled)") : data(HistoryModel::TitleRole).toString());
+}
+
+QUrl HistoryEntryItem::getUrl() const
+{
+	return data(HistoryModel::UrlRole).toUrl();
+}
+
+QDateTime HistoryEntryItem::getTimeVisited() const
+{
+	return data(HistoryModel::TimeVisitedRole).toDateTime();
+}
+
+QIcon HistoryEntryItem::getIcon() const
+{
+	return (data(Qt::DecorationRole).isNull() ? ThemesManager::createIcon(QLatin1String("text-html")) : data(Qt::DecorationRole).value<QIcon>());
+}
+
+quint64 HistoryEntryItem::getIdentifier() const
+{
+	return data(HistoryModel::IdentifierRole).toULongLong();
+}
+
 HistoryModel::HistoryModel(const QString &path, HistoryType type, QObject *parent) : QStandardItemModel(parent),
 	m_type(type)
 {
@@ -72,7 +98,7 @@ HistoryModel::HistoryModel(const QString &path, HistoryType type, QObject *paren
 	{
 		const QJsonObject entryObject(historyArray.at(i).toObject());
 
-		addEntry(QUrl(entryObject.value(QLatin1String("url")).toString()), entryObject.value(QLatin1String("title")).toString(), QIcon(), QDateTime::fromString(entryObject.value(QLatin1String("time")).toString(), Qt::ISODate));
+		addEntry(QUrl(entryObject.value(QLatin1String("url")).toString()), entryObject.value(QLatin1String("title")).toString(), {}, QDateTime::fromString(entryObject.value(QLatin1String("time")).toString(), Qt::ISODate));
 	}
 
 	setSortRole(TimeVisitedRole);
@@ -137,7 +163,7 @@ void HistoryModel::removeEntry(quint64 identifier)
 		return;
 	}
 
-	const QUrl url(Utils::normalizeUrl(entry->data(UrlRole).toUrl()));
+	const QUrl url(Utils::normalizeUrl(entry->getUrl()));
 
 	if (m_urls.contains(url))
 	{
@@ -173,7 +199,7 @@ HistoryEntryItem* HistoryModel::addEntry(const QUrl &url, const QString &title, 
 		{
 			for (int i = 0; i < m_urls[normalizedUrl].count(); ++i)
 			{
-				removeEntry(m_urls[normalizedUrl][i]->data(IdentifierRole).toULongLong());
+				removeEntry(m_urls[normalizedUrl][i]->getIdentifier());
 			}
 		}
 	}
@@ -334,6 +360,8 @@ bool HistoryModel::setData(const QModelIndex &index, const QVariant &value, int 
 			emit entryModified(entry);
 			emit modelModified();
 
+			break;
+		default:
 			break;
 	}
 

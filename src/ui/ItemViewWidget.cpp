@@ -27,16 +27,18 @@
 #include <QtCore/QTimer>
 #include <QtGui/QDropEvent>
 #include <QtWidgets/QMenu>
+#include <QtWidgets/QToolTip>
 
 namespace Otter
 {
 
 HeaderViewWidget::HeaderViewWidget(Qt::Orientation orientation, QWidget *parent) : QHeaderView(orientation, parent)
 {
+	setMinimumSectionSize(0);
 	setTextElideMode(Qt::ElideRight);
 	setSectionsMovable(true);
 
-	connect(this, SIGNAL(sectionClicked(int)), this, SLOT(toggleSort(int)));
+	connect(this, &HeaderViewWidget::sectionClicked, this, &HeaderViewWidget::handleSectionClicked);
 }
 
 void HeaderViewWidget::showEvent(QShowEvent *event)
@@ -101,27 +103,27 @@ void HeaderViewWidget::contextMenuEvent(QContextMenuEvent *event)
 		visibilityMenu->addSeparator();
 	}
 
-	QActionGroup columnsActionGroup(sortMenu);
-	columnsActionGroup.setExclusive(true);
+	QActionGroup sortActionGroup(sortMenu);
+	sortActionGroup.setExclusive(true);
 
 	for (int i = 0; i < model()->columnCount(); ++i)
 	{
 		const QString title(model()->headerData(i, orientation()).toString().isEmpty() ? tr("(Untitled)") : model()->headerData(i, orientation()).toString());
-		QAction *action(sortMenu->addAction(title));
-		action->setData(i);
-		action->setCheckable(true);
-		action->setChecked(i == sortColumn);
+		QAction *sortAction(sortMenu->addAction(title));
+		sortAction->setData(i);
+		sortAction->setCheckable(true);
+		sortAction->setChecked(i == sortColumn);
 
-		columnsActionGroup.addAction(action);
+		sortActionGroup.addAction(sortAction);
 
 		if (visibilityMenu->isEnabled())
 		{
-			QAction *action(visibilityMenu->addAction(title));
-			action->setData(i);
-			action->setCheckable(true);
-			action->setChecked(!view->isColumnHidden(i));
+			QAction *visibilityAction(visibilityMenu->addAction(title));
+			visibilityAction->setData(i);
+			visibilityAction->setCheckable(true);
+			visibilityAction->setChecked(!view->isColumnHidden(i));
 
-			if (!action->isChecked())
+			if (!visibilityAction->isChecked())
 			{
 				areAllColumnsVisible = false;
 			}
@@ -134,8 +136,8 @@ void HeaderViewWidget::contextMenuEvent(QContextMenuEvent *event)
 		showAllColumnsAction->setEnabled(!areAllColumnsVisible);
 	}
 
-	connect(sortMenu, SIGNAL(triggered(QAction*)), this, SLOT(toggleSort(QAction*)));
-	connect(visibilityMenu, SIGNAL(triggered(QAction*)), this, SLOT(toggleColumnVisibility(QAction*)));
+	connect(sortMenu, &QMenu::triggered, this, &HeaderViewWidget::toggleSort);
+	connect(visibilityMenu, &QMenu::triggered, this, &HeaderViewWidget::toggleColumnVisibility);
 
 	menu.exec(event->globalPos());
 }
@@ -150,42 +152,42 @@ void HeaderViewWidget::toggleColumnVisibility(QAction *action)
 
 void HeaderViewWidget::toggleSort(QAction *action)
 {
-	if (action)
+	const ItemViewWidget *view(qobject_cast<ItemViewWidget*>(parent()));
+
+	if (action && view)
 	{
 		const int value(action->data().toInt());
+		int column(view->getSortColumn());
 
-		if (value == AscendingOrder || value == DescendingOrder)
+		if (column < 0)
 		{
-			const ItemViewWidget *view(qobject_cast<ItemViewWidget*>(parent()));
-
-			if (view)
+			for (int i = 0; i < count(); ++i)
 			{
-				int column(view->getSortColumn());
+				column = logicalIndex(i);
 
-				if (column < 0)
+				if (!isSectionHidden(column))
 				{
-					for (int i = 0; i < count(); ++i)
-					{
-						column = logicalIndex(i);
-
-						if (!isSectionHidden(column))
-						{
-							break;
-						}
-					}
+					break;
 				}
-
-				setSort(column, ((value == AscendingOrder) ? Qt::AscendingOrder : Qt::DescendingOrder));
 			}
+		}
+
+		if (value == AscendingOrder)
+		{
+			setSort(column, Qt::AscendingOrder);
+		}
+		else if (value == DescendingOrder)
+		{
+			setSort(column, Qt::DescendingOrder);
 		}
 		else
 		{
-			toggleSort(value);
+			handleSectionClicked(value);
 		}
 	}
 }
 
-void HeaderViewWidget::toggleSort(int column)
+void HeaderViewWidget::handleSectionClicked(int column)
 {
 	const ItemViewWidget *view(qobject_cast<ItemViewWidget*>(parent()));
 
@@ -215,6 +217,29 @@ void HeaderViewWidget::setSort(int column, Qt::SortOrder order)
 	emit sortChanged(column, order);
 }
 
+bool HeaderViewWidget::viewportEvent(QEvent *event)
+{
+	if (event->type() == QEvent::ToolTip && model())
+	{
+		const QHelpEvent *helpEvent(static_cast<QHelpEvent*>(event));
+		const int column(logicalIndexAt(helpEvent->pos()));
+
+		if (column >= 0)
+		{
+			const QString text(model()->headerData(column, orientation(), Qt::DisplayRole).toString());
+
+			if (!text.isEmpty())
+			{
+				QToolTip::showText(helpEvent->globalPos(), text, this);
+
+				return true;
+			}
+		}
+	}
+
+	return QHeaderView::viewportEvent(event);
+}
+
 ItemViewWidget::ItemViewWidget(QWidget *parent) : QTreeView(parent),
 	m_headerWidget(new HeaderViewWidget(Qt::Horizontal, this)),
 	m_sourceModel(nullptr),
@@ -223,7 +248,6 @@ ItemViewWidget::ItemViewWidget(QWidget *parent) : QTreeView(parent),
 	m_sortOrder(Qt::AscendingOrder),
 	m_sortColumn(-1),
 	m_dragRow(-1),
-	m_dropRow(-1),
 	m_canGatherExpanded(false),
 	m_isExclusive(false),
 	m_isModified(false),
@@ -239,11 +263,10 @@ ItemViewWidget::ItemViewWidget(QWidget *parent) : QTreeView(parent),
 
 	viewport()->setAcceptDrops(true);
 
-	connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int,QVariant)));
-	connect(this, SIGNAL(sortChanged(int,Qt::SortOrder)), m_headerWidget, SLOT(setSort(int,Qt::SortOrder)));
-	connect(m_headerWidget, SIGNAL(sortChanged(int,Qt::SortOrder)), this, SLOT(setSort(int,Qt::SortOrder)));
-	connect(m_headerWidget, SIGNAL(columnVisibilityChanged(int,bool)), this, SLOT(setColumnVisibility(int,bool)));
-	connect(m_headerWidget, SIGNAL(sectionMoved(int,int,int)), this, SLOT(saveState()));
+	connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &ItemViewWidget::handleOptionChanged);
+	connect(m_headerWidget, &HeaderViewWidget::sortChanged, this, &ItemViewWidget::setSort);
+	connect(m_headerWidget, &HeaderViewWidget::columnVisibilityChanged, this, &ItemViewWidget::setColumnVisibility);
+	connect(m_headerWidget, &HeaderViewWidget::sectionMoved, this, &ItemViewWidget::saveState);
 }
 
 void ItemViewWidget::showEvent(QShowEvent *event)
@@ -292,7 +315,7 @@ void ItemViewWidget::keyPressEvent(QKeyEvent *event)
 
 		if (newIndex.isValid())
 		{
-			QItemSelectionModel::SelectionFlags command(selectionCommand(newIndex, event));
+			const QItemSelectionModel::SelectionFlags command(selectionCommand(newIndex, event));
 
 			if (command != QItemSelectionModel::NoUpdate || style()->styleHint(QStyle::SH_ItemView_MovementWithoutUpdatingSelection, nullptr, this))
 			{
@@ -333,21 +356,24 @@ void ItemViewWidget::dropEvent(QDropEvent *event)
 
 	event->accept();
 
-	m_dropRow = indexAt(event->pos()).row();
+	int dropRow(indexAt(event->pos()).row());
 
-	if (m_dragRow <= m_dropRow)
+	if (dropRow > m_dragRow)
 	{
-		--m_dropRow;
+		--dropRow;
 	}
 
 	if (dropIndicatorPosition() == QAbstractItemView::BelowItem)
 	{
-		++m_dropRow;
+		++dropRow;
 	}
 
 	markAsModified();
 
-	QTimer::singleShot(50, this, SLOT(updateDropSelection()));
+	QTimer::singleShot(0, this, [=]()
+	{
+		setCurrentIndex(getIndex(qBound(0, dropRow, getRowCount()), 0));
+	});
 }
 
 void ItemViewWidget::startDrag(Qt::DropActions supportedActions)
@@ -372,6 +398,51 @@ void ItemViewWidget::ensureInitialized()
 		return;
 	}
 
+	if (m_headerWidget)
+	{
+		int maximumSectionWidth(0);
+		int minimumTotalWidth(0);
+		QVector<int> widestSections;
+
+		for (int i = 0; i < m_headerWidget->count(); ++i)
+		{
+			const QSize size(model()->headerData(i, Qt::Horizontal, Qt::SizeHintRole).toSize());
+
+			if (size.isValid())
+			{
+				m_headerWidget->resizeSection(i, size.width());
+
+				if (size.width() > maximumSectionWidth)
+				{
+					widestSections.clear();
+					widestSections.append(i);
+
+					maximumSectionWidth = size.width();
+				}
+				else if (size.width() == maximumSectionWidth)
+				{
+					widestSections.append(i);
+				}
+
+				minimumTotalWidth += size.width();
+			}
+			else
+			{
+				minimumTotalWidth += m_headerWidget->defaultSectionSize();
+			}
+		}
+
+		if (!widestSections.isEmpty() && minimumTotalWidth < m_headerWidget->width())
+		{
+			const int sectionWidth((m_headerWidget->width() - minimumTotalWidth) / widestSections.count());
+
+			for (int i = 0; i < widestSections.count(); ++i)
+			{
+				m_headerWidget->resizeSection(widestSections.at(i), (m_headerWidget->sectionSize(widestSections.at(i)) + sectionWidth));
+			}
+		}
+	}
+
 	IniSettings settings(SessionsManager::getReadableDataPath(QLatin1String("views.ini")));
 	settings.beginGroup(type);
 
@@ -387,15 +458,17 @@ void ItemViewWidget::ensureInitialized()
 			setColumnHidden(i, true);
 		}
 
-		disconnect(m_headerWidget, SIGNAL(sectionMoved(int,int,int)), this, SLOT(saveState()));
+		disconnect(m_headerWidget, &HeaderViewWidget::sectionMoved, this, &ItemViewWidget::saveState);
 
 		for (int i = 0; i < columns.count(); ++i)
 		{
-			setColumnHidden(columns[i].toInt(), false);
+			const int column(columns[i].toInt());
+
+			setColumnHidden(column, false);
 
 			if (m_headerWidget)
 			{
-				m_headerWidget->moveSection(m_headerWidget->visualIndex(columns[i].toInt()), i);
+				m_headerWidget->moveSection(m_headerWidget->visualIndex(column), i);
 
 				if (m_headerWidget->sectionResizeMode(i) == QHeaderView::Stretch)
 				{
@@ -404,7 +477,7 @@ void ItemViewWidget::ensureInitialized()
 			}
 		}
 
-		connect(m_headerWidget, SIGNAL(sectionMoved(int,int,int)), this, SLOT(saveState()));
+		connect(m_headerWidget, &HeaderViewWidget::sectionMoved, this, &ItemViewWidget::saveState);
 	}
 
 	if (shouldStretchLastSection)
@@ -447,7 +520,6 @@ void ItemViewWidget::moveRow(bool up)
 
 		setCurrentIndex(getIndex(destinationRow, 0));
 		notifySelectionChanged();
-
 		markAsModified();
 	}
 }
@@ -492,11 +564,6 @@ void ItemViewWidget::insertRow(const QList<QStandardItem*> &items)
 	}
 
 	markAsModified();
-}
-
-void ItemViewWidget::insertRow(QStandardItem *item)
-{
-	insertRow(QList<QStandardItem*>({item}));
 }
 
 void ItemViewWidget::removeRow()
@@ -596,13 +663,6 @@ void ItemViewWidget::notifySelectionChanged()
 	emit needsActionsUpdate();
 }
 
-void ItemViewWidget::updateDropSelection()
-{
-	setCurrentIndex(getIndex(qBound(0, m_dropRow, getRowCount()), 0));
-
-	m_dropRow = -1;
-}
-
 void ItemViewWidget::updateFilter()
 {
 	for (int i = 0; i < getRowCount(); ++i)
@@ -621,9 +681,32 @@ void ItemViewWidget::setSort(int column, Qt::SortOrder order)
 	m_sortColumn = column;
 	m_sortOrder = order;
 
+	const int sortRole(m_proxyModel ? m_proxyModel->sortRole() : (m_sourceModel ? m_sourceModel->sortRole() : Qt::DisplayRole));
+
+	if (m_sortRoleMapping.contains(column))
+	{
+		if (m_proxyModel)
+		{
+			m_proxyModel->setSortRole(m_sortRoleMapping[column]);
+		}
+		else if (m_sourceModel)
+		{
+			m_sourceModel->setSortRole(m_sortRoleMapping[column]);
+		}
+	}
+
 	sortByColumn(column, order);
 	update();
 	saveState();
+
+	if (m_proxyModel)
+	{
+		m_proxyModel->setSortRole(sortRole);
+	}
+	else if (m_sourceModel)
+	{
+		m_sourceModel->setSortRole(sortRole);
+	}
 
 	emit sortChanged(column, order);
 }
@@ -661,9 +744,9 @@ void ItemViewWidget::setFilterString(const QString filter)
 
 	if (m_filterString.isEmpty())
 	{
-		connect(model(), SIGNAL(rowsInserted(QModelIndex,int,int)), this, SLOT(updateFilter()));
-		connect(model(), SIGNAL(rowsMoved(QModelIndex,int,int,QModelIndex,int)), this, SLOT(updateFilter()));
-		connect(model(), SIGNAL(rowsRemoved(QModelIndex,int,int)), this, SLOT(updateFilter()));
+		connect(model(), &QAbstractItemModel::rowsInserted, this, &ItemViewWidget::updateFilter);
+		connect(model(), &QAbstractItemModel::rowsMoved, this, &ItemViewWidget::updateFilter);
+		connect(model(), &QAbstractItemModel::rowsRemoved, this, &ItemViewWidget::updateFilter);
 	}
 
 	m_canGatherExpanded = m_filterString.isEmpty();
@@ -675,9 +758,9 @@ void ItemViewWidget::setFilterString(const QString filter)
 	{
 		m_expandedBranches.clear();
 
-		disconnect(model(), SIGNAL(rowsInserted(QModelIndex,int,int)), this, SLOT(updateFilter()));
-		disconnect(model(), SIGNAL(rowsMoved(QModelIndex,int,int,QModelIndex,int)), this, SLOT(updateFilter()));
-		disconnect(model(), SIGNAL(rowsRemoved(QModelIndex,int,int)), this, SLOT(updateFilter()));
+		disconnect(model(), &QAbstractItemModel::rowsInserted, this, &ItemViewWidget::updateFilter);
+		disconnect(model(), &QAbstractItemModel::rowsMoved, this, &ItemViewWidget::updateFilter);
+		disconnect(model(), &QAbstractItemModel::rowsRemoved, this, &ItemViewWidget::updateFilter);
 	}
 }
 
@@ -740,16 +823,21 @@ void ItemViewWidget::setModel(QAbstractItemModel *model, bool useSortProxy)
 
 	if (m_sourceModel)
 	{
-		connect(m_sourceModel, SIGNAL(itemChanged(QStandardItem*)), this, SLOT(notifySelectionChanged()));
+		connect(m_sourceModel, &QStandardItemModel::itemChanged, this, &ItemViewWidget::notifySelectionChanged);
 	}
 
 	emit needsActionsUpdate();
 
-	connect(selectionModel(), SIGNAL(selectionChanged(QItemSelection,QItemSelection)), this, SLOT(notifySelectionChanged()));
-	connect(model, SIGNAL(dataChanged(QModelIndex,QModelIndex)), this, SLOT(markAsModified()));
-	connect(model, SIGNAL(rowsInserted(QModelIndex,int,int)), this, SLOT(markAsModified()));
-	connect(model, SIGNAL(rowsRemoved(QModelIndex,int,int)), this, SLOT(markAsModified()));
-	connect(model, SIGNAL(rowsMoved(QModelIndex,int,int,QModelIndex,int)), this, SLOT(markAsModified()));
+	connect(selectionModel(), &QItemSelectionModel::selectionChanged, this, &ItemViewWidget::notifySelectionChanged);
+	connect(model, &QAbstractItemModel::dataChanged, this, &ItemViewWidget::markAsModified);
+	connect(model, &QAbstractItemModel::rowsInserted, this, &ItemViewWidget::markAsModified);
+	connect(model, &QAbstractItemModel::rowsRemoved, this, &ItemViewWidget::markAsModified);
+	connect(model, &QAbstractItemModel::rowsMoved, this, &ItemViewWidget::markAsModified);
+}
+
+void ItemViewWidget::setSortRoleMapping(const QMap<int, int> &mapping)
+{
+	m_sortRoleMapping = mapping;
 }
 
 void ItemViewWidget::setViewMode(ItemViewWidget::ViewMode mode)
@@ -795,7 +883,7 @@ QModelIndex ItemViewWidget::getCheckedIndex(const QModelIndex &parent) const
 {
 	if (!m_isExclusive || !m_sourceModel)
 	{
-		return QModelIndex();
+		return {};
 	}
 
 	for (int i = 0; i < m_sourceModel->rowCount(parent); ++i)
@@ -815,14 +903,14 @@ QModelIndex ItemViewWidget::getCheckedIndex(const QModelIndex &parent) const
 		}
 	}
 
-	return QModelIndex();
+	return {};
 }
 
 QModelIndex ItemViewWidget::getCurrentIndex(int column) const
 {
 	if (!selectionModel() || !selectionModel()->hasSelection())
 	{
-		return QModelIndex();
+		return {};
 	}
 
 	if (column >= 0)
@@ -937,7 +1025,9 @@ bool ItemViewWidget::applyFilter(const QModelIndex &index)
 
 			for (iterator = m_filterRoles.begin(); iterator != m_filterRoles.end(); ++iterator)
 			{
-				if (childIndex.data(*iterator).toString().contains(m_filterString, Qt::CaseInsensitive))
+				const QVariant roleData(childIndex.data(*iterator));
+
+				if (!roleData.isNull() && roleData.toString().contains(m_filterString, Qt::CaseInsensitive))
 				{
 					hasFound = true;
 

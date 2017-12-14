@@ -54,7 +54,7 @@ ClearHistoryDialog::ClearHistoryDialog(const QStringList &clearSettings, bool co
 		m_ui->buttonBox->button(QDialogButtonBox::Ok)->setText(tr("Clear Now"));
 		m_ui->periodSpinBox->setValue(SettingsManager::getOption(SettingsManager::History_ManualClearPeriodOption).toInt());
 
-		connect(this, SIGNAL(accepted()), this, SLOT(clearHistory()));
+		connect(this, &ClearHistoryDialog::accepted, this, &ClearHistoryDialog::clearHistory);
 	}
 
 	m_ui->clearBrowsingHistoryCheckBox->setChecked(settings.contains(QLatin1String("browsing")));
@@ -86,7 +86,7 @@ void ClearHistoryDialog::clearHistory()
 {
 	if (m_ui->clearBrowsingHistoryCheckBox->isChecked())
 	{
-		HistoryManager::clearHistory(m_ui->periodSpinBox->value());
+		HistoryManager::clearHistory(static_cast<uint>(m_ui->periodSpinBox->value()));
 	}
 
 	if (m_ui->clearCookiesCheckBox->isChecked())

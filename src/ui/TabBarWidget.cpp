@@ -29,6 +29,7 @@
 #include "Window.h"
 #include "../core/Application.h"
 #include "../core/GesturesManager.h"
+#include "../core/InputInterpreter.h"
 #include "../core/SettingsManager.h"
 #include "../core/ThemesManager.h"
 
@@ -53,7 +54,7 @@ namespace Otter
 {
 
 QIcon TabHandleWidget::m_lockedIcon;
-Animation* TabHandleWidget::m_loadingAnimation(nullptr);
+Animation* TabHandleWidget::m_spinnerAnimation(nullptr);
 bool TabBarWidget::m_areThumbnailsEnabled(true);
 bool TabBarWidget::m_isLayoutReversed(false);
 bool TabBarWidget::m_isCloseButtonEnabled(true);
@@ -63,6 +64,7 @@ TabHandleWidget::TabHandleWidget(Window *window, TabBarWidget *parent) : QWidget
 	m_window(window),
 	m_tabBarWidget(parent),
 	m_dragTimer(0),
+	m_isActiveWindow(false),
 	m_isCloseButtonUnderMouse(false),
 	m_wasCloseButtonPressed(false)
 {
@@ -70,14 +72,13 @@ TabHandleWidget::TabHandleWidget(Window *window, TabBarWidget *parent) : QWidget
 	setAcceptDrops(true);
 	setMouseTracking(true);
 
-	connect(window, SIGNAL(activated()), this, SLOT(markAsActive()));
-	connect(window, SIGNAL(needsAttention()), this, SLOT(markAsNeedingAttention()));
-	connect(window, SIGNAL(titleChanged(QString)), this, SLOT(update()));
-	connect(window, SIGNAL(iconChanged(QIcon)), this, SLOT(update()));
-	connect(window, SIGNAL(loadingStateChanged(WebWidget::LoadingState)), this, SLOT(handleLoadingStateChanged(WebWidget::LoadingState)));
-	connect(parent, SIGNAL(currentChanged(int)), this, SLOT(updateGeometries()));
-	connect(parent, SIGNAL(tabsAmountChanged(int)), this, SLOT(updateGeometries()));
-	connect(parent, SIGNAL(needsGeometriesUpdate()), this, SLOT(updateGeometries()));
+	connect(window, &Window::needsAttention, this, &TabHandleWidget::markAsNeedingAttention);
+	connect(window, &Window::titleChanged, this, &TabHandleWidget::updateTitle);
+	connect(window, &Window::iconChanged, this, static_cast<void(TabHandleWidget::*)()>(&TabHandleWidget::update));
+	connect(window, &Window::loadingStateChanged, this, &TabHandleWidget::handleLoadingStateChanged);
+	connect(parent, &TabBarWidget::currentChanged, this, &TabHandleWidget::updateGeometries);
+	connect(parent, &TabBarWidget::tabsAmountChanged, this, &TabHandleWidget::updateGeometries);
+	connect(parent, &TabBarWidget::needsGeometriesUpdate, this, &TabHandleWidget::updateGeometries);
 }
 
 void TabHandleWidget::timerEvent(QTimerEvent *event)
@@ -145,9 +146,9 @@ void TabHandleWidget::paintEvent(QPaintEvent *event)
 
 	if (m_urlIconRectangle.isValid())
 	{
-		if (m_window->getLoadingState() == WebWidget::OngoingLoadingState && m_loadingAnimation)
+		if (m_window->getLoadingState() == WebWidget::OngoingLoadingState && m_spinnerAnimation)
 		{
-			painter.drawPixmap(m_urlIconRectangle, m_loadingAnimation->getCurrentPixmap());
+			m_spinnerAnimation->paint(&painter, m_urlIconRectangle);
 		}
 		else
 		{
@@ -165,9 +166,9 @@ void TabHandleWidget::paintEvent(QPaintEvent *event)
 
 			if (m_thumbnailRectangle.height() >= 16 && m_thumbnailRectangle.width() >= 16)
 			{
-				if (m_window->getLoadingState() == WebWidget::OngoingLoadingState && m_loadingAnimation)
+				if (m_window->getLoadingState() == WebWidget::OngoingLoadingState && m_spinnerAnimation)
 				{
-					painter.drawPixmap(QRect((m_thumbnailRectangle.left() + ((m_thumbnailRectangle.width() - 16) / 2)), (m_thumbnailRectangle.top() + ((m_thumbnailRectangle.height() - 16) / 2)), 16, 16), m_loadingAnimation->getCurrentPixmap());
+					m_spinnerAnimation->paint(&painter, QRect((m_thumbnailRectangle.left() + ((m_thumbnailRectangle.width() - 16) / 2)), (m_thumbnailRectangle.top() + ((m_thumbnailRectangle.height() - 16) / 2)), 16, 16));
 				}
 				else
 				{
@@ -184,17 +185,29 @@ void TabHandleWidget::paintEvent(QPaintEvent *event)
 		}
 	}
 
-	if (m_titleRectangle.isValid())
+	if (!m_title.isEmpty())
 	{
-		QColor color(palette().color(QPalette::Text));
+		QStyleOptionTab option;
+		option.initFrom(this);
+		option.documentMode = true;
+		option.rect = m_titleRectangle;
+		option.text = m_title;
+
+		if (m_isActiveWindow)
+		{
+			option.state |= QStyle::State_Selected;
+		}
+
+		painter.save();
 
 		if (m_window->getLoadingState() == WebWidget::DeferredLoadingState)
 		{
-			color.setAlpha(150);
+			painter.setOpacity(0.75);
 		}
 
-		painter.setPen(color);
-		painter.drawText(m_titleRectangle, ((isRightToLeft() ? Qt::AlignRight : Qt::AlignLeft) | Qt::AlignVCenter), fontMetrics().elidedText(m_window->getTitle(), Qt::ElideRight, m_titleRectangle.width()));
+		style()->drawControl(QStyle::CE_TabBarTabLabel, &option, &painter);
+
+		painter.restore();
 	}
 }
 
@@ -284,19 +297,15 @@ void TabHandleWidget::dragEnterEvent(QDragEnterEvent *event)
 	}
 }
 
-void TabHandleWidget::markAsActive()
-{
-	setFont(parentWidget()->font());
-}
-
 void TabHandleWidget::markAsNeedingAttention()
 {
-	if (m_tabBarWidget->getWindow(m_tabBarWidget->currentIndex()) != m_window)
+	if (!m_isActiveWindow)
 	{
 		QFont font(parentWidget()->font());
 		font.setBold(true);
 
 		setFont(font);
+		updateTitle();
 	}
 }
 
@@ -304,15 +313,25 @@ void TabHandleWidget::handleLoadingStateChanged(WebWidget::LoadingState state)
 {
 	if (state == WebWidget::OngoingLoadingState)
 	{
-		if (!m_loadingAnimation)
+		if (!m_spinnerAnimation)
 		{
-			m_loadingAnimation = new Animation(ThemesManager::getAnimationPath(QLatin1String("loading")), QCoreApplication::instance());
-			m_loadingAnimation->start();
+			const QString path(ThemesManager::getAnimationPath(QLatin1String("spinner")));
+
+			if (path.isEmpty())
+			{
+				m_spinnerAnimation = new SpinnerAnimation(QCoreApplication::instance());
+			}
+			else
+			{
+				m_spinnerAnimation = new GenericAnimation(path, QCoreApplication::instance());
+			}
+
+			m_spinnerAnimation->start();
 		}
 
-		connect(m_loadingAnimation, SIGNAL(frameChanged()), this, SLOT(update()));
+		connect(m_spinnerAnimation, &Animation::frameChanged, this, static_cast<void(TabHandleWidget::*)()>(&TabHandleWidget::update));
 	}
-	else if (m_loadingAnimation)
+	else if (m_spinnerAnimation)
 	{
 		for (int i = 0; i < m_tabBarWidget->count(); ++i)
 		{
@@ -324,8 +343,8 @@ void TabHandleWidget::handleLoadingStateChanged(WebWidget::LoadingState state)
 			}
 		}
 
-		m_loadingAnimation->deleteLater();
-		m_loadingAnimation = nullptr;
+		m_spinnerAnimation->deleteLater();
+		m_spinnerAnimation = nullptr;
 
 		update();
 	}
@@ -343,14 +362,15 @@ void TabHandleWidget::updateGeometries()
 
 	QRect controlsRectangle(style()->subElementRect(QStyle::SE_TabBarTabLeftButton, &option, m_tabBarWidget));
 
-	m_closeButtonRectangle = QRect();
-	m_urlIconRectangle = QRect();
-	m_thumbnailRectangle = QRect();
-	m_titleRectangle = QRect();
+	m_closeButtonRectangle = {};
+	m_urlIconRectangle = {};
+	m_thumbnailRectangle = {};
+	m_labelRectangle = {};
+	m_titleRectangle = {};
 
 	if (TabBarWidget::areThumbnailsEnabled())
 	{
-		const int controlsHeight(qMax(16.0, (QFontMetrics(font()).height() * 1.5)));
+		const int controlsHeight(qRound(qMax(16.0, QFontMetrics(font()).height() * 1.5)));
 
 		if (controlsRectangle.height() > (controlsHeight * 2))
 		{
@@ -426,7 +446,7 @@ void TabHandleWidget::updateGeometries()
 	}
 	else
 	{
-		m_titleRectangle = controlsRectangle;
+		m_labelRectangle = controlsRectangle;
 
 		if (isUrlIconEnabled)
 		{
@@ -436,19 +456,19 @@ void TabHandleWidget::updateGeometries()
 			{
 				m_urlIconRectangle.setLeft(controlsRectangle.right() - 16);
 
-				m_titleRectangle.setRight(controlsRectangle.right() - 20);
+				m_labelRectangle.setRight(controlsRectangle.right() - 20);
 			}
 			else
 			{
 				m_urlIconRectangle.setWidth(16);
 
-				m_titleRectangle.setLeft(m_urlIconRectangle.right() + 4);
+				m_labelRectangle.setLeft(m_urlIconRectangle.right() + 4);
 			}
 		}
 
 		if (isCloseButtonEnabled && (isActive || controlsWidth >= 70))
 		{
-			m_closeButtonRectangle = m_titleRectangle;
+			m_closeButtonRectangle = m_labelRectangle;
 
 			if (TabBarWidget::isLayoutReversed())
 			{
@@ -456,22 +476,22 @@ void TabHandleWidget::updateGeometries()
 			}
 			else
 			{
-				m_closeButtonRectangle.setLeft(m_titleRectangle.right() - 16);
+				m_closeButtonRectangle.setLeft(m_labelRectangle.right() - 16);
 			}
 
 			if (controlsWidth <= 40)
 			{
-				m_titleRectangle = QRect();
+				m_labelRectangle = {};
 			}
 			else
 			{
 				if (TabBarWidget::isLayoutReversed())
 				{
-					m_titleRectangle.setLeft(m_titleRectangle.left() + 20);
+					m_labelRectangle.setLeft(m_labelRectangle.left() + 20);
 				}
 				else
 				{
-					m_titleRectangle.setRight(m_closeButtonRectangle.left() - 4);
+					m_labelRectangle.setRight(m_closeButtonRectangle.left() - 4);
 				}
 			}
 		}
@@ -491,7 +511,66 @@ void TabHandleWidget::updateGeometries()
 
 	m_isCloseButtonUnderMouse = (underMouse() && m_closeButtonRectangle.contains(mapFromGlobal(QCursor::pos())));
 
-	update();
+	updateTitle();
+}
+
+void TabHandleWidget::updateTitle()
+{
+	QString title(m_window->getTitle());
+
+	if (!m_labelRectangle.isValid() || m_labelRectangle.width() < 5)
+	{
+		title.clear();
+	}
+	else
+	{
+		int length(fontMetrics().width(title));
+
+		if (length > m_labelRectangle.width())
+		{
+			title = fontMetrics().elidedText(title, Qt::ElideRight, m_labelRectangle.width());
+			length = fontMetrics().width(title);
+		}
+
+		m_titleRectangle = m_labelRectangle;
+
+		if (length < m_labelRectangle.width() && Application::getStyle()->getExtraStyleHint(Style::CanAlignTabBarLabelHint) > 0)
+		{
+			if (isLeftToRight())
+			{
+				m_titleRectangle.setWidth(length);
+			}
+			else
+			{
+				m_titleRectangle.setLeft(m_titleRectangle.right() - length);
+			}
+		}
+	}
+
+	if (title != m_title)
+	{
+		m_title = title;
+
+		update();
+	}
+}
+
+void TabHandleWidget::setIsActiveWindow(bool isActive)
+{
+	if (isActive != m_isActiveWindow)
+	{
+		m_isActiveWindow = isActive;
+
+		if (isActive)
+		{
+			setFont(parentWidget()->font());
+			updateTitle();
+		}
+		else
+		{
+			update();
+		}
+	}
 }
 
 Window* TabHandleWidget::getWindow() const
@@ -501,6 +580,7 @@ Window* TabHandleWidget::getWindow() const
 
 TabBarWidget::TabBarWidget(QWidget *parent) : QTabBar(parent),
 	m_previewWidget(nullptr),
+	m_activeTabHandleWidget(nullptr),
 	m_movableTabWidget(nullptr),
 	m_tabWidth(0),
 	m_clickedTab(-1),
@@ -532,18 +612,18 @@ TabBarWidget::TabBarWidget(QWidget *parent) : QTabBar(parent),
 	handleOptionChanged(SettingsManager::TabBar_MaximumTabWidthOption, SettingsManager::getOption(SettingsManager::TabBar_MaximumTabWidthOption));
 	handleOptionChanged(SettingsManager::TabBar_MinimumTabWidthOption, SettingsManager::getOption(SettingsManager::TabBar_MinimumTabWidthOption));
 
-	ToolBarWidget *toolBar(qobject_cast<ToolBarWidget*>(parent));
+	const ToolBarWidget *toolBar(qobject_cast<ToolBarWidget*>(parent));
 
 	if (toolBar)
 	{
 		setArea(toolBar->getArea());
 
-		connect(toolBar, SIGNAL(areaChanged(Qt::ToolBarArea)), this, SLOT(setArea(Qt::ToolBarArea)));
+		connect(toolBar, &ToolBarWidget::areaChanged, this, &TabBarWidget::setArea);
 	}
 
-	connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int,QVariant)));
-	connect(ThemesManager::getInstance(), SIGNAL(widgetStyleChanged()), this, SLOT(updateStyle()));
-	connect(this, SIGNAL(currentChanged(int)), this, SLOT(updatePreviewPosition()));
+	connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &TabBarWidget::handleOptionChanged);
+	connect(ThemesManager::getInstance(), &ThemesManager::widgetStyleChanged, this, &TabBarWidget::updateStyle);
+	connect(this, &TabBarWidget::currentChanged, this, &TabBarWidget::handleCurrentChanged);
 }
 
 void TabBarWidget::changeEvent(QEvent *event)
@@ -771,8 +851,6 @@ void TabBarWidget::contextMenuEvent(QContextMenuEvent *event)
 
 	menu.exec(event->globalPos());
 
-	cycleAction->deleteLater();
-
 	m_clickedTab = -1;
 
 	if (underMouse())
@@ -832,12 +910,11 @@ void TabBarWidget::mouseMoveEvent(QMouseEvent *event)
 			{
 				QMimeData *mimeData(new QMimeData());
 				mimeData->setText(window->getUrl().toString());
-				mimeData->setUrls(QList<QUrl>({window->getUrl()}));
+				mimeData->setUrls({window->getUrl()});
 				mimeData->setProperty("x-url-title", window->getTitle());
 				mimeData->setProperty("x-window-identifier", window->getIdentifier());
 
 				const QPixmap thumbnail(window->createThumbnail());
-
 				QDrag *drag(new QDrag(this));
 				drag->setMimeData(mimeData);
 				drag->setPixmap(thumbnail.isNull() ? window->getIcon().pixmap(16, 16) : thumbnail);
@@ -855,12 +932,10 @@ void TabBarWidget::mouseMoveEvent(QMouseEvent *event)
 		return;
 	}
 
-	if (m_isIgnoringTabDrag || m_isDetachingTab)
+	if (!m_isIgnoringTabDrag && !m_isDetachingTab)
 	{
-		return;
+		QTabBar::mouseMoveEvent(event);
 	}
-
-	QTabBar::mouseMoveEvent(event);
 }
 
 void TabBarWidget::mouseReleaseEvent(QMouseEvent *event)
@@ -876,7 +951,7 @@ void TabBarWidget::mouseReleaseEvent(QMouseEvent *event)
 			m_isDetachingTab = false;
 		}
 
-		m_dragStartPosition = QPoint();
+		m_dragStartPosition = {};
 		m_isDraggingTab = false;
 	}
 }
@@ -893,7 +968,7 @@ void TabBarWidget::wheelEvent(QWheelEvent *event)
 
 void TabBarWidget::dragEnterEvent(QDragEnterEvent *event)
 {
-	if (event->mimeData()->hasUrls() || (event->source() && !event->mimeData()->property("x-window-identifier").isNull()))
+	if (event->mimeData()->hasText() || event->mimeData()->hasUrls() || (event->source() && !event->mimeData()->property("x-window-identifier").isNull()))
 	{
 		event->accept();
 
@@ -914,7 +989,7 @@ void TabBarWidget::dragLeaveEvent(QDragLeaveEvent *event)
 {
 	Q_UNUSED(event)
 
-	m_dragMovePosition = QPoint();
+	m_dragMovePosition = {};
 
 	update();
 }
@@ -962,7 +1037,7 @@ void TabBarWidget::dropEvent(QDropEvent *event)
 
 						if (window)
 						{
-							mainWindows.at(i)->moveWindow(window, mainWindow, dropIndex);
+							mainWindows.at(i)->moveWindow(window, mainWindow, {{QLatin1String("index"), dropIndex}});
 
 							break;
 						}
@@ -975,7 +1050,7 @@ void TabBarWidget::dropEvent(QDropEvent *event)
 			moveTab(previousIndex, (dropIndex - ((dropIndex > previousIndex) ? 1 : 0)));
 		}
 	}
-	else if (event->mimeData()->hasUrls())
+	else if (event->mimeData()->hasText() || event->mimeData()->hasUrls())
 	{
 		MainWindow *mainWindow(MainWindow::findMainWindow(this));
 		bool canOpen(mainWindow != nullptr);
@@ -984,30 +1059,54 @@ void TabBarWidget::dropEvent(QDropEvent *event)
 		{
 			const QVector<QUrl> urls(Utils::extractUrls(event->mimeData()));
 
-			if (urls.count() > 1 && SettingsManager::getOption(SettingsManager::Choices_WarnOpenMultipleDroppedUrlsOption).toBool())
+			if (urls.isEmpty())
 			{
-				QMessageBox messageBox;
-				messageBox.setWindowTitle(tr("Question"));
-				messageBox.setText(tr("You are about to open %n URL(s).", "", urls.count()));
-				messageBox.setInformativeText(tr("Do you want to continue?"));
-				messageBox.setIcon(QMessageBox::Question);
-				messageBox.setStandardButtons(QMessageBox::Yes | QMessageBox::Cancel);
-				messageBox.setDefaultButton(QMessageBox::Yes);
-				messageBox.setCheckBox(new QCheckBox(tr("Do not show this message again")));
+				const InputInterpreter::InterpreterResult result(InputInterpreter::interpret(event->mimeData()->text(), (InputInterpreter::NoBookmarkKeywordsFlag | InputInterpreter::NoSearchKeywordsFlag)));
 
-				if (messageBox.exec() == QMessageBox::Cancel)
+				if (result.isValid())
 				{
-					canOpen = false;
+					switch (result.type)
+					{
+						case InputInterpreter::InterpreterResult::UrlType:
+							mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), result.url}, {QLatin1String("index"), dropIndex}});
+
+							break;
+						case InputInterpreter::InterpreterResult::SearchType:
+							mainWindow->search(result.searchQuery, result.searchEngine, SessionsManager::NewTabOpen);
+
+							break;
+						default:
+							break;
+					}
+				}
+			}
+			else
+			{
+				if (urls.count() > 1 && SettingsManager::getOption(SettingsManager::Choices_WarnOpenMultipleDroppedUrlsOption).toBool())
+				{
+					QMessageBox messageBox;
+					messageBox.setWindowTitle(tr("Question"));
+					messageBox.setText(tr("You are about to open %n URL(s).", "", urls.count()));
+					messageBox.setInformativeText(tr("Do you want to continue?"));
+					messageBox.setIcon(QMessageBox::Question);
+					messageBox.setStandardButtons(QMessageBox::Yes | QMessageBox::Cancel);
+					messageBox.setDefaultButton(QMessageBox::Yes);
+					messageBox.setCheckBox(new QCheckBox(tr("Do not show this message again")));
+
+					if (messageBox.exec() == QMessageBox::Cancel)
+					{
+						canOpen = false;
+					}
+
+					SettingsManager::setOption(SettingsManager::Choices_WarnOpenMultipleDroppedUrlsOption, !messageBox.checkBox()->isChecked());
 				}
 
-				SettingsManager::setOption(SettingsManager::Choices_WarnOpenMultipleDroppedUrlsOption, !messageBox.checkBox()->isChecked());
-			}
-
-			if (canOpen)
-			{
-				for (int i = 0; i < urls.count(); ++i)
+				if (canOpen)
 				{
-					mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), urls.at(i)}, {QLatin1String("hints"), SessionsManager::DefaultOpen}, {QLatin1String("index"), (dropIndex + i)}});
+					for (int i = 0; i < urls.count(); ++i)
+					{
+						mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), urls.at(i)}, {QLatin1String("index"), (dropIndex + i)}});
+					}
 				}
 			}
 		}
@@ -1027,7 +1126,7 @@ void TabBarWidget::dropEvent(QDropEvent *event)
 		event->ignore();
 	}
 
-	m_dragMovePosition = QPoint();
+	m_dragMovePosition = {};
 
 	update();
 }
@@ -1112,11 +1211,20 @@ void TabBarWidget::tabHovered(int index)
 
 void TabBarWidget::addTab(int index, Window *window)
 {
-	insertTab(index, QString());
+	const int selectedIndex(currentIndex());
+
+	blockSignals(true);
+	insertTab(index, {});
+	blockSignals(false);
 	setTabButton(index, QTabBar::LeftSide, new TabHandleWidget(window, this));
 	setTabButton(index, QTabBar::RightSide, nullptr);
 
-	connect(window, SIGNAL(isPinnedChanged(bool)), this, SLOT(updatePinnedTabsAmount()));
+	if (selectedIndex != currentIndex() || count() == 1)
+	{
+		emit currentChanged(currentIndex());
+	}
+
+	connect(window, &Window::isPinnedChanged, this, &TabBarWidget::updatePinnedTabsAmount);
 
 	if (window->isPinned())
 	{
@@ -1336,7 +1444,7 @@ void TabBarWidget::handleOptionChanged(int identifier, const QVariant &value)
 
 				if (m_minimumTabSize.height() < 0)
 				{
-					m_minimumTabSize.setHeight((QFontMetrics(font()).lineSpacing() * 1.25) + style()->pixelMetric(QStyle::PM_TabBarTabVSpace));
+					m_minimumTabSize.setHeight(qRound(QFontMetrics(font()).lineSpacing() * 1.25) + style()->pixelMetric(QStyle::PM_TabBarTabVSpace));
 				}
 
 				if (m_minimumTabSize.height() != oldValue)
@@ -1387,12 +1495,33 @@ void TabBarWidget::handleOptionChanged(int identifier, const QVariant &value)
 	}
 }
 
-void TabBarWidget::updatePreviewPosition()
+void TabBarWidget::handleCurrentChanged(int index)
 {
+	MainWindow *mainWindow(MainWindow::findMainWindow(this));
+
+	if (mainWindow)
+	{
+		mainWindow->setActiveWindowByIndex(index);
+	}
+
 	if (m_previewWidget && m_previewWidget->isVisible())
 	{
 		showPreview(tabAt(mapFromGlobal(QCursor::pos())));
 	}
+
+	TabHandleWidget *tabHandleWidget(qobject_cast<TabHandleWidget*>(tabButton(index, QTabBar::LeftSide)));
+
+	if (tabHandleWidget)
+	{
+		tabHandleWidget->setIsActiveWindow(true);
+	}
+
+	if (m_activeTabHandleWidget && tabHandleWidget != m_activeTabHandleWidget)
+	{
+		m_activeTabHandleWidget->setIsActiveWindow(false);
+	}
+
+	m_activeTabHandleWidget = tabHandleWidget;
 }
 
 void TabBarWidget::updatePinnedTabsAmount()
@@ -1606,6 +1735,10 @@ bool TabBarWidget::event(QEvent *event)
 {
 	switch (event->type())
 	{
+		case QEvent::LayoutDirectionChange:
+			emit needsGeometriesUpdate();
+
+			break;
 		case QEvent::MouseButtonPress:
 		case QEvent::MouseButtonDblClick:
 		case QEvent::Wheel:
@@ -1666,6 +1799,19 @@ bool TabBarWidget::event(QEvent *event)
 				contexts.append(GesturesManager::GenericContext);
 
 				GesturesManager::startGesture(this, event, contexts, parameters);
+			}
+
+			break;
+		case QEvent::ParentChange:
+			{
+				const ToolBarWidget *toolBar(qobject_cast<ToolBarWidget*>(parent()));
+
+				if (toolBar)
+				{
+					setArea(toolBar->getArea());
+
+					connect(toolBar, &ToolBarWidget::areaChanged, this, &TabBarWidget::setArea);
+				}
 			}
 
 			break;

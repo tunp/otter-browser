@@ -31,9 +31,17 @@ namespace Otter
 {
 
 Style::Style(const QString &name) : QProxyStyle(name.isEmpty() ? nullptr : QStyleFactory::create(name)),
-	m_areToolTipsEnabled(SettingsManager::getOption(SettingsManager::Browser_ToolTipsModeOption).toString() != QLatin1String("disabled"))
+	m_areToolTipsEnabled(SettingsManager::getOption(SettingsManager::Browser_ToolTipsModeOption).toString() != QLatin1String("disabled")),
+	m_canAlignTabBarLabel(false)
 {
-	connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int,QVariant)));
+	const QString styleName(getName());
+
+	if (styleName == QLatin1String("fusion") || styleName == QLatin1String("breeze") || styleName == QLatin1String("oxygen"))
+	{
+		m_canAlignTabBarLabel = true;
+	}
+
+	connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &Style::handleOptionChanged);
 }
 
 void Style::drawDropZone(const QLine &line, QPainter *painter) const
@@ -84,11 +92,25 @@ void Style::drawToolBarEdge(const QStyleOption *option, QPainter *painter) const
 
 void Style::drawControl(ControlElement element, const QStyleOption *option, QPainter *painter, const QWidget *widget) const
 {
-	QProxyStyle::drawControl(element, option, painter, widget);
-
-	if (element == CE_ToolBar)
+	switch (element)
 	{
-		drawToolBarEdge(option, painter);
+		case CE_HeaderLabel:
+			if (option->rect.width() >= 30)
+			{
+				QProxyStyle::drawControl(element, option, painter, widget);
+			}
+
+			break;
+		case CE_ToolBar:
+			QProxyStyle::drawControl(element, option, painter, widget);
+
+			drawToolBarEdge(option, painter);
+
+			break;
+		default:
+			QProxyStyle::drawControl(element, option, painter, widget);
+
+			break;
 	}
 }
 
@@ -170,7 +192,7 @@ QString Style::getName() const
 
 QString Style::getStyleSheet() const
 {
-	return QString();
+	return {};
 }
 
 QRect Style::subElementRect(SubElement element, const QStyleOption *option, const QWidget *widget) const
@@ -207,6 +229,17 @@ QRect Style::subElementRect(SubElement element, const QStyleOption *option, cons
 
 				return rectangle;
 			}
+		case SE_TabBarTabText:
+			{
+				const QStyleOptionTab *tabOption(qstyleoption_cast<const QStyleOptionTab*>(option));
+
+				if (tabOption && tabOption->documentMode)
+				{
+					return option->rect;
+				}
+			}
+
+			break;
 		case SE_ToolBarHandle:
 			if (widget)
 			{
@@ -229,6 +262,8 @@ QRect Style::subElementRect(SubElement element, const QStyleOption *option, cons
 					return rectangle;
 				}
 			}
+
+			break;
 		default:
 			break;
 	}
@@ -291,6 +326,16 @@ int Style::styleHint(StyleHint hint, const QStyleOption *option, const QWidget *
 	}
 
 	return QProxyStyle::styleHint(hint, option, widget, returnData);
+}
+
+int Style::getExtraStyleHint(Style::ExtraStyleHint hint) const
+{
+	if (hint == CanAlignTabBarLabelHint)
+	{
+		return (m_canAlignTabBarLabel ? 1 : 0);
+	}
+
+	return 0;
 }
 
 }

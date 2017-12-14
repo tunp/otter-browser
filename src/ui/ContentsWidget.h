@@ -36,7 +36,7 @@ class ContentsWidget : public QWidget, public ActionExecutor
 	Q_OBJECT
 
 public:
-	explicit ContentsWidget(const QVariantMap &parameters, Window *window);
+	explicit ContentsWidget(const QVariantMap &parameters, Window *window, QWidget *parent);
 
 	virtual void setParent(Window *window);
 	virtual ContentsWidget* clone(bool cloneHistory = true) const;
@@ -65,7 +65,7 @@ public:
 
 public slots:
 	virtual void triggerAction(int identifier, const QVariantMap &parameters = {}) override;
-	virtual void print(QPrinter *printer) = 0;
+	virtual void print(QPrinter *printer);
 	virtual void goToHistoryIndex(int index);
 	virtual void removeHistoryIndex(int index, bool purge = false);
 	void showDialog(ContentsDialog *dialog, bool lockEventLoop = true);
@@ -79,6 +79,8 @@ protected:
 	void changeEvent(QEvent *event) override;
 	void showEvent(QShowEvent *event) override;
 	void resizeEvent(QResizeEvent *event) override;
+	void mousePressEvent(QMouseEvent *event) override;
+	void mouseReleaseEvent(QMouseEvent *event) override;
 
 protected slots:
 	void handleAboutToClose();
@@ -94,7 +96,6 @@ private:
 signals:
 	void aboutToNavigate();
 	void needsAttention();
-	void requestedOpenUrl(const QUrl &url, SessionsManager::OpenHints hints);
 	void requestedNewWindow(ContentsWidget *widget, SessionsManager::OpenHints hints);
 	void requestedSearch(const QString &query, const QString &search, SessionsManager::OpenHints hints);
 	void requestedGeometryChange(const QRect &geometry);
@@ -104,8 +105,8 @@ signals:
 	void urlChanged(const QUrl &url);
 	void iconChanged(const QIcon &icon);
 	void requestBlocked(const NetworkManager::ResourceInformation &request);
-	void actionsStateChanged(const QVector<int> &identifiers);
-	void actionsStateChanged(ActionsManager::ActionDefinition::ActionCategories categories);
+	void arbitraryActionsStateChanged(const QVector<int> &identifiers);
+	void categorizedActionsStateChanged(const QVector<int> &categories);
 	void contentStateChanged(WebWidget::ContentStates state);
 	void loadingStateChanged(WebWidget::LoadingState state);
 	void pageInformationChanged(WebWidget::PageInformation, const QVariant &value);

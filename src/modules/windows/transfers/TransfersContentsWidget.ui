@@ -26,7 +26,7 @@
    <item>
     <layout class="QHBoxLayout" name="horizontalLayout" stretch="0,1">
      <item>
-      <widget class="QLineEdit" name="downloadLineEdit">
+      <widget class="Otter::LineEditWidget" name="downloadLineEditWidget">
        <property name="placeholderText">
         <string>Quick Download…</string>
        </property>
@@ -67,8 +67,14 @@
      <property name="selectionBehavior">
       <enum>QAbstractItemView::SelectRows</enum>
      </property>
+     <property name="iconSize">
+      <size>
+       <width>22</width>
+       <height>22</height>
+      </size>
+     </property>
      <attribute name="headerDefaultSectionSize">
-      <number>250</number>
+      <number>200</number>
      </attribute>
     </widget>
    </item>
@@ -227,9 +233,14 @@
    <extends>QTreeView</extends>
    <header>src/ui/ItemViewWidget.h</header>
   </customwidget>
+  <customwidget>
+   <class>Otter::LineEditWidget</class>
+   <extends>QLineEdit</extends>
+   <header>src/ui/LineEditWidget.h</header>
+  </customwidget>
  </customwidgets>
  <tabstops>
-  <tabstop>downloadLineEdit</tabstop>
+  <tabstop>downloadLineEditWidget</tabstop>
   <tabstop>transfersViewWidget</tabstop>
  </tabstops>
  <resources/>

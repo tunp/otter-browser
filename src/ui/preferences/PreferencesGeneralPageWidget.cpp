@@ -50,7 +50,7 @@ PreferencesGeneralPageWidget::PreferencesGeneralPageWidget(QWidget *parent) : QW
 	const int startupBehaviorIndex(m_ui->startupBehaviorComboBox->findData(SettingsManager::getOption(SettingsManager::Browser_StartupBehaviorOption).toString()));
 
 	m_ui->startupBehaviorComboBox->setCurrentIndex((startupBehaviorIndex < 0) ? 0 : startupBehaviorIndex);
-	m_ui->homePageLineEdit->setText(SettingsManager::getOption(SettingsManager::Browser_HomePageOption).toString());
+	m_ui->homePageLineEditWidget->setText(SettingsManager::getOption(SettingsManager::Browser_HomePageOption).toString());
 
 	Menu *bookmarksMenu(new Menu(Menu::BookmarkSelectorMenuRole, m_ui->useBookmarkAsHomePageButton));
 
@@ -64,21 +64,21 @@ PreferencesGeneralPageWidget::PreferencesGeneralPageWidget(QWidget *parent) : QW
 	m_ui->reuseCurrentTabCheckBox->setChecked(SettingsManager::getOption(SettingsManager::Browser_ReuseCurrentTabOption).toBool());
 	m_ui->openNextToActiveheckBox->setChecked(SettingsManager::getOption(SettingsManager::TabBar_OpenNextToActiveOption).toBool());
 
-	PlatformIntegration *integration(Application::getPlatformIntegration());
+	PlatformIntegration *platformIntegration(Application::getPlatformIntegration());
 
-	if (integration == nullptr || !integration->canSetAsDefaultBrowser())
+	if (!platformIntegration || !platformIntegration->canSetAsDefaultBrowser())
 	{
 		m_ui->setDefaultButton->setEnabled(false);
 	}
 	else
 	{
-		connect(m_ui->setDefaultButton, SIGNAL(clicked()), integration, SLOT(setAsDefaultBrowser()));
+		connect(m_ui->setDefaultButton, &QPushButton::clicked, platformIntegration, &PlatformIntegration::setAsDefaultBrowser);
 	}
 
-	connect(bookmarksMenu, SIGNAL(triggered(QAction*)), this, SLOT(useBookmarkAsHomePage(QAction*)));
-	connect(m_ui->useCurrentAsHomePageButton, SIGNAL(clicked()), this, SLOT(useCurrentAsHomePage()));
-	connect(m_ui->restoreHomePageButton, SIGNAL(clicked()), this, SLOT(restoreHomePage()));
-	connect(m_ui->acceptLanguageButton, SIGNAL(clicked()), this, SLOT(setupAcceptLanguage()));
+	connect(bookmarksMenu, &Menu::triggered, this, &PreferencesGeneralPageWidget::useBookmarkAsHomePage);
+	connect(m_ui->useCurrentAsHomePageButton, &QPushButton::clicked, this, &PreferencesGeneralPageWidget::useCurrentAsHomePage);
+	connect(m_ui->restoreHomePageButton, &QPushButton::clicked, this, &PreferencesGeneralPageWidget::restoreHomePage);
+	connect(m_ui->acceptLanguageButton, &QPushButton::clicked, this, &PreferencesGeneralPageWidget::setupAcceptLanguage);
 }
 
 PreferencesGeneralPageWidget::~PreferencesGeneralPageWidget()
@@ -102,7 +102,7 @@ void PreferencesGeneralPageWidget::useCurrentAsHomePage()
 
 	if (item)
 	{
-		m_ui->homePageLineEdit->setText(item->data(SessionModel::UrlRole).toUrl().toString(QUrl::RemovePassword));
+		m_ui->homePageLineEditWidget->setText(item->data(SessionModel::UrlRole).toUrl().toString(QUrl::RemovePassword));
 	}
 }
 
@@ -111,22 +111,22 @@ void PreferencesGeneralPageWidget::useBookmarkAsHomePage(QAction *action)
 	if (action)
 	{
 		const BookmarksItem *bookmark(BookmarksManager::getModel()->getBookmark(action->data().toULongLong()));
-		const QString url(bookmark ? bookmark->data(BookmarksModel::UrlRole).toString() : QString());
+		const QString url(bookmark ? bookmark->getUrl().toDisplayString() : QString());
 
 		if (url.isEmpty())
 		{
-			m_ui->homePageLineEdit->setText(QLatin1String("bookmarks:") + QString::number(action->data().toULongLong()));
+			m_ui->homePageLineEditWidget->setText(QLatin1String("bookmarks:") + QString::number(action->data().toULongLong()));
 		}
 		else
 		{
-			m_ui->homePageLineEdit->setText(url);
+			m_ui->homePageLineEditWidget->setText(url);
 		}
 	}
 }
 
 void PreferencesGeneralPageWidget::restoreHomePage()
 {
-	m_ui->homePageLineEdit->setText(SettingsManager::getOptionDefinition(SettingsManager::Browser_HomePageOption).defaultValue.toString());
+	m_ui->homePageLineEditWidget->setText(SettingsManager::getOptionDefinition(SettingsManager::Browser_HomePageOption).defaultValue.toString());
 }
 
 void PreferencesGeneralPageWidget::setupAcceptLanguage()
@@ -144,7 +144,7 @@ void PreferencesGeneralPageWidget::setupAcceptLanguage()
 void PreferencesGeneralPageWidget::save()
 {
 	SettingsManager::setOption(SettingsManager::Browser_StartupBehaviorOption, m_ui->startupBehaviorComboBox->currentData().toString());
-	SettingsManager::setOption(SettingsManager::Browser_HomePageOption, m_ui->homePageLineEdit->text());
+	SettingsManager::setOption(SettingsManager::Browser_HomePageOption, m_ui->homePageLineEditWidget->text());
 	SettingsManager::setOption(SettingsManager::Paths_DownloadsOption, m_ui->downloadsFilePathWidget->getPath());
 	SettingsManager::setOption(SettingsManager::Browser_AlwaysAskWhereToSaveDownloadOption, m_ui->alwaysAskCheckBox->isChecked());
 	SettingsManager::setOption(SettingsManager::Browser_OpenLinksInNewTabOption, m_ui->tabsInsteadOfWindowsCheckBox->isChecked());

@@ -111,13 +111,16 @@ FreeDesktopOrgPlatformIntegration::FreeDesktopOrgPlatformIntegration(Application
 
 	updateTransfersProgress();
 
-	QTimer::singleShot(250, this, SLOT(createApplicationsCacheThread()));
+	QTimer::singleShot(250, this, [&]()
+	{
+		QtConcurrent::run(this, &FreeDesktopOrgPlatformIntegration::createApplicationsCache);
+	});
 
-	connect(TransfersManager::getInstance(), SIGNAL(transferChanged(Transfer*)), this, SLOT(updateTransfersProgress()));
-	connect(TransfersManager::getInstance(), SIGNAL(transferStarted(Transfer*)), this, SLOT(updateTransfersProgress()));
-	connect(TransfersManager::getInstance(), SIGNAL(transferFinished(Transfer*)), this, SLOT(updateTransfersProgress()));
-	connect(TransfersManager::getInstance(), SIGNAL(transferRemoved(Transfer*)), this, SLOT(updateTransfersProgress()));
-	connect(TransfersManager::getInstance(), SIGNAL(transferStopped(Transfer*)), this, SLOT(updateTransfersProgress()));
+	connect(TransfersManager::getInstance(), &TransfersManager::transferChanged, this, &FreeDesktopOrgPlatformIntegration::updateTransfersProgress);
+	connect(TransfersManager::getInstance(), &TransfersManager::transferStarted, this, &FreeDesktopOrgPlatformIntegration::updateTransfersProgress);
+	connect(TransfersManager::getInstance(), &TransfersManager::transferFinished, this, &FreeDesktopOrgPlatformIntegration::updateTransfersProgress);
+	connect(TransfersManager::getInstance(), &TransfersManager::transferRemoved, this, &FreeDesktopOrgPlatformIntegration::updateTransfersProgress);
+	connect(TransfersManager::getInstance(), &TransfersManager::transferStopped, this, &FreeDesktopOrgPlatformIntegration::updateTransfersProgress);
 }
 
 FreeDesktopOrgPlatformIntegration::~FreeDesktopOrgPlatformIntegration()
@@ -157,11 +160,6 @@ void FreeDesktopOrgPlatformIntegration::createApplicationsCache()
 	getApplicationsForMimeType(QMimeDatabase().mimeTypeForName(QLatin1String("text/html")));
 }
 
-void FreeDesktopOrgPlatformIntegration::createApplicationsCacheThread()
-{
-	QtConcurrent::run(this, &FreeDesktopOrgPlatformIntegration::createApplicationsCache);
-}
-
 void FreeDesktopOrgPlatformIntegration::handleNotificationCallFinished(QDBusPendingCallWatcher *watcher)
 {
 	Notification *notification(m_notificationWatchers.value(watcher, nullptr));
@@ -184,7 +182,7 @@ void FreeDesktopOrgPlatformIntegration::handleNotificationIgnored(quint32 identi
 
 	if (notification)
 	{
-		notification->markIgnored();
+		notification->markAsIgnored();
 
 		m_notifications.remove(identifier);
 	}
@@ -198,7 +196,7 @@ void FreeDesktopOrgPlatformIntegration::handleNotificationClicked(quint32 identi
 
 	if (notification)
 	{
-		notification->markClicked();
+		notification->markAsClicked();
 
 		m_notifications.remove(identifier);
 	}
@@ -242,7 +240,7 @@ void FreeDesktopOrgPlatformIntegration::showNotification(Notification *notificat
 
 	m_notificationWatchers[watcher] = notification;
 
-	connect(watcher, SIGNAL(finished(QDBusPendingCallWatcher*)), this, SLOT(handleNotificationCallFinished(QDBusPendingCallWatcher*)));
+	connect(watcher, &QDBusPendingCallWatcher::finished, this, &FreeDesktopOrgPlatformIntegration::handleNotificationCallFinished);
 }
 
 void FreeDesktopOrgPlatformIntegration::updateTransfersProgress(bool clear)

@@ -38,24 +38,26 @@ StartPageModel::StartPageModel(QObject *parent) : QStandardItemModel(parent),
 	handleOptionChanged(SettingsManager::Backends_WebOption);
 	reloadModel();
 
-	connect(BookmarksManager::getModel(), SIGNAL(bookmarkAdded(BookmarksItem*)), this, SLOT(handleBookmarkModified(BookmarksItem*)));
-	connect(BookmarksManager::getModel(), SIGNAL(bookmarkModified(BookmarksItem*)), this, SLOT(handleBookmarkModified(BookmarksItem*)));
-	connect(BookmarksManager::getModel(), SIGNAL(bookmarkRestored(BookmarksItem*)), this, SLOT(handleBookmarkModified(BookmarksItem*)));
-	connect(BookmarksManager::getModel(), SIGNAL(bookmarkMoved(BookmarksItem*,BookmarksItem*,int)), this, SLOT(handleBookmarkMoved(BookmarksItem*,BookmarksItem*)));
-	connect(BookmarksManager::getModel(), SIGNAL(bookmarkTrashed(BookmarksItem*,BookmarksItem*)), this, SLOT(handleBookmarkMoved(BookmarksItem*,BookmarksItem*)));
-	connect(BookmarksManager::getModel(), SIGNAL(bookmarkRemoved(BookmarksItem*,BookmarksItem*)), this, SLOT(handleBookmarkRemoved(BookmarksItem*,BookmarksItem*)));
-	connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int)));
+	connect(BookmarksManager::getModel(), &BookmarksModel::bookmarkAdded, this, &StartPageModel::handleBookmarkModified);
+	connect(BookmarksManager::getModel(), &BookmarksModel::bookmarkModified, this, &StartPageModel::handleBookmarkModified);
+	connect(BookmarksManager::getModel(), &BookmarksModel::bookmarkRestored, this, &StartPageModel::handleBookmarkModified);
+	connect(BookmarksManager::getModel(), &BookmarksModel::bookmarkMoved, this, &StartPageModel::handleBookmarkMoved);
+	connect(BookmarksManager::getModel(), &BookmarksModel::bookmarkTrashed, this, &StartPageModel::handleBookmarkMoved);
+	connect(BookmarksManager::getModel(), &BookmarksModel::bookmarkRemoved, this, &StartPageModel::handleBookmarkRemoved);
+	connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &StartPageModel::handleOptionChanged);
 }
 
 void StartPageModel::dragEnded()
 {
 	for (int i = 0; i < rowCount(); ++i)
 	{
-		if (item(i) && item(i)->data(IsDraggedRole).toBool())
-		{
-			item(i)->setData(QVariant(), IsDraggedRole);
+		const QModelIndex index(this->index(i, 0));
 
-			emit isReloadingTileChanged(item(i)->index());
+		if (index.data(IsDraggedRole).toBool())
+		{
+			setData(index, {}, IsDraggedRole);
+
+			emit isReloadingTileChanged(index);
 		}
 	}
 }
@@ -70,19 +72,19 @@ void StartPageModel::reloadModel()
 	{
 		for (int i = 0; i < m_bookmark->rowCount(); ++i)
 		{
-			const QStandardItem *bookmark(m_bookmark->child(i));
+			const BookmarksItem *bookmark(static_cast<BookmarksItem*>(m_bookmark->child(i)));
 
 			if (bookmark)
 			{
-				const BookmarksModel::BookmarkType type(static_cast<BookmarksModel::BookmarkType>(bookmark->data(BookmarksModel::TypeRole).toInt()));
+				const BookmarksModel::BookmarkType type(static_cast<BookmarksModel::BookmarkType>(bookmark->getType()));
 
 				if (type != BookmarksModel::UrlBookmark && type != BookmarksModel::FolderBookmark)
 				{
 					continue;
 				}
 
-				const quint64 identifier(bookmark->data(BookmarksModel::IdentifierRole).toULongLong());
-				const QUrl url(bookmark->data(BookmarksModel::UrlRole).toUrl());
+				const quint64 identifier(bookmark->getIdentifier());
+				const QUrl url(bookmark->getUrl());
 				QStandardItem *item(bookmark->clone());
 				item->setData(identifier, BookmarksModel::IdentifierRole);
 				item->setFlags(item->flags() | Qt::ItemNeverHasChildren);
@@ -123,8 +125,8 @@ void StartPageModel::addTile(const QUrl &url)
 {
 	if (!m_bookmark)
 	{
-		disconnect(BookmarksManager::getModel(), SIGNAL(bookmarkAdded(BookmarksItem*)), this, SLOT(handleBookmarkModified(BookmarksItem*)));
-		disconnect(BookmarksManager::getModel(), SIGNAL(bookmarkModified(BookmarksItem*)), this, SLOT(handleBookmarkModified(BookmarksItem*)));
+		disconnect(BookmarksManager::getModel(), &BookmarksModel::bookmarkAdded, this, &StartPageModel::handleBookmarkModified);
+		disconnect(BookmarksManager::getModel(), &BookmarksModel::bookmarkModified, this, &StartPageModel::handleBookmarkModified);
 
 		const QStringList directories(SettingsManager::getOption(SettingsManager::StartPage_BookmarksFolderOption).toString().split(QLatin1Char('/'), QString::SkipEmptyParts));
 
@@ -152,8 +154,8 @@ void StartPageModel::addTile(const QUrl &url)
 			}
 		}
 
-		connect(BookmarksManager::getModel(), SIGNAL(bookmarkAdded(BookmarksItem*)), this, SLOT(handleBookmarkModified(BookmarksItem*)));
-		connect(BookmarksManager::getModel(), SIGNAL(bookmarkModified(BookmarksItem*)), this, SLOT(handleBookmarkModified(BookmarksItem*)));
+		connect(BookmarksManager::getModel(), &BookmarksModel::bookmarkAdded, this, &StartPageModel::handleBookmarkModified);
+		connect(BookmarksManager::getModel(), &BookmarksModel::bookmarkModified, this, &StartPageModel::handleBookmarkModified);
 	}
 
 	const BookmarksItem *bookmark(BookmarksManager::getModel()->addBookmark(BookmarksModel::UrlBookmark, {{BookmarksModel::UrlRole, url}}, m_bookmark));
@@ -188,7 +190,7 @@ void StartPageModel::reloadTile(const QModelIndex &index, bool needsTitleUpdate)
 
 			if (SessionsManager::isReadOnly())
 			{
-				handleThumbnailCreated(url, QPixmap(), information.getTitle());
+				handleThumbnailCreated(url, {}, information.getTitle());
 			}
 			else
 			{
@@ -216,7 +218,7 @@ void StartPageModel::handleOptionChanged(int identifier)
 	switch (identifier)
 	{
 		case SettingsManager::Backends_WebOption:
-			connect(AddonsManager::getWebBackend(), SIGNAL(thumbnailAvailable(QUrl,QPixmap,QString)), this, SLOT(handleThumbnailCreated(QUrl,QPixmap,QString)));
+			connect(AddonsManager::getWebBackend(), &WebBackend::thumbnailAvailable, this, &StartPageModel::handleThumbnailCreated);
 
 			break;
 		case SettingsManager::StartPage_BookmarksFolderOption:
@@ -253,7 +255,7 @@ void StartPageModel::handleBookmarkMoved(BookmarksItem *bookmark, BookmarksItem 
 	{
 		if (bookmark->parent() != m_bookmark)
 		{
-			const QString path(getThumbnailPath(bookmark->data(BookmarksModel::IdentifierRole).toULongLong()));
+			const QString path(getThumbnailPath(bookmark->getIdentifier()));
 
 			if (QFile::exists(path))
 			{
@@ -272,7 +274,7 @@ void StartPageModel::handleBookmarkRemoved(BookmarksItem *bookmark, BookmarksIte
 {
 	if (m_bookmark && (bookmark == m_bookmark || previousParent == m_bookmark || m_bookmark->isAncestorOf(previousParent)))
 	{
-		const QString path(getThumbnailPath(bookmark->data(BookmarksModel::IdentifierRole).toULongLong()));
+		const QString path(getThumbnailPath(bookmark->getIdentifier()));
 
 		if (QFile::exists(path))
 		{
@@ -339,7 +341,7 @@ QMimeData* StartPageModel::mimeData(const QModelIndexList &indexes) const
 	mimeData->setText(texts.join(QLatin1String(", ")));
 	mimeData->setUrls(urls);
 
-	connect(mimeData, SIGNAL(destroyed()), this, SLOT(dragEnded()));
+	connect(mimeData, &QMimeData::destroyed, this, &StartPageModel::dragEnded);
 
 	return mimeData;
 }
@@ -361,7 +363,7 @@ QVariant StartPageModel::data(const QModelIndex &index, int role) const
 
 QStringList StartPageModel::mimeTypes() const
 {
-	return QStringList(QLatin1String("text/uri-list"));
+	return {QLatin1String("text/uri-list")};
 }
 
 bool StartPageModel::dropMimeData(const QMimeData *data, Qt::DropAction action, int row, int column, const QModelIndex &parent)

@@ -83,7 +83,7 @@ WebsiteInformationDialog::WebsiteInformationDialog(WebWidget *widget, QWidget *p
 	m_ui->addressLabelWidget->setText(widget->getUrl().toString());
 	m_ui->titleLabelWidget->setText(widget->getTitle());
 	m_ui->encodingLabelWidget->setText(characterEncoding.isEmpty() ? tr("unknown") : characterEncoding);
-	m_ui->sizeLabelWidget->setText(Utils::formatUnit(widget->getPageInformation(WebWidget::BytesTotalInformation).toLongLong(), false, 1, true));
+	m_ui->sizeLabelWidget->setText(Utils::formatUnit(widget->getPageInformation(WebWidget::TotalBytesTotalInformation).toLongLong(), false, 1, true));
 	m_ui->elementsLabelWidget->setText((widget->getPageInformation(WebWidget::RequestsBlockedInformation).toInt() > 0) ? tr("%1 (%n blocked)", "", widget->getPageInformation(WebWidget::RequestsBlockedInformation).toInt()).arg(widget->getPageInformation(WebWidget::RequestsStartedInformation).toInt()) : QString::number(widget->getPageInformation(WebWidget::RequestsStartedInformation).toInt()));
 	m_ui->downloadDateLabelWidget->setText(Utils::formatDateTime(widget->getPageInformation(WebWidget::LoadingFinishedInformation).toDateTime()));
 
@@ -155,11 +155,11 @@ WebsiteInformationDialog::WebsiteInformationDialog(WebWidget *widget, QWidget *p
 
 	const QString geolocationPolicy(widget->getOption(SettingsManager::Permissions_EnableGeolocationOption).toString());
 
-	if (geolocationPolicy == QLatin1String("enabled"))
+	if (geolocationPolicy == QLatin1String("allow"))
 	{
 		m_ui->geolocationValueLabel->setText(tr("Always"));
 	}
-	else if (geolocationPolicy == QLatin1String("disabled"))
+	else if (geolocationPolicy == QLatin1String("disallow"))
 	{
 		m_ui->geolocationValueLabel->setText(tr("Never"));
 	}
@@ -170,11 +170,11 @@ WebsiteInformationDialog::WebsiteInformationDialog(WebWidget *widget, QWidget *p
 
 	const QString fullScreenPolicy(widget->getOption(SettingsManager::Permissions_EnableFullScreenOption).toString());
 
-	if (fullScreenPolicy == QLatin1String("enabled"))
+	if (fullScreenPolicy == QLatin1String("allow"))
 	{
 		m_ui->fullScreenValueLabel->setText(tr("Always"));
 	}
-	else if (fullScreenPolicy == QLatin1String("disabled"))
+	else if (fullScreenPolicy == QLatin1String("disallow"))
 	{
 		m_ui->fullScreenValueLabel->setText(tr("Never"));
 	}
@@ -185,11 +185,11 @@ WebsiteInformationDialog::WebsiteInformationDialog(WebWidget *widget, QWidget *p
 
 	const QString notificationsPolicy(widget->getOption(SettingsManager::Permissions_EnableNotificationsOption).toString());
 
-	if (notificationsPolicy == QLatin1String("enabled"))
+	if (notificationsPolicy == QLatin1String("allow"))
 	{
 		m_ui->notificationsValueLabel->setText(tr("Always"));
 	}
-	else if (notificationsPolicy == QLatin1String("disabled"))
+	else if (notificationsPolicy == QLatin1String("disallow"))
 	{
 		m_ui->notificationsValueLabel->setText(tr("Never"));
 	}
@@ -227,8 +227,8 @@ WebsiteInformationDialog::WebsiteInformationDialog(WebWidget *widget, QWidget *p
 
 		m_ui->certificateIssuedToLabelWidget->setText(certificate.subjectInfo(QSslCertificate::CommonName).join(QLatin1String(", ")));
 		m_ui->certificateIssuedByLabelWidget->setText(certificate.issuerInfo(QSslCertificate::CommonName).join(QLatin1String(", ")));
-		m_ui->certificateIssuedOnLabelWidget->setText(Utils::formatDateTime(certificate.effectiveDate()));
-		m_ui->certificateExpiresOnLabelWidget->setText(Utils::formatDateTime(certificate.expiryDate()));
+		m_ui->certificateIssuedOnLabelWidget->setText(Utils::formatDateTime(certificate.effectiveDate(), {}, false));
+		m_ui->certificateExpiresOnLabelWidget->setText(Utils::formatDateTime(certificate.expiryDate(), {}, false));
 		m_ui->cipherProtocolLabelWidget->setText(m_sslInformation.cipher.protocolString());
 		m_ui->cipherAuthenticationMethodLabelWidget->setText(m_sslInformation.cipher.authenticationMethod());
 		m_ui->cipherEncryptionMethodLabelWidget->setText(m_sslInformation.cipher.encryptionMethod());
@@ -243,7 +243,7 @@ WebsiteInformationDialog::WebsiteInformationDialog(WebWidget *widget, QWidget *p
 	else
 	{
 		QStandardItemModel *sslErrorsModel(new QStandardItemModel(this));
-		sslErrorsModel->setHorizontalHeaderLabels(QStringList({tr("Error Message"), tr("URL")}));
+		sslErrorsModel->setHorizontalHeaderLabels({tr("Error Message"), tr("URL")});
 
 		for (int i = 0; i < m_sslInformation.errors.count(); ++i)
 		{

@@ -40,7 +40,13 @@ class HistoryContentsWidget final : public ContentsWidget
 	Q_OBJECT
 
 public:
-	explicit HistoryContentsWidget(const QVariantMap &parameters, Window *window);
+	enum DataRole
+	{
+		IdentifierRole = Qt::UserRole,
+		TimeVisitedRole
+	};
+
+	explicit HistoryContentsWidget(const QVariantMap &parameters, Window *window, QWidget *parent);
 	~HistoryContentsWidget();
 
 	void print(QPrinter *printer) override;
@@ -61,14 +67,14 @@ protected:
 
 protected slots:
 	void populateEntries();
-	void addEntry(HistoryEntryItem *entry);
-	void modifyEntry(HistoryEntryItem *entry);
-	void removeEntry(HistoryEntryItem *entry);
 	void removeEntry();
 	void removeDomainEntries();
 	void openEntry(const QModelIndex &index = {});
 	void bookmarkEntry();
 	void copyEntryLink();
+	void handleEntryAdded(HistoryEntryItem *entry);
+	void handleEntryModified(HistoryEntryItem *entry);
+	void handleEntryRemoved(HistoryEntryItem *entry);
 	void showContextMenu(const QPoint &position);
 
 private:

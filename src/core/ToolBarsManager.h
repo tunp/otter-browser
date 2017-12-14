@@ -20,9 +20,9 @@
 #ifndef OTTER_TOOLBARSMANAGER_H
 #define OTTER_TOOLBARSMANAGER_H
 
-#include "ActionsManager.h"
-
 #include <QtCore/QCoreApplication>
+#include <QtCore/QVariantMap>
+#include <QtCore/QVector>
 
 namespace Otter
 {
@@ -61,9 +61,15 @@ public:
 		AlwaysHiddenToolBar
 	};
 
-	struct ToolBarDefinition
+	enum ToolBarsMode
 	{
-		struct Entry
+		NormalMode = 0,
+		FullScreenMode
+	};
+
+	struct ToolBarDefinition final
+	{
+		struct Entry final
 		{
 			QString action;
 			QVariantMap options;
@@ -91,9 +97,31 @@ public:
 		bool isDefault = false;
 		bool wasRemoved = false;
 
+		void setVisibility(ToolBarsMode mode, ToolBarVisibility visibility)
+		{
+			switch (mode)
+			{
+				case NormalMode:
+					normalVisibility = visibility;
+
+					break;
+				case FullScreenMode:
+					fullScreenVisibility = visibility;
+
+					break;
+				default:
+					break;
+			}
+		}
+
 		QString getTitle() const
 		{
 			return (isDefault ? QCoreApplication::translate("actions", title.toUtf8()) : title);
+		}
+
+		ToolBarVisibility getVisibility(ToolBarsMode mode) const
+		{
+			return ((mode == FullScreenMode) ? fullScreenVisibility : normalVisibility);
 		}
 
 		bool isValid() const
@@ -103,6 +131,10 @@ public:
 	};
 
 	static void createInstance();
+	static void addToolBar(ToolBarType type);
+	static void configureToolBar(int identifier);
+	static void resetToolBar(int identifier);
+	static void removeToolBar(int identifier);
 	static void resetToolBars();
 	static void setToolBar(ToolBarsManager::ToolBarDefinition definition);
 	static ToolBarsManager* getInstance();
@@ -112,18 +144,11 @@ public:
 	static int getToolBarIdentifier(const QString &name);
 	static bool areToolBarsLocked();
 
-public slots:
-	void addToolBar();
-	void addBookmarksBar();
-	void addSideBar();
-	void configureToolBar(int identifier = -1);
-	void resetToolBar(int identifier = -1);
-	void removeToolBar(int identifier = -1);
-
 protected:
 	explicit ToolBarsManager(QObject *parent);
 
 	void timerEvent(QTimerEvent *event) override;
+	static void ensureInitialized();
 	static QJsonValue encodeEntry(const ToolBarDefinition::Entry &definition);
 	static ToolBarDefinition::Entry decodeEntry(const QJsonValue &value);
 	static QHash<QString, ToolBarDefinition> loadToolBars(const QString &path, bool isDefault);
@@ -140,6 +165,7 @@ private:
 	static QVector<ToolBarDefinition> m_definitions;
 	static int m_toolBarIdentifierEnumerator;
 	static bool m_areToolBarsLocked;
+	static bool m_isLoading;
 
 signals:
 	void toolBarAdded(int identifier);

@@ -20,7 +20,7 @@
 #ifndef OTTER_ACTION_H
 #define OTTER_ACTION_H
 
-#include "../core/ActionsManager.h"
+#include "../core/ActionExecutor.h"
 
 #include <QtWidgets/QAction>
 
@@ -43,10 +43,9 @@ public:
 
 	explicit Action(int identifier, const QVariantMap &parameters, QObject *parent);
 	explicit Action(int identifier, const QVariantMap &parameters, ActionExecutor::Object executor, QObject *parent);
+	explicit Action(int identifier, const QVariantMap &parameters, const QVariantMap &options, ActionExecutor::Object executor, QObject *parent);
 
 	void setExecutor(ActionExecutor::Object executor);
-	void setOverrideText(const QString &text);
-	void setOverrideIcon(const QIcon &icon);
 	ActionsManager::ActionDefinition getDefinition() const;
 	QVariantMap getParameters() const;
 	int getIdentifier() const;
@@ -60,8 +59,8 @@ protected:
 
 protected slots:
 	void triggerAction(bool isChecked = false);
-	void handleActionsStateChanged(const QVector<int> &identifiers);
-	void handleActionsStateChanged(ActionsManager::ActionDefinition::ActionCategories categories);
+	void handleArbitraryActionsStateChanged(const QVector<int> &identifiers);
+	void handleCategorizedActionsStateChanged(const QVector<int> &categories);
 	void updateShortcut();
 	void updateState();
 

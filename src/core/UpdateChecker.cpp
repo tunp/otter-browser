@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2015 Jan Bajer aka bajasoft <jbajer@gmail.com>
+* Copyright (C) 2015 - 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 * Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -53,7 +53,7 @@ UpdateChecker::UpdateChecker(QObject *parent, bool inBackground) : QObject(paren
 
 	m_networkReply = NetworkManagerFactory::getNetworkManager()->get(request);
 
-	connect(m_networkReply, SIGNAL(finished()), this, SLOT(runUpdateCheck()));
+	connect(m_networkReply, &QNetworkReply::finished, this, &UpdateChecker::runUpdateCheck);
 }
 
 void UpdateChecker::runUpdateCheck()
@@ -73,11 +73,12 @@ void UpdateChecker::runUpdateCheck()
 	activeChannels.removeAll(QString());
 
 	const PlatformIntegration *integration(Application::getPlatformIntegration());
-	const QJsonObject updateData(QJsonDocument::fromJson(m_networkReply->readAll()).object());
-	const QJsonArray channels(updateData.value(QLatin1String("channels")).toArray());
+	const QJsonArray channels(QJsonDocument::fromJson(m_networkReply->readAll()).object().value(QLatin1String("channels")).toArray());
 	const QString platform(integration ? integration->getPlatformName() : QString());
 	const int mainVersion(QCoreApplication::applicationVersion().remove(QLatin1Char('.')).toInt());
 	const int subVersion(QString(OTTER_VERSION_WEEKLY).toInt());
+	int latestVersion(0);
+	int latestVersionIndex(0);
 	QVector<UpdateInformation> availableUpdates;
 
 	for (int i = 0; i < channels.count(); ++i)
@@ -116,6 +117,12 @@ void UpdateChecker::runUpdateCheck()
 						information.version.append(QLatin1Char('#') + object[QLatin1String("subVersion")].toString());
 					}
 
+					if (mainVersion < channelMainVersion && latestVersion < channelMainVersion)
+					{
+						latestVersion = channelMainVersion;
+						latestVersionIndex = availableUpdates.count();
+					}
+
 					availableUpdates.append(information);
 				}
 			}
@@ -124,7 +131,7 @@ void UpdateChecker::runUpdateCheck()
 
 	SettingsManager::setOption(SettingsManager::Updates_LastCheckOption, QDate::currentDate().toString(Qt::ISODate));
 
-	emit finished(availableUpdates);
+	emit finished(availableUpdates, latestVersionIndex);
 
 	deleteLater();
 }

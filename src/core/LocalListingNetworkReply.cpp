@@ -19,6 +19,7 @@
 **************************************************************************/
 
 #include "LocalListingNetworkReply.h"
+#include "Application.h"
 #include "SessionsManager.h"
 #include "ThemesManager.h"
 #include "Utils.h"
@@ -29,7 +30,7 @@
 #include <QtCore/QMimeDatabase>
 #include <QtCore/QRegularExpression>
 #include <QtCore/QTimer>
-#include <QtGui/QGuiApplication>
+#include <QtCore/QtMath>
 #include <QtGui/QIcon>
 #include <QtWidgets/QFileIconProvider>
 
@@ -72,9 +73,12 @@ LocalListingNetworkReply::LocalListingNetworkReply(const QNetworkRequest &reques
 		setHeader(QNetworkRequest::ContentTypeHeader, QVariant(QLatin1String("text/html; charset=UTF-8")));
 		setHeader(QNetworkRequest::ContentLengthHeader, QVariant(m_content.size()));
 
-		QTimer::singleShot(0, this, SIGNAL(listingError()));
-		QTimer::singleShot(0, this, SIGNAL(readyRead()));
-		QTimer::singleShot(0, this, SIGNAL(finished()));
+		QTimer::singleShot(0, this, [&]()
+		{
+			emit listingError();
+			emit readyRead();
+			emit finished();
+		});
 
 		return;
 	}
@@ -110,6 +114,7 @@ LocalListingNetworkReply::LocalListingNetworkReply(const QNetworkRequest &reques
 	variables[QLatin1String("headerSize")] = tr("Size");
 	variables[QLatin1String("headerDate")] = tr("Date");
 
+	const int iconSize(16 * qCeil(Application::getInstance()->devicePixelRatio()));
 	const QFileIconProvider iconProvider;
 
 	for (int i = 0; i < entries.count(); ++i)
@@ -128,7 +133,7 @@ LocalListingNetworkReply::LocalListingNetworkReply(const QNetworkRequest &reques
 				icon = ThemesManager::createIcon((entries.at(i).isDir() ? QLatin1String("inode-directory") : QLatin1String("unknown")), false);
 			}
 
-			icon.pixmap(16, 16).save(&buffer, "PNG");
+			icon.pixmap(iconSize, iconSize).save(&buffer, "PNG");
 
 			icons[mimeType.name()] = QString(byteArray.toBase64());
 		}
@@ -179,8 +184,11 @@ LocalListingNetworkReply::LocalListingNetworkReply(const QNetworkRequest &reques
 	setHeader(QNetworkRequest::ContentTypeHeader, QVariant(QLatin1String("text/html; charset=UTF-8")));
 	setHeader(QNetworkRequest::ContentLengthHeader, QVariant(m_content.size()));
 
-	QTimer::singleShot(0, this, SIGNAL(readyRead()));
-	QTimer::singleShot(0, this, SIGNAL(finished()));
+	QTimer::singleShot(0, this, [&]()
+	{
+		emit readyRead();
+		emit finished();
+	});
 }
 
 void LocalListingNetworkReply::abort()
@@ -196,7 +204,7 @@ qint64 LocalListingNetworkReply::readData(char *data, qint64 maxSize)
 {
 	if (m_offset < m_content.size())
 	{
-		qint64 number(qMin(maxSize, m_content.size() - m_offset));
+		qint64 number(qMin(maxSize, (m_content.size() - m_offset)));
 
 		memcpy(data, (m_content.constData() + m_offset), number);
 

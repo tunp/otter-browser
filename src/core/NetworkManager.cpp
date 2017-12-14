@@ -63,10 +63,10 @@ NetworkManager::NetworkManager(bool isPrivate, QObject *parent) : QNetworkAccess
 		setCookieJar(m_cookieJar);
 	}
 
-	connect(this, SIGNAL(authenticationRequired(QNetworkReply*,QAuthenticator*)), this, SLOT(handleAuthenticationRequired(QNetworkReply*,QAuthenticator*)));
-	connect(this, SIGNAL(proxyAuthenticationRequired(QNetworkProxy,QAuthenticator*)), this, SLOT(handleProxyAuthenticationRequired(QNetworkProxy,QAuthenticator*)));
-	connect(this, SIGNAL(sslErrors(QNetworkReply*,QList<QSslError>)), this, SLOT(handleSslErrors(QNetworkReply*,QList<QSslError>)));
-	connect(NetworkManagerFactory::getInstance(), SIGNAL(onlineStateChanged(bool)), this, SLOT(handleOnlineStateChanged(bool)));
+	connect(this, &NetworkManager::authenticationRequired, this, &NetworkManager::handleAuthenticationRequired);
+	connect(this, &NetworkManager::proxyAuthenticationRequired, this, &NetworkManager::handleProxyAuthenticationRequired);
+	connect(this, &NetworkManager::sslErrors, this, &NetworkManager::handleSslErrors);
+	connect(NetworkManagerFactory::getInstance(), &NetworkManagerFactory::onlineStateChanged, this, &NetworkManager::handleOnlineStateChanged);
 }
 
 void NetworkManager::handleAuthenticationRequired(QNetworkReply *reply, QAuthenticator *authenticator)
@@ -79,7 +79,7 @@ void NetworkManager::handleProxyAuthenticationRequired(const QNetworkProxy &prox
 {
 	if (NetworkManagerFactory::usesSystemProxyAuthentication())
 	{
-		authenticator->setUser(QString());
+		authenticator->setUser({});
 
 		return;
 	}

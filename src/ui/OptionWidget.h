@@ -25,7 +25,6 @@
 
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QFontComboBox>
-#include <QtWidgets/QLineEdit>
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QSpinBox>
 
@@ -35,6 +34,7 @@ namespace Otter
 class ColorWidget;
 class FilePathWidget;
 class IconWidget;
+class LineEditWidget;
 
 class OptionWidget final : public QWidget
 {
@@ -46,7 +46,7 @@ public:
 	void setDefaultValue(const QVariant &value);
 	void setValue(const QVariant &value);
 	void setChoices(const QStringList &choices);
-	void setChoices(const QVector<SettingsManager::OptionDefinition::ChoiceDefinition> &choices);
+	void setChoices(const QVector<SettingsManager::OptionDefinition::Choice> &choices);
 	void setSizePolicy(QSizePolicy::Policy horizontal, QSizePolicy::Policy vertical);
 	void setSizePolicy(QSizePolicy policy);
 	QVariant getDefaultValue() const;
@@ -66,7 +66,7 @@ private:
 	IconWidget *m_iconWidget;
 	QComboBox *m_comboBox;
 	QFontComboBox *m_fontComboBox;
-	QLineEdit *m_lineEdit;
+	LineEditWidget *m_lineEditWidget;
 	QSpinBox *m_spinBox;
 	QPushButton *m_resetButton;
 	QVariant m_defaultValue;

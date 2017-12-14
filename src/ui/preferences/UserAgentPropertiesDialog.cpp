@@ -36,22 +36,22 @@ UserAgentPropertiesDialog::UserAgentPropertiesDialog(const UserAgentDefinition &
 	m_ui(new Ui::UserAgentPropertiesDialog)
 {
 	m_ui->setupUi(this);
-	m_ui->titleLineEdit->setText(userAgent.getTitle());
-	m_ui->valueLineEdit->setText(userAgent.value);
+	m_ui->titleLineEditWidget->setText(userAgent.getTitle());
+	m_ui->valueLineEditWidget->setText(userAgent.value);
 	m_ui->previewButton->setIcon(ThemesManager::createIcon(QLatin1String("document-preview")));
 
 	if (userAgent.identifier == QLatin1String("default"))
 	{
-		m_ui->valueLineEdit->setReadOnly(true);
+		m_ui->valueLineEditWidget->setReadOnly(true);
 	}
 	else
 	{
-		m_ui->valueLineEdit->installEventFilter(this);
+		m_ui->valueLineEditWidget->installEventFilter(this);
 	}
 
 	setWindowTitle(userAgent.isValid() ? tr ("Edit User Agent") : tr("Add User Agent"));
 
-	connect(m_ui->previewButton, SIGNAL(clicked(bool)), this, SLOT(showPreview()));
+	connect(m_ui->previewButton, &QToolButton::clicked, this, &UserAgentPropertiesDialog::showPreview);
 }
 
 UserAgentPropertiesDialog::~UserAgentPropertiesDialog()
@@ -73,20 +73,20 @@ void UserAgentPropertiesDialog::insertPlaceholder(QAction *action)
 {
 	if (!action->data().toString().isEmpty())
 	{
-		m_ui->valueLineEdit->insert(QStringLiteral("{%1}").arg(action->data().toString()));
+		m_ui->valueLineEditWidget->insert(QStringLiteral("{%1}").arg(action->data().toString()));
 	}
 }
 
 void UserAgentPropertiesDialog::showPreview()
 {
-	QToolTip::showText(m_ui->valueLineEdit->mapToGlobal(m_ui->valueLineEdit->rect().bottomLeft()), AddonsManager::getWebBackend()->getUserAgent(m_ui->valueLineEdit->text()));
+	QToolTip::showText(m_ui->valueLineEditWidget->mapToGlobal(m_ui->valueLineEditWidget->rect().bottomLeft()), AddonsManager::getWebBackend()->getUserAgent(m_ui->valueLineEditWidget->text()));
 }
 
 UserAgentDefinition UserAgentPropertiesDialog::getUserAgent() const
 {
 	UserAgentDefinition userAgent(m_userAgent);
-	userAgent.title = m_ui->titleLineEdit->text();
-	userAgent.value = m_ui->valueLineEdit->text();
+	userAgent.title = m_ui->titleLineEditWidget->text();
+	userAgent.value = m_ui->valueLineEditWidget->text();
 
 	return userAgent;
 }
@@ -107,7 +107,7 @@ bool UserAgentPropertiesDialog::eventFilter(QObject *object, QEvent *event)
 			placeholdersMenu->addAction(tr("Engine Version"))->setData(QLatin1String("engineVersion"));
 			placeholdersMenu->addAction(tr("Application Version"))->setData(QLatin1String("applicationVersion"));
 
-			connect(placeholdersMenu, SIGNAL(triggered(QAction*)), this, SLOT(insertPlaceholder(QAction*)));
+			connect(placeholdersMenu, &QMenu::triggered, this, &UserAgentPropertiesDialog::insertPlaceholder);
 
 			contextMenu->exec(static_cast<QContextMenuEvent*>(event)->globalPos());
 			contextMenu->deleteLater();

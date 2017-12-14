@@ -35,22 +35,22 @@
 namespace Otter
 {
 
-PasswordsContentsWidget::PasswordsContentsWidget(const QVariantMap &parameters, Window *window) : ContentsWidget(parameters, window),
+PasswordsContentsWidget::PasswordsContentsWidget(const QVariantMap &parameters, Window *window, QWidget *parent) : ContentsWidget(parameters, window, parent),
 	m_model(new QStandardItemModel(this)),
 	m_isLoading(true),
 	m_ui(new Ui::PasswordsContentsWidget)
 {
 	m_ui->setupUi(this);
+	m_ui->filterLineEditWidget->setClearOnEscape(true);
 	m_ui->passwordsViewWidget->installEventFilter(this);
-	m_ui->filterLineEdit->installEventFilter(this);
 
 	m_ui->passwordsViewWidget->setViewMode(ItemViewWidget::TreeViewMode);
 	m_ui->passwordsViewWidget->setModel(m_model);
 
-	QTimer::singleShot(100, this, SLOT(populatePasswords()));
+	QTimer::singleShot(100, this, &PasswordsContentsWidget::populatePasswords);
 
-	connect(m_ui->filterLineEdit, SIGNAL(textChanged(QString)), this, SLOT(filterPasswords(QString)));
-	connect(m_ui->passwordsViewWidget, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(showContextMenu(QPoint)));
+	connect(m_ui->filterLineEditWidget, &LineEditWidget::textChanged, this, &PasswordsContentsWidget::filterPasswords);
+	connect(m_ui->passwordsViewWidget, &ItemViewWidget::customContextMenuRequested, this, &PasswordsContentsWidget::showContextMenu);
 }
 
 PasswordsContentsWidget::~PasswordsContentsWidget()
@@ -71,7 +71,7 @@ void PasswordsContentsWidget::changeEvent(QEvent *event)
 void PasswordsContentsWidget::populatePasswords()
 {
 	m_model->clear();
-	m_model->setHorizontalHeaderLabels(QStringList({tr("Name"), tr("Value")}));
+	m_model->setHorizontalHeaderLabels({tr("Name"), tr("Value")});
 
 	const QStringList hosts(PasswordsManager::getHosts());
 
@@ -98,7 +98,7 @@ void PasswordsContentsWidget::populatePasswords()
 				setItem->appendRow(fieldItems);
 			}
 
-			hostItem->appendRow(QList<QStandardItem*>({setItem, new QStandardItem()}));
+			hostItem->appendRow({setItem, new QStandardItem()});
 		}
 
 		hostItem->setText(QStringLiteral("%1 (%2)").arg(hosts.at(i)).arg(hostItem->rowCount()));
@@ -114,13 +114,13 @@ void PasswordsContentsWidget::populatePasswords()
 
 		emit loadingStateChanged(WebWidget::FinishedLoadingState);
 
-		connect(PasswordsManager::getInstance(), SIGNAL(passwordsModified()), this, SLOT(populatePasswords()));
+		connect(PasswordsManager::getInstance(), &PasswordsManager::passwordsModified, this, &PasswordsContentsWidget::populatePasswords);
 		connect(m_ui->passwordsViewWidget->selectionModel(), &QItemSelectionModel::selectionChanged, [&](const QItemSelection &selected, const QItemSelection &deselected)
 		{
 			Q_UNUSED(selected)
 			Q_UNUSED(deselected)
 
-			emit actionsStateChanged(QVector<int>({ActionsManager::DeleteAction}));
+			emit arbitraryActionsStateChanged({ActionsManager::DeleteAction});
 		});
 	}
 }
@@ -304,7 +304,7 @@ void PasswordsContentsWidget::triggerAction(int identifier, const QVariantMap &p
 			break;
 		case ActionsManager::FindAction:
 		case ActionsManager::QuickFindAction:
-			m_ui->filterLineEdit->setFocus();
+			m_ui->filterLineEditWidget->setFocus();
 
 			break;
 		case ActionsManager::ActivateContentAction:
@@ -408,7 +408,7 @@ PasswordsManager::PasswordInformation PasswordsContentsWidget::getPassword(const
 	for (int i = 0; i < m_model->rowCount(index); ++i)
 	{
 		const QModelIndex nameIndex(index.child(i, 0));
-		PasswordsManager::FieldInformation field;
+		PasswordsManager::PasswordInformation::Field field;
 		field.name = nameIndex.data(Qt::DisplayRole).toString();
 		field.value = ((nameIndex.data(FieldTypeRole).toInt() == PasswordsManager::PasswordField) ? QString() : index.child(i, 1).data(Qt::DisplayRole).toString());
 		field.type = static_cast<PasswordsManager::FieldType>(nameIndex.data(FieldTypeRole).toInt());
@@ -435,15 +435,6 @@ bool PasswordsContentsWidget::eventFilter(QObject *object, QEvent *event)
 			removePasswords();
 
 			return true;
-		}
-	}
-	else if (object == m_ui->filterLineEdit && event->type() == QEvent::KeyPress)
-	{
-		const QKeyEvent *keyEvent(static_cast<QKeyEvent*>(event));
-
-		if (keyEvent->key() == Qt::Key_Escape)
-		{
-			m_ui->filterLineEdit->clear();
 		}
 	}
 

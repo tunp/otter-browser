@@ -49,12 +49,11 @@ void ProgressBarDelegate::setEditorData(QWidget *editor, const QModelIndex &inde
 	if (progressBar)
 	{
 		const Transfer::TransferState state(static_cast<Transfer::TransferState>(index.data(TransfersContentsWidget::StateRole).toInt()));
-		const qint64 bytesTotal(index.data(TransfersContentsWidget::BytesTotalRole).toLongLong());
-		const bool isIndeterminate(bytesTotal <= 0);
+		const bool isIndeterminate(index.data(TransfersContentsWidget::BytesTotalRole).toLongLong() <= 0);
 		const bool hasError(state == Transfer::UnknownState || state == Transfer::ErrorState);
 
 		progressBar->setRange(0, ((isIndeterminate && !hasError) ? 0 : 100));
-		progressBar->setValue(isIndeterminate ? (hasError ? 0 : -1) : qFloor((static_cast<qreal>(index.data(TransfersContentsWidget::BytesReceivedRole).toLongLong()) / bytesTotal) * 100));
+		progressBar->setValue(isIndeterminate ? (hasError ? 0 : -1) : index.data(TransfersContentsWidget::ProgressRole).toInt());
 		progressBar->setFormat(isIndeterminate ? tr("Unknown") : QLatin1String("%p%"));
 	}
 }
@@ -71,30 +70,34 @@ QWidget* ProgressBarDelegate::createEditor(QWidget *parent, const QStyleOptionVi
 	return editor;
 }
 
-TransfersContentsWidget::TransfersContentsWidget(const QVariantMap &parameters, Window *window) : ContentsWidget(parameters, window),
+TransfersContentsWidget::TransfersContentsWidget(const QVariantMap &parameters, Window *window, QWidget *parent) : ContentsWidget(parameters, window, parent),
 	m_model(new QStandardItemModel(this)),
 	m_isLoading(false),
 	m_ui(new Ui::TransfersContentsWidget)
 {
 	m_ui->setupUi(this);
 
-	m_model->setHorizontalHeaderLabels(QStringList({QString(), tr("Filename"), tr("Size"), tr("Progress"), tr("Time"), tr("Speed"), tr("Started"), tr("Finished")}));
+	m_model->setHorizontalHeaderLabels({tr("Status"), tr("Filename"), tr("Size"), tr("Progress"), tr("Time"), tr("Speed"), tr("Started"), tr("Finished")});
+	m_model->setHeaderData(0, Qt::Horizontal, QSize(28, 0), Qt::SizeHintRole);
+	m_model->setHeaderData(1, Qt::Horizontal, QSize(500, 0), Qt::SizeHintRole);
+	m_model->setHeaderData(2, Qt::Horizontal, QSize(150, 0), Qt::SizeHintRole);
+	m_model->setHeaderData(3, Qt::Horizontal, QSize(250, 0), Qt::SizeHintRole);
+	m_model->setHeaderData(4, Qt::Horizontal, QSize(150, 0), Qt::SizeHintRole);
+	m_model->setHeaderData(5, Qt::Horizontal, QSize(150, 0), Qt::SizeHintRole);
 
 	m_ui->transfersViewWidget->setModel(m_model);
-	m_ui->transfersViewWidget->header()->resizeSection(0, 30);
-	m_ui->transfersViewWidget->header()->setSectionResizeMode(0, QHeaderView::Fixed);
-	m_ui->transfersViewWidget->header()->setSectionResizeMode(1, QHeaderView::Stretch);
 	m_ui->transfersViewWidget->setItemDelegateForColumn(3, new ProgressBarDelegate(this));
+	m_ui->transfersViewWidget->setSortRoleMapping({{0, StateRole}, {2, BytesTotalRole}, {3, ProgressRole}, {6, TimeStartedRole}, {7, TimeFinishedRole}});
 	m_ui->transfersViewWidget->installEventFilter(this);
-	m_ui->stopResumeButton->setIcon(ThemesManager::createIcon(QLatin1String("task-ongoing")));
+	m_ui->stopResumeButton->setIcon(ThemesManager::createIcon(QLatin1String("task-reject")));
 	m_ui->redownloadButton->setIcon(ThemesManager::createIcon(QLatin1String("view-refresh")));
-	m_ui->downloadLineEdit->installEventFilter(this);
+	m_ui->downloadLineEditWidget->installEventFilter(this);
 
 	const QVector<Transfer*> transfers(TransfersManager::getTransfers());
 
 	for (int i = 0; i < transfers.count(); ++i)
 	{
-		addTransfer(transfers.at(i));
+		handleTransferAdded(transfers.at(i));
 	}
 
 	if (isSidebarPanel())
@@ -102,16 +105,16 @@ TransfersContentsWidget::TransfersContentsWidget(const QVariantMap &parameters, 
 		m_ui->detailsWidget->hide();
 	}
 
-	connect(TransfersManager::getInstance(), SIGNAL(transferStarted(Transfer*)), this, SLOT(addTransfer(Transfer*)));
-	connect(TransfersManager::getInstance(), SIGNAL(transferRemoved(Transfer*)), this, SLOT(removeTransfer(Transfer*)));
-	connect(TransfersManager::getInstance(), SIGNAL(transferChanged(Transfer*)), this, SLOT(updateTransfer(Transfer*)));
-	connect(m_model, SIGNAL(modelReset()), this, SLOT(updateActions()));
-	connect(m_ui->transfersViewWidget, SIGNAL(doubleClicked(QModelIndex)), this, SLOT(openTransfer(QModelIndex)));
-	connect(m_ui->transfersViewWidget, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(showContextMenu(QPoint)));
-	connect(m_ui->transfersViewWidget, SIGNAL(needsActionsUpdate()), this, SLOT(updateActions()));
-	connect(m_ui->downloadLineEdit, SIGNAL(returnPressed()), this, SLOT(startQuickTransfer()));
-	connect(m_ui->stopResumeButton, SIGNAL(clicked()), this, SLOT(stopResumeTransfer()));
-	connect(m_ui->redownloadButton, SIGNAL(clicked()), this, SLOT(redownloadTransfer()));
+	connect(TransfersManager::getInstance(), &TransfersManager::transferStarted, this, &TransfersContentsWidget::handleTransferAdded);
+	connect(TransfersManager::getInstance(), &TransfersManager::transferRemoved, this, &TransfersContentsWidget::handleTransferRemoved);
+	connect(TransfersManager::getInstance(), &TransfersManager::transferChanged, this, &TransfersContentsWidget::handleTransferChanged);
+	connect(m_model, &QStandardItemModel::modelReset, this, &TransfersContentsWidget::updateActions);
+	connect(m_ui->transfersViewWidget, &ItemViewWidget::doubleClicked, this, &TransfersContentsWidget::openTransfer);
+	connect(m_ui->transfersViewWidget, &ItemViewWidget::customContextMenuRequested, this, &TransfersContentsWidget::showContextMenu);
+	connect(m_ui->transfersViewWidget, &ItemViewWidget::needsActionsUpdate, this, &TransfersContentsWidget::updateActions);
+	connect(m_ui->downloadLineEditWidget, &LineEditWidget::returnPressed, this, &TransfersContentsWidget::startQuickTransfer);
+	connect(m_ui->stopResumeButton, &QPushButton::clicked, this, &TransfersContentsWidget::stopResumeTransfer);
+	connect(m_ui->redownloadButton, &QPushButton::clicked, this, &TransfersContentsWidget::redownloadTransfer);
 }
 
 TransfersContentsWidget::~TransfersContentsWidget()
@@ -129,7 +132,97 @@ void TransfersContentsWidget::changeEvent(QEvent *event)
 	}
 }
 
-void TransfersContentsWidget::addTransfer(Transfer *transfer)
+void TransfersContentsWidget::removeTransfer()
+{
+	Transfer *transfer(getTransfer(m_ui->transfersViewWidget->currentIndex()));
+
+	if (transfer)
+	{
+		if (transfer->getState() == Transfer::RunningState && QMessageBox::warning(this, tr("Warning"), tr("This transfer is still running.\nDo you really want to remove it?"), (QMessageBox::Yes | QMessageBox::Cancel)) == QMessageBox::Cancel)
+		{
+			return;
+		}
+
+		m_speeds.remove(transfer);
+
+		m_model->removeRow(m_ui->transfersViewWidget->currentIndex().row());
+
+		TransfersManager::removeTransfer(transfer);
+	}
+}
+
+void TransfersContentsWidget::openTransfer(const QModelIndex &index)
+{
+	const Transfer *transfer(getTransfer(index.isValid() ? index : m_ui->transfersViewWidget->currentIndex()));
+
+	if (transfer)
+	{
+		transfer->openTarget();
+	}
+}
+
+void TransfersContentsWidget::openTransferFolder(const QModelIndex &index)
+{
+	const Transfer *transfer(getTransfer(index.isValid() ? index : m_ui->transfersViewWidget->currentIndex()));
+
+	if (transfer)
+	{
+		Utils::runApplication({}, QUrl::fromLocalFile(QFileInfo(transfer->getTarget()).dir().canonicalPath()));
+	}
+}
+
+void TransfersContentsWidget::copyTransferInformation()
+{
+	const QStandardItem *item(m_model->itemFromIndex(m_ui->transfersViewWidget->currentIndex()));
+
+	if (item)
+	{
+		QApplication::clipboard()->setText(item->toolTip().remove(QRegularExpression(QLatin1String("<[^>]*>"))));
+	}
+}
+
+void TransfersContentsWidget::stopResumeTransfer()
+{
+	Transfer *transfer(getTransfer(m_ui->transfersViewWidget->getCurrentIndex()));
+
+	if (transfer)
+	{
+		if (transfer->getState() == Transfer::RunningState)
+		{
+			transfer->stop();
+		}
+		else if (transfer->getState() == Transfer::ErrorState)
+		{
+			transfer->resume();
+		}
+
+		updateActions();
+	}
+}
+
+void TransfersContentsWidget::redownloadTransfer()
+{
+	Transfer *transfer(getTransfer(m_ui->transfersViewWidget->getCurrentIndex()));
+
+	if (transfer)
+	{
+		transfer->restart();
+	}
+}
+
+void TransfersContentsWidget::startQuickTransfer()
+{
+	TransfersManager::startTransfer(m_ui->downloadLineEditWidget->text(), {}, (Transfer::CanNotifyOption | Transfer::IsQuickTransferOption | (SessionsManager::isPrivate() ? Transfer::IsPrivateOption : Transfer::NoOption)));
+
+	m_ui->downloadLineEditWidget->clear();
+}
+
+void TransfersContentsWidget::clearFinishedTransfers()
+{
+	TransfersManager::clearTransfers();
+}
+
+void TransfersContentsWidget::handleTransferAdded(Transfer *transfer)
 {
 	QList<QStandardItem*> items({new QStandardItem(), new QStandardItem(QFileInfo(transfer->getTarget()).fileName())});
 	items[0]->setData(qVariantFromValue(static_cast<void*>(transfer)), Qt::UserRole);
@@ -153,41 +246,10 @@ void TransfersContentsWidget::addTransfer(Transfer *transfer)
 		m_speeds[transfer] = QQueue<qint64>();
 	}
 
-	updateTransfer(transfer);
+	handleTransferChanged(transfer);
 }
 
-void TransfersContentsWidget::removeTransfer(Transfer *transfer)
-{
-	const int row(findTransfer(transfer));
-
-	if (row >= 0)
-	{
-		m_model->removeRow(row);
-	}
-
-	m_speeds.remove(transfer);
-}
-
-void TransfersContentsWidget::removeTransfer()
-{
-	Transfer *transfer(getTransfer(m_ui->transfersViewWidget->currentIndex()));
-
-	if (transfer)
-	{
-		if (transfer->getState() == Transfer::RunningState && QMessageBox::warning(this, tr("Warning"), tr("This transfer is still running.\nDo you really want to remove it?"), (QMessageBox::Yes | QMessageBox::Cancel)) == QMessageBox::Cancel)
-		{
-			return;
-		}
-
-		m_speeds.remove(transfer);
-
-		m_model->removeRow(m_ui->transfersViewWidget->currentIndex().row());
-
-		TransfersManager::removeTransfer(transfer);
-	}
-}
-
-void TransfersContentsWidget::updateTransfer(Transfer *transfer)
+void TransfersContentsWidget::handleTransferChanged(Transfer *transfer)
 {
 	const int row(findTransfer(transfer));
 
@@ -261,17 +323,24 @@ void TransfersContentsWidget::updateTransfer(Transfer *transfer)
 
 		switch (i)
 		{
+			case 0:
+				m_model->setData(index, icon, Qt::DecorationRole);
+				m_model->setData(index, transfer->getState(), StateRole);
+
+				break;
 			case 1:
 				m_model->setData(index, QFileInfo(transfer->getTarget()).fileName(), Qt::DisplayRole);
 
 				break;
 			case 2:
 				m_model->setData(index, Utils::formatUnit(transfer->getBytesTotal(), false, 1), Qt::DisplayRole);
+				m_model->setData(index, transfer->getBytesTotal(), BytesTotalRole);
 
 				break;
 			case 3:
 				m_model->setData(index, transfer->getBytesReceived(), BytesReceivedRole);
 				m_model->setData(index, transfer->getBytesTotal(), BytesTotalRole);
+				m_model->setData(index, ((transfer->getBytesTotal() > 0) ? qFloor((static_cast<qreal>(transfer->getBytesReceived()) / transfer->getBytesTotal()) * 100) : -1), ProgressRole);
 				m_model->setData(index, transfer->getState(), StateRole);
 
 				break;
@@ -285,15 +354,15 @@ void TransfersContentsWidget::updateTransfer(Transfer *transfer)
 				break;
 			case 6:
 				m_model->setData(index, Utils::formatDateTime(transfer->getTimeStarted()), Qt::DisplayRole);
+				m_model->setData(index, transfer->getTimeStarted(), TimeStartedRole);
 
 				break;
 			case 7:
 				m_model->setData(index, Utils::formatDateTime(transfer->getTimeFinished()), Qt::DisplayRole);
+				m_model->setData(index, transfer->getTimeFinished(), TimeFinishedRole);
 
 				break;
 			default:
-				m_model->setData(index, icon, Qt::DecorationRole);
-
 				break;
 		}
 	}
@@ -338,75 +407,16 @@ void TransfersContentsWidget::updateTransfer(Transfer *transfer)
 	}
 }
 
-void TransfersContentsWidget::openTransfer(const QModelIndex &index)
+void TransfersContentsWidget::handleTransferRemoved(Transfer *transfer)
 {
-	const Transfer *transfer(getTransfer(index.isValid() ? index : m_ui->transfersViewWidget->currentIndex()));
+	const int row(findTransfer(transfer));
 
-	if (transfer)
+	if (row >= 0)
 	{
-		transfer->openTarget();
+		m_model->removeRow(row);
 	}
-}
 
-void TransfersContentsWidget::openTransferFolder(const QModelIndex &index)
-{
-	const Transfer *transfer(getTransfer(index.isValid() ? index : m_ui->transfersViewWidget->currentIndex()));
-
-	if (transfer)
-	{
-		Utils::runApplication(QString(), QUrl::fromLocalFile(QFileInfo(transfer->getTarget()).dir().canonicalPath()));
-	}
-}
-
-void TransfersContentsWidget::copyTransferInformation()
-{
-	const QStandardItem *item(m_model->itemFromIndex(m_ui->transfersViewWidget->currentIndex()));
-
-	if (item)
-	{
-		QApplication::clipboard()->setText(item->toolTip().remove(QRegularExpression(QLatin1String("<[^>]*>"))));
-	}
-}
-
-void TransfersContentsWidget::stopResumeTransfer()
-{
-	Transfer *transfer(getTransfer(m_ui->transfersViewWidget->getCurrentIndex()));
-
-	if (transfer)
-	{
-		if (transfer->getState() == Transfer::RunningState)
-		{
-			transfer->stop();
-		}
-		else if (transfer->getState() == Transfer::ErrorState)
-		{
-			transfer->resume();
-		}
-
-		updateActions();
-	}
-}
-
-void TransfersContentsWidget::redownloadTransfer()
-{
-	Transfer *transfer(getTransfer(m_ui->transfersViewWidget->getCurrentIndex()));
-
-	if (transfer)
-	{
-		transfer->restart();
-	}
-}
-
-void TransfersContentsWidget::startQuickTransfer()
-{
-	TransfersManager::startTransfer(m_ui->downloadLineEdit->text(), QString(), (Transfer::CanNotifyOption | Transfer::IsQuickTransferOption | (SessionsManager::isPrivate() ? Transfer::IsPrivateOption : Transfer::NoOption)));
-
-	m_ui->downloadLineEdit->clear();
-}
-
-void TransfersContentsWidget::clearFinishedTransfers()
-{
-	TransfersManager::clearTransfers();
+	m_speeds.remove(transfer);
 }
 
 void TransfersContentsWidget::showContextMenu(const QPoint &position)
@@ -491,7 +501,7 @@ void TransfersContentsWidget::updateActions()
 		m_ui->progressLabelWidget->clear();
 	}
 
-	emit actionsStateChanged(ActionsManager::ActionDefinition::EditingCategory);
+	emit categorizedActionsStateChanged({ActionsManager::ActionDefinition::EditingCategory});
 }
 
 void TransfersContentsWidget::print(QPrinter *printer)
@@ -530,8 +540,8 @@ void TransfersContentsWidget::triggerAction(int identifier, const QVariantMap &p
 			break;
 		case ActionsManager::FindAction:
 		case ActionsManager::QuickFindAction:
-			m_ui->downloadLineEdit->setFocus();
-			m_ui->downloadLineEdit->selectAll();
+			m_ui->downloadLineEditWidget->setFocus();
+			m_ui->downloadLineEditWidget->selectAll();
 
 			break;
 		case ActionsManager::ActivateContentAction:
@@ -611,7 +621,7 @@ int TransfersContentsWidget::findTransfer(Transfer *transfer) const
 
 	for (int i = 0; i < m_model->rowCount(); ++i)
 	{
-		if (transfer == static_cast<Transfer*>(m_model->item(i, 0)->data(Qt::UserRole).value<void*>()))
+		if (transfer == static_cast<Transfer*>(m_model->index(i, 0).data(Qt::UserRole).value<void*>()))
 		{
 			return i;
 		}
@@ -640,13 +650,13 @@ bool TransfersContentsWidget::eventFilter(QObject *object, QEvent *event)
 			return true;
 		}
 	}
-	else if (object == m_ui->downloadLineEdit && event->type() == QEvent::KeyPress)
+	else if (object == m_ui->downloadLineEditWidget && event->type() == QEvent::KeyPress)
 	{
 		const QKeyEvent *keyEvent(static_cast<QKeyEvent*>(event));
 
 		if (keyEvent->key() == Qt::Key_Escape)
 		{
-			m_ui->downloadLineEdit->clear();
+			m_ui->downloadLineEditWidget->clear();
 		}
 	}
 

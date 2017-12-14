@@ -59,9 +59,9 @@ void SettingsManager::createInstance(const QString &path)
 
 	m_definitions.reserve(m_identifierCounter);
 
-	registerOption(AddressField_CompletionDisplayModeOption, EnumerationType, QLatin1String("compact"), QStringList({QLatin1String("compact"), QLatin1String("columns")}));
-	registerOption(AddressField_CompletionModeOption, EnumerationType, QLatin1String("inlineAndPopup"), QStringList({QLatin1String("none"), QLatin1String("inline"), QLatin1String("popup"), QLatin1String("inlineAndPopup")}));
-	registerOption(AddressField_DropActionOption, EnumerationType, QLatin1String("replace"), QStringList({QLatin1String("replace"), QLatin1String("paste"), QLatin1String("pasteAndGo")}));
+	registerOption(AddressField_CompletionDisplayModeOption, EnumerationType, QLatin1String("compact"), {QLatin1String("compact"), QLatin1String("columns")});
+	registerOption(AddressField_CompletionModeOption, EnumerationType, QLatin1String("inlineAndPopup"), {QLatin1String("none"), QLatin1String("inline"), QLatin1String("popup"), QLatin1String("inlineAndPopup")});
+	registerOption(AddressField_DropActionOption, EnumerationType, QLatin1String("replace"), {QLatin1String("replace"), QLatin1String("paste"), QLatin1String("pasteAndGo")});
 	registerOption(AddressField_HostLookupTimeoutOption, IntegerType, 200);
 	registerOption(AddressField_LayoutOption, ListType, QStringList({QLatin1String("websiteInformation"), QLatin1String("address"), QLatin1String("fillPassword"), QLatin1String("loadPlugins"), QLatin1String("listFeeds"), QLatin1String("bookmark"), QLatin1String("historyDropdown")}));
 	registerOption(AddressField_PasteAndGoOnMiddleClickOption, BooleanType, true);
@@ -72,8 +72,8 @@ void SettingsManager::createInstance(const QString &path)
 	registerOption(AddressField_SuggestLocalPathsOption, BooleanType, true);
 	registerOption(AddressField_SuggestSearchOption, BooleanType, true);
 	registerOption(AddressField_SuggestSpecialPagesOption, BooleanType, true);
-	registerOption(Backends_PasswordsOption, EnumerationType, QLatin1String("file"), QStringList(QLatin1String("file")));
-	registerOption(Backends_WebOption, EnumerationType, QLatin1String("qtwebkit"), QStringList(QLatin1String("qtwebkit")));
+	registerOption(Backends_PasswordsOption, EnumerationType, QLatin1String("file"), {QLatin1String("file")});
+	registerOption(Backends_WebOption, EnumerationType, QLatin1String("qtwebkit"), {QLatin1String("qtwebkit")}, (OptionDefinition::IsEnabledFlag | OptionDefinition::IsVisibleFlag | OptionDefinition::RequiresRestartFlag));
 	registerOption(Browser_AlwaysAskWhereToSaveDownloadOption, BooleanType, true);
 	registerOption(Browser_EnableMouseGesturesOption, BooleanType, true);
 	registerOption(Browser_EnableSingleKeyShortcutsOption, BooleanType, true);
@@ -94,17 +94,17 @@ void SettingsManager::createInstance(const QString &path)
 	registerOption(Browser_ReuseCurrentTabOption, BooleanType, false);
 	registerOption(Browser_ShowSelectionContextMenuOnDoubleClickOption, BooleanType, false);
 	registerOption(Browser_SpellCheckDictionaryOption, StringType, QString());
-	registerOption(Browser_StartupBehaviorOption, EnumerationType, QLatin1String("continuePrevious"), QStringList({QLatin1String("continuePrevious"), QLatin1String("showDialog"), QLatin1String("startHomePage"), QLatin1String("startStartPage"), QLatin1String("startEmpty")}));
-	registerOption(Browser_ToolTipsModeOption, EnumerationType, QLatin1String("extended"), QStringList({QLatin1String("disabled"), QLatin1String("standard"), QLatin1String("extended")}));
-	registerOption(Browser_TransferStartingActionOption, EnumerationType, QLatin1String("openTab"), QStringList({QLatin1String("openTab"), QLatin1String("openBackgroundTab"), QLatin1String("openPanel"), QLatin1String("doNothing")}));
+	registerOption(Browser_StartupBehaviorOption, EnumerationType, QLatin1String("continuePrevious"), {QLatin1String("continuePrevious"), QLatin1String("showDialog"), QLatin1String("startHomePage"), QLatin1String("startStartPage"), QLatin1String("startEmpty")});
+	registerOption(Browser_ToolTipsModeOption, EnumerationType, QLatin1String("extended"), {QLatin1String("disabled"), QLatin1String("standard"), QLatin1String("extended")});
+	registerOption(Browser_TransferStartingActionOption, EnumerationType, QLatin1String("openTab"), {QLatin1String("openTab"), QLatin1String("openBackgroundTab"), QLatin1String("openPanel"), QLatin1String("doNothing")});
 	registerOption(Browser_ValidatorsOrderOption, ListType, QStringList({QLatin1String("w3c-markup"), QLatin1String("w3c-css")}));
 	registerOption(Cache_DiskCacheLimitOption, IntegerType, 51200);
 	registerOption(Cache_PagesInMemoryLimitOption, IntegerType, 5);
 	registerOption(Choices_WarnFormResendOption, BooleanType, true);
-	registerOption(Choices_WarnLowDiskSpaceOption, EnumerationType, QLatin1String("warn"), QStringList({QLatin1String("warn"), QLatin1String("continueReadOnly"), QLatin1String("continueReadWrite")}));
+	registerOption(Choices_WarnLowDiskSpaceOption, EnumerationType, QLatin1String("warn"), {QLatin1String("warn"), QLatin1String("continueReadOnly"), QLatin1String("continueReadWrite")});
 	registerOption(Choices_WarnOpenBookmarkFolderOption, BooleanType, true);
 	registerOption(Choices_WarnOpenMultipleDroppedUrlsOption, BooleanType, true);
-	registerOption(Choices_WarnQuitOption, EnumerationType, QLatin1String("noWarn"), QStringList({QLatin1String("alwaysWarn"), QLatin1String("warnOpenTabs"), QLatin1String("noWarn")}));
+	registerOption(Choices_WarnQuitOption, EnumerationType, QLatin1String("noWarn"), {QLatin1String("alwaysWarn"), QLatin1String("warnOpenTabs"), QLatin1String("noWarn")});
 	registerOption(Choices_WarnQuitTransfersOption, BooleanType, true);
 	registerOption(Content_BackgroundColorOption, ColorType, QColor(0xFF, 0xFF, 0xFF));
 	registerOption(Content_CursiveFontOption, FontType, QLatin1String("Impact"));
@@ -124,16 +124,19 @@ void SettingsManager::createInstance(const QString &path)
 	registerOption(Content_UserStyleSheetOption, PathType, QString());
 	registerOption(Content_VisitedLinkColorOption, ColorType, QColor(0x55, 0x1A, 0x8B));
 	registerOption(Content_ZoomTextOnlyOption, BooleanType, false);
-	registerOption(ContentBlocking_CosmeticFiltersModeOption, EnumerationType, QLatin1String("all"), QStringList({QLatin1String("all"), QLatin1String("domainOnly"), QLatin1String("none")}));
+	registerOption(ContentBlocking_CosmeticFiltersModeOption, EnumerationType, QLatin1String("all"), {QLatin1String("all"), QLatin1String("domainOnly"), QLatin1String("none")});
 	registerOption(ContentBlocking_EnableContentBlockingOption, BooleanType, true);
 	registerOption(ContentBlocking_EnableWildcardsOption, BooleanType, true);
+	registerOption(ContentBlocking_IgnoreHostsOption, ListType, QStringList());
 	registerOption(ContentBlocking_ProfilesOption, ListType, QStringList());
 	registerOption(History_BrowsingLimitAmountGlobalOption, IntegerType, 1000);
 	registerOption(History_BrowsingLimitAmountWindowOption, IntegerType, 50);
 	registerOption(History_BrowsingLimitPeriodOption, IntegerType, 30);
 	registerOption(History_ClearOnCloseOption, ListType, QStringList());
+	registerOption(History_ClosedTabsLimitAmountOption, IntegerType, 50);
+	registerOption(History_ClosedWindowsLimitAmountOption, IntegerType, 10);
 	registerOption(History_DownloadsLimitPeriodOption, IntegerType, 7);
-	registerOption(History_ExpandBranchesOption, EnumerationType, QLatin1String("first"), QStringList({QLatin1String("first"), QLatin1String("all"), QLatin1String("none")}));
+	registerOption(History_ExpandBranchesOption, EnumerationType, QLatin1String("first"), {QLatin1String("first"), QLatin1String("all"), QLatin1String("none")});
 	registerOption(History_ManualClearOptionsOption, ListType, QStringList({QLatin1String("browsing"), QLatin1String("cookies"), QLatin1String("forms"), QLatin1String("downloads"), QLatin1String("caches")}));
 	registerOption(History_ManualClearPeriodOption, IntegerType, 1);
 	registerOption(History_RememberBrowsingOption, BooleanType, true);
@@ -143,23 +146,23 @@ void SettingsManager::createInstance(const QString &path)
 	registerOption(Interface_DateTimeFormatOption, StringType, QString());
 	registerOption(Interface_EnableSmoothScrollingOption, BooleanType, false);
 	registerOption(Interface_IconThemePathOption, PathType, QString());
-	registerOption(Interface_LastTabClosingActionOption, EnumerationType, QLatin1String("openTab"), QStringList({QLatin1String("openTab"), QLatin1String("closeWindow"), QLatin1String("closeWindowIfNotLast"), QLatin1String("doNothing")}));
+	registerOption(Interface_LastTabClosingActionOption, EnumerationType, QLatin1String("openTab"), {QLatin1String("openTab"), QLatin1String("closeWindow"), QLatin1String("closeWindowIfNotLast"), QLatin1String("doNothing")});
 	registerOption(Interface_LockToolBarsOption, BooleanType, false);
-	registerOption(Interface_NewTabOpeningActionOption, EnumerationType, QLatin1String("maximizeTab"), QStringList({QLatin1String("doNothing"), QLatin1String("maximizeTab"), QLatin1String("cascadeAll"), QLatin1String("tileAll")}));
+	registerOption(Interface_NewTabOpeningActionOption, EnumerationType, QLatin1String("maximizeTab"), {QLatin1String("doNothing"), QLatin1String("maximizeTab"), QLatin1String("cascadeAll"), QLatin1String("tileAll")});
 	registerOption(Interface_NotificationVisibilityDurationOption, IntegerType, 5);
 	registerOption(Interface_ShowScrollBarsOption, BooleanType, true);
 	registerOption(Interface_StyleSheetOption, PathType, QString());
-	registerOption(Interface_TabCrashingActionOption, EnumerationType, QLatin1String("ask"), QStringList({QLatin1String("ask"), QLatin1String("close"), QLatin1String("reload")}));
+	registerOption(Interface_TabCrashingActionOption, EnumerationType, QLatin1String("ask"), {QLatin1String("ask"), QLatin1String("close"), QLatin1String("reload")});
 	registerOption(Interface_UseFancyDateTimeFormatOption, BooleanType, true);
 	registerOption(Interface_UseNativeNotificationsOption, BooleanType, true);
 	registerOption(Interface_UseSystemIconThemeOption, BooleanType, false);
 	registerOption(Interface_WidgetStyleOption, StringType, QString());
 	registerOption(Network_AcceptLanguageOption, StringType, QLatin1String("system,*;q=0.9"));
-	registerOption(Network_CookiesKeepModeOption, EnumerationType, QLatin1String("keepUntilExpires"), QStringList({QLatin1String("keepUntilExpires"), QLatin1String("keepUntilExit"), QLatin1String("ask")}));
-	registerOption(Network_CookiesPolicyOption, EnumerationType, QLatin1String("acceptAll"), QStringList({QLatin1String("acceptAll"), QLatin1String("acceptExisting"), QLatin1String("readOnly"), QLatin1String("ignore")}));
-	registerOption(Network_DoNotTrackPolicyOption, EnumerationType, QLatin1String("skip"), QStringList({QLatin1String("skip"), QLatin1String("allow"), QLatin1String("doNotAllow")}));
+	registerOption(Network_CookiesKeepModeOption, EnumerationType, QLatin1String("keepUntilExpires"), {QLatin1String("keepUntilExpires"), QLatin1String("keepUntilExit"), QLatin1String("ask")});
+	registerOption(Network_CookiesPolicyOption, EnumerationType, QLatin1String("acceptAll"), {QLatin1String("acceptAll"), QLatin1String("acceptExisting"), QLatin1String("readOnly"), QLatin1String("ignore")});
+	registerOption(Network_DoNotTrackPolicyOption, EnumerationType, QLatin1String("skip"), {QLatin1String("skip"), QLatin1String("allow"), QLatin1String("doNotAllow")});
 	registerOption(Network_EnableReferrerOption, BooleanType, true);
-	registerOption(Network_ProxyOption, EnumerationType, QLatin1String("system"), QStringList(QLatin1String("system")));
+	registerOption(Network_ProxyOption, EnumerationType, QLatin1String("system"), {QLatin1String("system")});
 	registerOption(Network_ThirdPartyCookiesAcceptedHostsOption, ListType, QStringList());
 	registerOption(Network_ThirdPartyCookiesPolicyOption, EnumerationType, QLatin1String("acceptAll"), QStringList({QLatin1String("acceptAll"), QLatin1String("acceptExisting"), QLatin1String("ignore")}));
 	registerOption(Network_ThirdPartyCookiesRejectedHostsOption, ListType, QStringList());
@@ -263,13 +266,13 @@ void SettingsManager::removeOverride(const QUrl &url, const QString &key)
 	}
 }
 
-void SettingsManager::registerOption(int identifier, SettingsManager::OptionType type, const QVariant &defaultValue, const QStringList &choices)
+void SettingsManager::registerOption(int identifier, OptionType type, const QVariant &defaultValue, const QStringList &choices, OptionDefinition::OptionFlags flags)
 {
 	OptionDefinition definition;
 	definition.defaultValue = defaultValue;
 	definition.setChoices(choices);
 	definition.type = type;
-	definition.flags = (IsEnabledFlag | IsVisibleFlag | IsBuiltInFlag);
+	definition.flags = flags;
 	definition.identifier = identifier;
 
 	m_definitions.append(definition);
@@ -277,7 +280,11 @@ void SettingsManager::registerOption(int identifier, SettingsManager::OptionType
 
 void SettingsManager::saveOption(const QString &path, const QString &key, const QVariant &value, OptionType type)
 {
-	if (type == ColorType)
+	if (value.isNull())
+	{
+		QSettings(path, QSettings::IniFormat).remove(key);
+	}
+	else if (type == ColorType)
 	{
 		const QColor color(value.value<QColor>());
 
@@ -305,7 +312,8 @@ void SettingsManager::setOption(int identifier, const QVariant &value, const QUr
 
 	if (!url.isEmpty())
 	{
-		const QString overrideName(getHost(url) + QLatin1Char('/') + name);
+		const QString host(getHost(url));
+		const QString overrideName(host + QLatin1Char('/') + name);
 
 		if (value.isNull())
 		{
@@ -321,7 +329,7 @@ void SettingsManager::setOption(int identifier, const QVariant &value, const QUr
 			m_hasWildcardedOverrides = true;
 		}
 
-		emit m_instance->optionChanged(identifier, value, url);
+		emit m_instance->hostOptionChanged(identifier, value, host);
 
 		return;
 	}
@@ -345,9 +353,9 @@ QString SettingsManager::createDisplayValue(int identifier, const QVariant &valu
 
 	switch (definition.type)
 	{
-		case SettingsManager::BooleanType:
+		case BooleanType:
 			return (value.toBool() ? tr("Yes") : tr("No"));
-		case SettingsManager::ColorType:
+		case ColorType:
 			{
 				const QColor color(value.value<QColor>());
 
@@ -355,7 +363,7 @@ QString SettingsManager::createDisplayValue(int identifier, const QVariant &valu
 			}
 
 			break;
-		case SettingsManager::EnumerationType:
+		case EnumerationType:
 			{
 				const QString key(value.toString());
 
@@ -369,9 +377,9 @@ QString SettingsManager::createDisplayValue(int identifier, const QVariant &valu
 			}
 
 			break;
-		case SettingsManager::ListType:
+		case ListType:
 			return value.toStringList().join(QLatin1String(", "));
-		case SettingsManager::PasswordType:
+		case PasswordType:
 			if (!value.toString().isEmpty())
 			{
 				return QString(5, QChar(0x2022));
@@ -488,7 +496,7 @@ QVariant SettingsManager::getOption(int identifier, const QUrl &url)
 {
 	if (identifier < 0 || identifier >= m_definitions.count())
 	{
-		return QVariant();
+		return {};
 	}
 
 	const QString name(getOptionName(identifier));
@@ -544,7 +552,7 @@ SettingsManager::OptionDefinition SettingsManager::getOptionDefinition(int ident
 	return OptionDefinition();
 }
 
-int SettingsManager::registerOption(const QString &name, OptionType type, const QVariant &defaultValue, const QStringList &choices)
+int SettingsManager::registerOption(const QString &name, OptionType type, const QVariant &defaultValue, const QStringList &choices, OptionDefinition::OptionFlags flags)
 {
 	if (name.isEmpty() || getOptionIdentifier(name) >= 0)
 	{
@@ -559,6 +567,7 @@ int SettingsManager::registerOption(const QString &name, OptionType type, const 
 	definition.defaultValue = defaultValue;
 	definition.setChoices(choices);
 	definition.type = type;
+	definition.flags = flags;
 	definition.identifier = identifier;
 
 	m_customOptions[name] = identifier;

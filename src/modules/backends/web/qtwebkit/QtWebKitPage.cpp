@@ -20,30 +20,28 @@
 
 #include "QtWebKitPage.h"
 #include "QtWebKitNetworkManager.h"
+#include "QtWebKitPluginFactory.h"
 #include "QtWebKitWebWidget.h"
 #include "../../../../core/ActionsManager.h"
 #include "../../../../core/Console.h"
 #include "../../../../core/ContentBlockingManager.h"
 #include "../../../../core/ContentBlockingProfile.h"
-#include "../../../../core/NetworkManagerFactory.h"
 #include "../../../../core/SettingsManager.h"
 #include "../../../../core/ThemesManager.h"
 #include "../../../../core/UserScript.h"
 #include "../../../../core/Utils.h"
 #include "../../../../ui/ContentsDialog.h"
+#include "../../../../ui/LineEditWidget.h"
 
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
 #include <QtGui/QDesktopServices>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QWheelEvent>
-#include <QtWidgets/QHBoxLayout>
-#include <QtWidgets/QInputDialog>
-#include <QtWidgets/QLineEdit>
-#include <QtWidgets/QMessageBox>
-#include <QtWebKit/QWebElement>
 #include <QtWebKit/QWebHistory>
 #include <QtWebKitWidgets/QWebFrame>
+#include <QtWidgets/QInputDialog>
+#include <QtWidgets/QMessageBox>
 
 namespace Otter
 {
@@ -51,10 +49,10 @@ namespace Otter
 QtWebKitFrame::QtWebKitFrame(QWebFrame *frame, QtWebKitWebWidget *parent) : QObject(parent),
 	m_frame(frame),
 	m_widget(parent),
-	m_isErrorPage(false)
+	m_isDisplayingErrorPage(false)
 {
-	connect(frame, SIGNAL(destroyed(QObject*)), this, SLOT(deleteLater()));
-	connect(frame, SIGNAL(loadFinished(bool)), this, SLOT(handleLoadFinished()));
+	connect(frame, &QWebFrame::destroyed, this, &QtWebKitFrame::deleteLater);
+	connect(frame, &QWebFrame::loadFinished, this, &QtWebKitFrame::handleLoadFinished);
 }
 
 void QtWebKitFrame::runUserScripts(const QUrl &url) const
@@ -88,11 +86,11 @@ void QtWebKitFrame::applyContentBlockingRules(const QStringList &rules, bool rem
 	}
 }
 
-void QtWebKitFrame::handleErrorPageChanged(QWebFrame *frame, bool isErrorPage)
+void QtWebKitFrame::handleIsDisplayingErrorPageChanged(QWebFrame *frame, bool isDisplayingErrorPage)
 {
 	if (frame == m_frame)
 	{
-		m_isErrorPage = isErrorPage;
+		m_isDisplayingErrorPage = isDisplayingErrorPage;
 	}
 }
 
@@ -103,7 +101,7 @@ void QtWebKitFrame::handleLoadFinished()
 		return;
 	}
 
-	if (m_isErrorPage)
+	if (m_isDisplayingErrorPage)
 	{
 		const QVector<QPair<QUrl, QSslError> > sslErrors(m_widget->getSslInformation().errors);
 		QFile file(QLatin1String(":/modules/backends/web/qtwebkit/resources/errorPage.js"));
@@ -183,9 +181,9 @@ void QtWebKitFrame::handleLoadFinished()
 	}
 }
 
-bool QtWebKitFrame::isErrorPage() const
+bool QtWebKitFrame::isDisplayingErrorPage() const
 {
-	return m_isErrorPage;
+	return m_isDisplayingErrorPage;
 }
 
 QtWebKitPage::QtWebKitPage(QtWebKitNetworkManager *networkManager, QtWebKitWebWidget *parent) : QWebPage(parent),
@@ -196,16 +194,25 @@ QtWebKitPage::QtWebKitPage(QtWebKitNetworkManager *networkManager, QtWebKitWebWi
 	m_isViewingMedia(false)
 {
 	setNetworkAccessManager(m_networkManager);
+	setPluginFactory(new QtWebKitPluginFactory(parent));
 	setForwardUnsupportedContent(true);
 	handleFrameCreation(mainFrame());
 
-	connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int)));
-	connect(this, SIGNAL(frameCreated(QWebFrame*)), this, SLOT(handleFrameCreation(QWebFrame*)));
+	connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &QtWebKitPage::handleOptionChanged);
+	connect(this, &QtWebKitPage::frameCreated, this, &QtWebKitPage::handleFrameCreation);
 #ifndef OTTER_ENABLE_QTWEBKIT_LEGACY
-	connect(this, SIGNAL(consoleMessageReceived(MessageSource,MessageLevel,QString,int,QString)), this, SLOT(handleConsoleMessage(MessageSource,MessageLevel,QString,int,QString)));
+	connect(this, &QtWebKitPage::consoleMessageReceived, this, &QtWebKitPage::handleConsoleMessage);
 #endif
-	connect(mainFrame(), SIGNAL(loadStarted()), this, SLOT(updateStyleSheets()));
-	connect(mainFrame(), SIGNAL(loadFinished(bool)), this, SLOT(handleLoadFinished()));
+	connect(mainFrame(), &QWebFrame::loadStarted, this, [&]()
+	{
+		updateStyleSheets();
+	});
+	connect(mainFrame(), &QWebFrame::loadFinished, this, [&]()
+	{
+		m_isIgnoringJavaScriptPopups = false;
+
+		updateStyleSheets();
+	});
 }
 
 QtWebKitPage::QtWebKitPage() : QWebPage(),
@@ -284,9 +291,9 @@ void QtWebKitPage::validatePopup(const QUrl &url)
 	}
 }
 
-void QtWebKitPage::markAsErrorPage()
+void QtWebKitPage::markAsDisplayingErrorPage()
 {
-	emit errorPageChanged(mainFrame(), false);
+	emit isDisplayingErrorPageChanged(mainFrame(), false);
 }
 
 void QtWebKitPage::markAsPopup()
@@ -302,13 +309,6 @@ void QtWebKitPage::handleOptionChanged(int identifier)
 	}
 }
 
-void QtWebKitPage::handleLoadFinished()
-{
-	m_isIgnoringJavaScriptPopups = false;
-
-	updateStyleSheets();
-}
-
 void QtWebKitPage::handleFrameCreation(QWebFrame *frame)
 {
 	QtWebKitFrame *frameWrapper(new QtWebKitFrame(frame, m_widget));
@@ -318,7 +318,7 @@ void QtWebKitPage::handleFrameCreation(QWebFrame *frame)
 		m_mainFrame = frameWrapper;
 	}
 
-	connect(this, SIGNAL(errorPageChanged(QWebFrame*,bool)), frameWrapper, SLOT(handleErrorPageChanged(QWebFrame*,bool)));
+	connect(this, &QtWebKitPage::isDisplayingErrorPageChanged, frameWrapper, &QtWebKitFrame::handleIsDisplayingErrorPageChanged);
 }
 
 #ifndef OTTER_ENABLE_QTWEBKIT_LEGACY
@@ -402,7 +402,7 @@ void QtWebKitPage::updateStyleSheets(const QUrl &url)
 
 		if (m_widget)
 		{
-			emit m_widget->actionsStateChanged(ActionsManager::ActionDefinition::NavigationCategory);
+			emit m_widget->categorizedActionsStateChanged({ActionsManager::ActionDefinition::NavigationCategory});
 		}
 
 		emit viewingMediaChanged(m_isViewingMedia);
@@ -446,10 +446,10 @@ void QtWebKitPage::javaScriptAlert(QWebFrame *frame, const QString &message)
 
 	emit m_widget->needsAttention();
 
-	ContentsDialog dialog(ThemesManager::createIcon(QLatin1String("dialog-information")), tr("JavaScript"), message, QString(), QDialogButtonBox::Ok, nullptr, m_widget);
+	ContentsDialog dialog(ThemesManager::createIcon(QLatin1String("dialog-information")), tr("JavaScript"), message, {}, QDialogButtonBox::Ok, nullptr, m_widget);
 	dialog.setCheckBox(tr("Disable JavaScript popups"), false);
 
-	connect(m_widget, SIGNAL(aboutToReload()), &dialog, SLOT(close()));
+	connect(m_widget, &QtWebKitWebWidget::aboutToReload, &dialog, &ContentsDialog::close);
 
 	m_widget->showDialog(&dialog);
 
@@ -480,7 +480,7 @@ void QtWebKitPage::triggerAction(QWebPage::WebAction action, bool isChecked)
 
 QWebPage* QtWebKitPage::createWindow(QWebPage::WebWindowType type)
 {
-	if (type == QWebPage::WebBrowserWindow)
+	if (type != QWebPage::WebModalDialog)
 	{
 		QtWebKitWebWidget *widget(nullptr);
 		const QString popupsPolicy(getOption(SettingsManager::Permissions_ScriptsCanOpenWindowsOption).toString());
@@ -497,7 +497,7 @@ QWebPage* QtWebKitPage::createWindow(QWebPage::WebWindowType type)
 				QtWebKitPage *page(new QtWebKitPage());
 				page->markAsPopup();
 
-				connect(page, SIGNAL(aboutToNavigate(QUrl,QWebFrame*,QWebPage::NavigationType)), this, SLOT(validatePopup(QUrl)));
+				connect(page, &QtWebKitPage::aboutToNavigate, this, &QtWebKitPage::validatePopup);
 
 				return page;
 			}
@@ -544,7 +544,7 @@ QString QtWebKitPage::chooseFile(QWebFrame *frame, const QString &suggestedFile)
 {
 	Q_UNUSED(frame)
 
-	return Utils::getOpenPaths(QStringList(suggestedFile)).value(0);
+	return Utils::getOpenPaths({suggestedFile}).value(0);
 }
 
 QString QtWebKitPage::userAgentForUrl(const QUrl &url) const
@@ -559,7 +559,7 @@ QString QtWebKitPage::userAgentForUrl(const QUrl &url) const
 
 QString QtWebKitPage::getDefaultUserAgent() const
 {
-	return QWebPage::userAgentForUrl(QUrl());
+	return QWebPage::userAgentForUrl({});
 }
 
 QVariant QtWebKitPage::runScript(const QString &path, QWebElement element)
@@ -580,7 +580,7 @@ QVariant QtWebKitPage::runScript(const QString &path, QWebElement element)
 		return result;
 	}
 
-	return QVariant();
+	return {};
 }
 
 QVariant QtWebKitPage::getOption(int identifier) const
@@ -619,9 +619,11 @@ bool QtWebKitPage::acceptNavigationRequest(QWebFrame *frame, const QNetworkReque
 		return false;
 	}
 
+	const bool isAnchorNavigation(frame && (type == QWebPage::NavigationTypeLinkClicked || type == QWebPage::NavigationTypeOther) && frame->url().matches(request.url(), QUrl::RemoveFragment));
+
 	if (mainFrame() == frame)
 	{
-		if (m_widget)
+		if (m_widget && !isAnchorNavigation)
 		{
 			m_widget->handleNavigationRequest(request.url(), type);
 		}
@@ -644,7 +646,7 @@ bool QtWebKitPage::acceptNavigationRequest(QWebFrame *frame, const QNetworkReque
 			ContentsDialog dialog(ThemesManager::createIcon(QLatin1String("dialog-warning")), tr("Question"), tr("Are you sure that you want to send form data again?"), tr("Do you want to resend data?"), (QDialogButtonBox::Yes | QDialogButtonBox::Cancel), nullptr, m_widget);
 			dialog.setCheckBox(tr("Do not show this message again"), false);
 
-			connect(m_widget, SIGNAL(aboutToReload()), &dialog, SLOT(close()));
+			connect(m_widget, &QtWebKitWebWidget::aboutToReload, &dialog, &ContentsDialog::close);
 
 			m_widget->showDialog(&dialog);
 
@@ -676,10 +678,13 @@ bool QtWebKitPage::acceptNavigationRequest(QWebFrame *frame, const QNetworkReque
 
 	if (type != QWebPage::NavigationTypeOther)
 	{
-		emit errorPageChanged(frame, false);
+		emit isDisplayingErrorPageChanged(frame, false);
 	}
 
-	emit aboutToNavigate(request.url(), frame, type);
+	if (!isAnchorNavigation)
+	{
+		emit aboutToNavigate(request.url(), frame, type);
+	}
 
 	return true;
 }
@@ -698,10 +703,10 @@ bool QtWebKitPage::javaScriptConfirm(QWebFrame *frame, const QString &message)
 
 	emit m_widget->needsAttention();
 
-	ContentsDialog dialog(ThemesManager::createIcon(QLatin1String("dialog-information")), tr("JavaScript"), message, QString(), (QDialogButtonBox::Ok | QDialogButtonBox::Cancel), nullptr, m_widget);
+	ContentsDialog dialog(ThemesManager::createIcon(QLatin1String("dialog-information")), tr("JavaScript"), message, {}, (QDialogButtonBox::Ok | QDialogButtonBox::Cancel), nullptr, m_widget);
 	dialog.setCheckBox(tr("Disable JavaScript popups"), false);
 
-	connect(m_widget, SIGNAL(aboutToReload()), &dialog, SLOT(close()));
+	connect(m_widget, &QtWebKitWebWidget::aboutToReload, &dialog, &ContentsDialog::close);
 
 	m_widget->showDialog(&dialog);
 
@@ -728,7 +733,7 @@ bool QtWebKitPage::javaScriptPrompt(QWebFrame *frame, const QString &message, co
 	emit m_widget->needsAttention();
 
 	QWidget *widget(new QWidget(m_widget));
-	QLineEdit *lineEdit(new QLineEdit(defaultValue, widget));
+	LineEditWidget *lineEdit(new LineEditWidget(defaultValue, widget));
 	QLabel *label(new QLabel(message, widget));
 	label->setBuddy(lineEdit);
 	label->setTextFormat(Qt::PlainText);
@@ -738,10 +743,10 @@ bool QtWebKitPage::javaScriptPrompt(QWebFrame *frame, const QString &message, co
 	layout->addWidget(label);
 	layout->addWidget(lineEdit);
 
-	ContentsDialog dialog(ThemesManager::createIcon(QLatin1String("dialog-information")), tr("JavaScript"), QString(), QString(), (QDialogButtonBox::Ok | QDialogButtonBox::Cancel), widget, m_widget);
+	ContentsDialog dialog(ThemesManager::createIcon(QLatin1String("dialog-information")), tr("JavaScript"), {}, {}, (QDialogButtonBox::Ok | QDialogButtonBox::Cancel), widget, m_widget);
 	dialog.setCheckBox(tr("Disable JavaScript popups"), false);
 
-	connect(m_widget, SIGNAL(aboutToReload()), &dialog, SLOT(close()));
+	connect(m_widget, &QtWebKitWebWidget::aboutToReload, &dialog, &ContentsDialog::close);
 
 	m_widget->showDialog(&dialog);
 
@@ -785,7 +790,7 @@ bool QtWebKitPage::extension(QWebPage::Extension extension, const QWebPage::Exte
 		const QWebPage::ChooseMultipleFilesExtensionOption *filesOption(static_cast<const QWebPage::ChooseMultipleFilesExtensionOption*>(option));
 		QWebPage::ChooseMultipleFilesExtensionReturn *filesOutput(static_cast<QWebPage::ChooseMultipleFilesExtensionReturn*>(output));
 
-		filesOutput->fileNames = Utils::getOpenPaths(filesOption->suggestedFileNames, QStringList(), true);
+		filesOutput->fileNames = Utils::getOpenPaths(filesOption->suggestedFileNames, {}, true);
 
 		return true;
 	}
@@ -830,7 +835,7 @@ bool QtWebKitPage::extension(QWebPage::Extension extension, const QWebPage::Exte
 
 		settings()->setAttribute(QWebSettings::JavascriptEnabled, true);
 
-		emit errorPageChanged(errorOption->frame, true);
+		emit isDisplayingErrorPageChanged(errorOption->frame, true);
 
 		if (errorOption->domain == QWebPage::QtNetwork && url.isLocalFile() && QFileInfo(url.toLocalFile()).isDir())
 		{
@@ -913,28 +918,51 @@ bool QtWebKitPage::extension(QWebPage::Extension extension, const QWebPage::Exte
 			information.title = tr("Network error %1").arg(errorOption->error);
 		}
 
-		if (information.type == ErrorPageInformation::ConnectionInsecureError)
+		switch (information.type)
 		{
-			ErrorPageInformation::PageAction goBackAction;
-			goBackAction.name = QLatin1String("goBack");
-			goBackAction.title = QCoreApplication::translate("utils", "Go Back");
-			goBackAction.type = ErrorPageInformation::MainAction;
+			case ErrorPageInformation::BlockedContentError:
+				{
+					ErrorPageInformation::PageAction goBackAction;
+					goBackAction.name = QLatin1String("goBack");
+					goBackAction.title = QCoreApplication::translate("utils", "Go Back");
+					goBackAction.type = ErrorPageInformation::MainAction;
 
-			ErrorPageInformation::PageAction addExceptionAction;
-			addExceptionAction.name = QLatin1String("addSslErrorException");
-			addExceptionAction.title = QCoreApplication::translate("utils", "Load Insecure Page");
-			addExceptionAction.type = ErrorPageInformation::AdvancedAction;
+					ErrorPageInformation::PageAction addExceptionAction;
+					addExceptionAction.name = QLatin1String("addContentBlockingException");
+					addExceptionAction.title = QCoreApplication::translate("utils", "Load Blocked Page");
+					addExceptionAction.type = ErrorPageInformation::AdvancedAction;
 
-			information.actions = QVector<ErrorPageInformation::PageAction>({goBackAction, addExceptionAction});
-		}
-		else if (information.type != ErrorPageInformation::BlockedContentError)
-		{
-			ErrorPageInformation::PageAction reloadAction;
-			reloadAction.name = QLatin1String("reloadPage");
-			reloadAction.title = QCoreApplication::translate("utils", "Try Again");
-			reloadAction.type = ErrorPageInformation::MainAction;
+					information.actions = {goBackAction, addExceptionAction};
+				}
 
-			information.actions = QVector<ErrorPageInformation::PageAction>({reloadAction});
+				break;
+			case ErrorPageInformation::ConnectionInsecureError:
+				{
+					ErrorPageInformation::PageAction goBackAction;
+					goBackAction.name = QLatin1String("goBack");
+					goBackAction.title = QCoreApplication::translate("utils", "Go Back");
+					goBackAction.type = ErrorPageInformation::MainAction;
+
+					ErrorPageInformation::PageAction addExceptionAction;
+					addExceptionAction.name = QLatin1String("addSslErrorException");
+					addExceptionAction.title = QCoreApplication::translate("utils", "Load Insecure Page");
+					addExceptionAction.type = ErrorPageInformation::AdvancedAction;
+
+					information.actions = {goBackAction, addExceptionAction};
+				}
+
+				break;
+			default:
+				{
+					ErrorPageInformation::PageAction reloadAction;
+					reloadAction.name = QLatin1String("reloadPage");
+					reloadAction.title = QCoreApplication::translate("utils", "Try Again");
+					reloadAction.type = ErrorPageInformation::MainAction;
+
+					information.actions = {reloadAction};
+				}
+
+				break;
 		}
 
 		errorOutput->content = Utils::createErrorPage(information).toUtf8();
@@ -956,7 +984,7 @@ bool QtWebKitPage::shouldInterruptJavaScript()
 	{
 		ContentsDialog dialog(ThemesManager::createIcon(QLatin1String("dialog-warning")), tr("Question"), tr("The script on this page appears to have a problem."), tr("Do you want to stop the script?"), (QDialogButtonBox::Yes | QDialogButtonBox::No), nullptr, m_widget);
 
-		connect(m_widget, SIGNAL(aboutToReload()), &dialog, SLOT(close()));
+		connect(m_widget, &QtWebKitWebWidget::aboutToReload, &dialog, &ContentsDialog::close);
 
 		m_widget->showDialog(&dialog);
 
@@ -971,9 +999,9 @@ bool QtWebKitPage::supportsExtension(QWebPage::Extension extension) const
 	return (extension == QWebPage::ChooseMultipleFilesExtension || extension == QWebPage::ErrorPageExtension);
 }
 
-bool QtWebKitPage::isErrorPage() const
+bool QtWebKitPage::isDisplayingErrorPage() const
 {
-	return m_mainFrame->isErrorPage();
+	return m_mainFrame->isDisplayingErrorPage();
 }
 
 bool QtWebKitPage::isPopup() const

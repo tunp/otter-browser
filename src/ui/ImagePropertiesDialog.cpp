@@ -18,6 +18,7 @@
 **************************************************************************/
 
 #include "ImagePropertiesDialog.h"
+#include "../core/Utils.h"
 
 #include "ui_ImagePropertiesDialog.h"
 
@@ -40,47 +41,20 @@ ImagePropertiesDialog::ImagePropertiesDialog(const QUrl &url, const QVariantMap 
 	m_ui->alternativeTextLabelWidget->setText(properties.value(QLatin1String("alternativeText")).toString());
 	m_ui->longDescriptionLabelWidget->setText(properties.value(QLatin1String("longDescription")).toString());
 
-	QByteArray array;
-	QImage image;
-	int frames(1);
-
 	if (url.scheme() == QLatin1String("data") && !device)
 	{
-		const QString data(url.path());
-
-		array = QByteArray::fromBase64(data.mid(data.indexOf(QLatin1String("base64,")) + 7).toUtf8());
+		const QString imageData(url.path());
+		QByteArray array(QByteArray::fromBase64(imageData.mid(imageData.indexOf(QLatin1String("base64,")) + 7).toUtf8()));
 
 		device = new QBuffer(&array, this);
 	}
 
+	QImage image;
+	int frames(1);
+
 	if (device)
 	{
-		QString size;
-
-		if (device->size() > 1024)
-		{
-			if (device->size() > 1048576)
-			{
-				if (device->size() > 1073741824)
-				{
-					size = tr("%1 GB (%2 bytes)").arg((device->size() / 1073741824.0), 0, 'f', 2).arg(device->size());
-				}
-				else
-				{
-					size = tr("%1 MB (%2 bytes)").arg((device->size() / 1048576.0), 0, 'f', 2).arg(device->size());
-				}
-			}
-			else
-			{
-				size = tr("%1 KB (%2 bytes)").arg((device->size() / 1024.0), 0, 'f', 2).arg(device->size());
-			}
-		}
-		else
-		{
-			size = tr("%1 B").arg(device->size());
-		}
-
-		m_ui->fileSizeLabelWidget->setText(size);
+		m_ui->fileSizeLabelWidget->setText(Utils::formatUnit(device->size(), false, 2, true));
 
 		QImageReader reader(device);
 

@@ -28,11 +28,19 @@
 namespace Otter
 {
 
+class LineEditWidget;
+
 class ActionComboBoxWidget final : public ComboBoxWidget
 {
 	Q_OBJECT
 
 public:
+	enum DataRole
+	{
+		IdentifierRole = Qt::UserRole,
+		NameRole
+	};
+
 	explicit ActionComboBoxWidget(QWidget *parent = nullptr);
 
 	void setActionIdentifier(int action);
@@ -45,7 +53,7 @@ protected:
 	void mouseReleaseEvent(QMouseEvent *event) override;
 
 private:
-	QLineEdit *m_filterLineEdit;
+	LineEditWidget *m_filterLineEditWidget;
 	QTime m_popupHideTime;
 	bool m_wasPopupVisible;
 };

@@ -46,7 +46,7 @@ Updater::Updater(const UpdateChecker::UpdateInformation &information, QObject *p
 	}
 	else if (directory.entryInfoList(QDir::NoDotAndDotDot | QDir::AllEntries).count() > 0)
 	{
-		directory.setNameFilters(QStringList(QLatin1String("*.*")));
+		directory.setNameFilters({QLatin1String("*.*")});
 		directory.setFilter(QDir::Files);
 
 		for (int i = 0; i < directory.entryList().count(); ++i)
@@ -62,10 +62,10 @@ Updater::Updater(const UpdateChecker::UpdateInformation &information, QObject *p
 	m_transfer = downloadFile(information.fileUrl, path);
 	m_transfer->setUpdateInterval(500);
 
-	connect(m_transfer, SIGNAL(progressChanged(qint64,qint64)), this, SLOT(updateProgress(qint64,qint64)));
+	connect(m_transfer, &Transfer::progressChanged, this, &Updater::updateProgress);
 }
 
-void Updater::transferFinished()
+void Updater::handleTransferFinished()
 {
 	Transfer *transfer(qobject_cast<Transfer*>(sender()));
 
@@ -101,7 +101,7 @@ void Updater::transferFinished()
 		}
 		else
 		{
-			Console::addMessage(QCoreApplication::translate("main", "Unable to download update: %1\nError: %2").arg(transfer->getSource().url()).arg(transfer->getState()), Console::OtherCategory, Console::ErrorLevel);
+			Console::addMessage(QCoreApplication::translate("main", "Unable to download update: %1").arg(transfer->getSource().url()), Console::OtherCategory, Console::ErrorLevel);
 
 			m_transfersSuccessful = false;
 		}
@@ -138,6 +138,16 @@ void Updater::clearUpdate()
 	QFile::remove(SessionsManager::getWritableDataPath(QLatin1String("update.txt")));
 }
 
+Transfer* Updater::downloadFile(const QUrl &url, const QString &path)
+{
+	const QString urlString(url.path());
+	Transfer *transfer(new Transfer(url, path + urlString.mid(urlString.lastIndexOf(QLatin1Char('/')) + 1), (Transfer::CanOverwriteOption), this));
+
+	connect(transfer, &Transfer::finished, this, &Updater::handleTransferFinished);
+
+	return transfer;
+}
+
 QString Updater::getScriptPath()
 {
 	QFile file(SessionsManager::getWritableDataPath(QLatin1String("update.txt")));
@@ -152,7 +162,7 @@ QString Updater::getScriptPath()
 		}
 	}
 
-	return QString();
+	return {};
 }
 
 bool Updater::installUpdate()
@@ -175,16 +185,6 @@ bool Updater::isReadyToInstall(QString path)
 	}
 
 	return QFileInfo::exists(path);
-}
-
-Transfer* Updater::downloadFile(const QUrl url, const QString path)
-{
-	const QString urlString(url.path());
-	Transfer *transfer(new Transfer(url, path + urlString.mid(urlString.lastIndexOf(QLatin1Char('/')) + 1), (Transfer::CanOverwriteOption), this));
-
-	connect(transfer, SIGNAL(finished()), this, SLOT(transferFinished()));
-
-	return transfer;
 }
 
 }

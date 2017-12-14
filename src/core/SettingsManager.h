@@ -107,11 +107,14 @@ public:
 		ContentBlocking_CosmeticFiltersModeOption,
 		ContentBlocking_EnableContentBlockingOption,
 		ContentBlocking_EnableWildcardsOption,
+		ContentBlocking_IgnoreHostsOption,
 		ContentBlocking_ProfilesOption,
 		History_BrowsingLimitAmountGlobalOption,
 		History_BrowsingLimitAmountWindowOption,
 		History_BrowsingLimitPeriodOption,
 		History_ClearOnCloseOption,
+		History_ClosedTabsLimitAmountOption,
+		History_ClosedWindowsLimitAmountOption,
 		History_DownloadsLimitPeriodOption,
 		History_ExpandBranchesOption,
 		History_ManualClearOptionsOption,
@@ -234,19 +237,9 @@ public:
 		StringType
 	};
 
-	enum OptionFlag
+	struct OptionDefinition final
 	{
-		NoFlags = 0,
-		IsEnabledFlag = 1,
-		IsVisibleFlag = 2,
-		IsBuiltInFlag = 4
-	};
-
-	Q_DECLARE_FLAGS(OptionFlags, OptionFlag)
-
-	struct OptionDefinition
-	{
-		struct ChoiceDefinition
+		struct Choice final
 		{
 			QString title;
 			QString value;
@@ -263,8 +256,19 @@ public:
 			}
 		};
 
+		enum OptionFlag
+		{
+			NoFlags = 0,
+			IsEnabledFlag = 1,
+			IsVisibleFlag = 2,
+			IsBuiltInFlag = 4,
+			RequiresRestartFlag = 8
+		};
+
+		Q_DECLARE_FLAGS(OptionFlags, OptionFlag)
+
 		QVariant defaultValue;
-		QVector<ChoiceDefinition> choices;
+		QVector<Choice> choices;
 		OptionType type = UnknownType;
 		OptionFlags flags = static_cast<OptionFlags>(IsEnabledFlag | IsVisibleFlag);
 		int identifier = -1;
@@ -275,7 +279,7 @@ public:
 
 			for (int i = 0; i < choicesValue.count(); ++i)
 			{
-				choices.append({QString(), choicesValue.at(i), QIcon()});
+				choices.append({{}, choicesValue.at(i), {}});
 			}
 		}
 
@@ -306,7 +310,7 @@ public:
 	static QVariant getOption(int identifier, const QUrl &url = {});
 	static QStringList getOptions();
 	static OptionDefinition getOptionDefinition(int identifier);
-	static int registerOption(const QString &name, OptionType type, const QVariant &defaultValue = {}, const QStringList &choices = {});
+	static int registerOption(const QString &name, OptionType type, const QVariant &defaultValue = {}, const QStringList &choices = {}, OptionDefinition::OptionFlags flags = static_cast<OptionDefinition::OptionFlags>(OptionDefinition::IsEnabledFlag | OptionDefinition::IsVisibleFlag));
 	static int getOptionIdentifier(const QString &name);
 	static bool hasOverride(const QUrl &url, int identifier = -1);
 
@@ -314,7 +318,7 @@ protected:
 	explicit SettingsManager(QObject *parent);
 
 	static QString getHost(const QUrl &url);
-	static void registerOption(int identifier, OptionType type, const QVariant &defaultValue = {}, const QStringList &choices = {});
+	static void registerOption(int identifier, OptionType type, const QVariant &defaultValue = {}, const QStringList &choices = {}, OptionDefinition::OptionFlags flags = static_cast<OptionDefinition::OptionFlags>(OptionDefinition::IsEnabledFlag |OptionDefinition:: IsVisibleFlag | OptionDefinition::IsBuiltInFlag));
 	static void saveOption(const QString &path, const QString &key, const QVariant &value, OptionType type);
 
 private:
@@ -329,11 +333,11 @@ private:
 
 signals:
 	void optionChanged(int identifier, const QVariant &value);
-	void optionChanged(int identifier, const QVariant &value, const QUrl &url);
+	void hostOptionChanged(int identifier, const QVariant &value, const QString &host);
 };
 
 }
 
-Q_DECLARE_OPERATORS_FOR_FLAGS(Otter::SettingsManager::OptionFlags)
+Q_DECLARE_OPERATORS_FOR_FLAGS(Otter::SettingsManager::OptionDefinition::OptionFlags)
 
 #endif

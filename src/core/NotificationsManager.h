@@ -29,7 +29,7 @@ namespace Otter
 
 class NotificationsManager;
 
-class Notification : public QObject
+class Notification final : public QObject
 {
 	Q_OBJECT
 
@@ -41,8 +41,8 @@ public:
 		ErrorLevel
 	};
 
-	void markClicked();
-	void markIgnored();
+	void markAsClicked();
+	void markAsIgnored();
 	void setData(const QVariant &data);
 	QString getMessage() const;
 	QDateTime getCreationTime() const;
@@ -78,7 +78,7 @@ public:
 		UpdateAvailableEvent = 1
 	};
 
-	struct EventDefinition
+	struct EventDefinition final
 	{
 		QString title;
 		QString description;

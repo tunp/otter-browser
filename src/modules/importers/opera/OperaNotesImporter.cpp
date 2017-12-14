@@ -40,19 +40,11 @@ OperaNotesImporter::OperaNotesImporter(QObject *parent): Importer(parent),
 {
 }
 
-OperaNotesImporter::~OperaNotesImporter()
-{
-	if (m_optionsWidget)
-	{
-		m_optionsWidget->deleteLater();
-	}
-}
-
-QWidget* OperaNotesImporter::getOptionsWidget()
+QWidget* OperaNotesImporter::createOptionsWidget(QWidget *parent)
 {
 	if (!m_optionsWidget)
 	{
-		m_optionsWidget = new QWidget();
+		m_optionsWidget = new QWidget(parent);
 
 		QFormLayout *layout(new QFormLayout(m_optionsWidget));
 		layout->setMargin(0);
@@ -70,12 +62,12 @@ QWidget* OperaNotesImporter::getOptionsWidget()
 
 QString OperaNotesImporter::getTitle() const
 {
-	return QString(tr("Opera Notes"));
+	return tr("Opera Notes");
 }
 
 QString OperaNotesImporter::getDescription() const
 {
-	return QString(tr("Imports notes from Opera Browser version 12 or earlier"));
+	return tr("Imports notes from Opera Browser version 12 or earlier");
 }
 
 QString OperaNotesImporter::getVersion() const
@@ -120,7 +112,7 @@ QUrl OperaNotesImporter::getHomePage() const
 
 QStringList OperaNotesImporter::getFileFilters() const
 {
-	return QStringList(tr("Opera notes files (notes.adr)"));
+	return {tr("Opera notes files (notes.adr)")};
 }
 
 Importer::ImportType OperaNotesImporter::getImportType() const
@@ -134,6 +126,8 @@ bool OperaNotesImporter::import(const QString &path)
 
 	if (!file.open(QIODevice::ReadOnly))
 	{
+		emit importFinished(NotesImport, FailedImport, 0);
+
 		return false;
 	}
 
@@ -144,14 +138,20 @@ bool OperaNotesImporter::import(const QString &path)
 
 	if (line != QLatin1String("Opera Hotlist version 2.0"))
 	{
+		emit importFinished(NotesImport, FailedImport, 0);
+
 		return false;
 	}
+
+	emit importStarted(NotesImport, -1);
 
 	if (m_optionsWidget)
 	{
 		m_importFolder = m_folderComboBox->getCurrentFolder();
 		m_currentFolder = m_importFolder;
 	}
+
+	int totalAmount(0);
 
 	NotesManager::getModel()->beginImport(m_importFolder, ((file.size() > 0) ? (file.size() / 250) : 0));
 
@@ -174,16 +174,22 @@ bool OperaNotesImporter::import(const QString &path)
 		{
 			note = NotesManager::addNote(BookmarksModel::UrlBookmark, {}, m_currentFolder);
 			type = NoteEntry;
+
+			++totalAmount;
 		}
 		else if (line.startsWith(QLatin1String("#FOLDER")))
 		{
 			note = NotesManager::addNote(BookmarksModel::FolderBookmark, {}, m_currentFolder);
 			type = FolderStartEntry;
+
+			++totalAmount;
 		}
 		else if (line.startsWith(QLatin1String("#SEPERATOR")))
 		{
 			note = NotesManager::addNote(BookmarksModel::SeparatorBookmark, {}, m_currentFolder);
 			type = SeparatorEntry;
+
+			++totalAmount;
 		}
 		else if (line == QLatin1String("-"))
 		{
@@ -232,6 +238,8 @@ bool OperaNotesImporter::import(const QString &path)
 	}
 
 	NotesManager::getModel()->endImport();
+
+	emit importFinished(NotesImport, SuccessfullImport, totalAmount);
 
 	file.close();
 

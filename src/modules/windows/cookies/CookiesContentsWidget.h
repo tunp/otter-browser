@@ -40,7 +40,7 @@ class CookiesContentsWidget final : public ContentsWidget
 	Q_OBJECT
 
 public:
-	explicit CookiesContentsWidget(const QVariantMap &parameters, Window *window);
+	explicit CookiesContentsWidget(const QVariantMap &parameters, Window *window, QWidget *parent);
 	~CookiesContentsWidget();
 
 	void print(QPrinter *printer) override;
@@ -57,18 +57,18 @@ public slots:
 
 protected:
 	void changeEvent(QEvent *event) override;
-	QStandardItem* findDomain(const QString &domain);
+	QStandardItem* findDomainItem(const QString &domain);
 	QNetworkCookie getCookie(const QModelIndex &index) const;
 
 protected slots:
 	void populateCookies();
 	void addCookie();
-	void addCookie(const QNetworkCookie &cookie);
-	void removeCookie(const QNetworkCookie &cookie);
 	void removeCookies();
 	void removeDomainCookies();
 	void removeAllCookies();
 	void cookieProperties();
+	void handleCookieAdded(const QNetworkCookie &cookie);
+	void handleCookieRemoved(const QNetworkCookie &cookie);
 	void showContextMenu(const QPoint &position);
 	void updateActions();
 

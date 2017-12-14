@@ -28,7 +28,7 @@
 namespace Otter
 {
 
-class SyntaxHighlighter : public QSyntaxHighlighter
+class SyntaxHighlighter final : public QSyntaxHighlighter
 {
 	Q_OBJECT
 	Q_ENUMS(HighlightingSyntax)
@@ -53,7 +53,7 @@ public:
 		CommentState
 	};
 
-	struct BlockData : public QTextBlockUserData
+	struct BlockData final : public QTextBlockUserData
 	{
 		QString context;
 		HighlightingSyntax currentSyntax = HtmlSyntax;
@@ -77,11 +77,11 @@ class MarginWidget final : public QWidget
 	Q_OBJECT
 
 public:
-	explicit MarginWidget(SourceViewerWidget *parent = nullptr);
+	explicit MarginWidget(SourceViewerWidget *parent);
 
 public slots:
 	void updateNumbers(const QRect &rectangle, int offset);
-	void setAmount(int amount = -1);
+	void updateWidth();
 
 protected:
 	void paintEvent(QPaintEvent *event) override;

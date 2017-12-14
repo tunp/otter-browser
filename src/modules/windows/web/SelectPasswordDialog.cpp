@@ -35,7 +35,7 @@ SelectPasswordDialog::SelectPasswordDialog(const QVector<PasswordsManager::Passw
 	m_ui->setupUi(this);
 
 	QStandardItemModel *model(new QStandardItemModel(this));
-	model->setHorizontalHeaderLabels(QStringList({tr("Name"), tr("Value")}));
+	model->setHorizontalHeaderLabels({tr("Name"), tr("Value")});
 
 	for (int i = 0; i < passwords.count(); ++i)
 	{
@@ -58,8 +58,8 @@ SelectPasswordDialog::SelectPasswordDialog(const QVector<PasswordsManager::Passw
 	m_ui->passwordsViewWidget->selectionModel()->select(m_ui->passwordsViewWidget->getIndex(0, 0), (QItemSelectionModel::Select | QItemSelectionModel::Rows));
 	m_ui->passwordsViewWidget->expandAll();
 
-	connect(m_ui->removeButton, SIGNAL(clicked()), this, SLOT(removePassword()));
-	connect(m_ui->passwordsViewWidget, SIGNAL(needsActionsUpdate()), this, SLOT(updateActions()));
+	connect(m_ui->removeButton, &QPushButton::clicked, this, &SelectPasswordDialog::removePassword);
+	connect(m_ui->passwordsViewWidget, &ItemViewWidget::needsActionsUpdate, this, &SelectPasswordDialog::updateActions);
 }
 
 SelectPasswordDialog::~SelectPasswordDialog()
@@ -88,13 +88,13 @@ void SelectPasswordDialog::removePassword()
 
 	PasswordsManager::removePassword(m_passwords.value(currentSet));
 
-	m_passwords.replace(currentSet, PasswordsManager::PasswordInformation());
+	m_passwords.replace(currentSet, {});
 
 	for (int i = 0; i < m_ui->passwordsViewWidget->getRowCount(); ++i)
 	{
-		const QVariant data(m_ui->passwordsViewWidget->getIndex(i, 0).data(Qt::UserRole));
+		const QModelIndex index(m_ui->passwordsViewWidget->getIndex(i, 0));
 
-		if (data.isValid() && data.toInt() == currentSet)
+		if (index.data(Qt::UserRole).isValid() && index.data(Qt::UserRole).toInt() == currentSet)
 		{
 			m_ui->passwordsViewWidget->getSourceModel()->removeRow(i);
 
@@ -117,7 +117,7 @@ void SelectPasswordDialog::updateActions()
 
 PasswordsManager::PasswordInformation SelectPasswordDialog::getPassword() const
 {
-	return m_passwords.value(getCurrentSet(), PasswordsManager::PasswordInformation());
+	return m_passwords.value(getCurrentSet());
 }
 
 int SelectPasswordDialog::getCurrentSet() const
@@ -126,11 +126,14 @@ int SelectPasswordDialog::getCurrentSet() const
 
 	if (index.isValid() && m_ui->passwordsViewWidget->selectionModel()->hasSelection())
 	{
-		if (index.parent().isValid() && index.parent().data(Qt::UserRole).isValid())
+		const QModelIndex parentIndex(index.parent());
+
+		if (parentIndex.isValid() && parentIndex.data(Qt::UserRole).isValid())
 		{
-			return index.parent().data(Qt::UserRole).toInt();
+			return parentIndex.data(Qt::UserRole).toInt();
 		}
-		else if (index.isValid() && index.data(Qt::UserRole).isValid())
+
+		if (index.data(Qt::UserRole).isValid())
 		{
 			return index.data(Qt::UserRole).toInt();
 		}

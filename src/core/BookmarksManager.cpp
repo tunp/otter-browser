@@ -112,7 +112,7 @@ void BookmarksManager::removeBookmark(const QUrl &url)
 
 void BookmarksManager::setLastUsedFolder(BookmarksItem *folder)
 {
-	m_lastUsedFolder = (folder ? folder->data(BookmarksModel::IdentifierRole).toULongLong() : 0);
+	m_lastUsedFolder = (folder ? folder->getIdentifier() : 0);
 }
 
 BookmarksManager* BookmarksManager::getInstance()
@@ -126,7 +126,7 @@ BookmarksModel* BookmarksManager::getModel()
 	{
 		m_model = new BookmarksModel(SessionsManager::getWritableDataPath(QLatin1String("bookmarks.xbel")), BookmarksModel::BookmarksMode, m_instance);
 
-		connect(m_model, SIGNAL(modelModified()), m_instance, SLOT(scheduleSave()));
+		connect(m_model, &BookmarksModel::modelModified, m_instance, &BookmarksManager::scheduleSave);
 	}
 
 	return m_model;
@@ -171,7 +171,7 @@ BookmarksItem* BookmarksManager::getLastUsedFolder()
 {
 	BookmarksItem *folder(getModel()->getBookmark(m_lastUsedFolder));
 
-	return ((!folder || static_cast<BookmarksModel::BookmarkType>(folder->data(BookmarksModel::TypeRole).toInt()) != BookmarksModel::FolderBookmark) ? getModel()->getRootItem() : folder);
+	return ((!folder || static_cast<BookmarksModel::BookmarkType>(folder->getType()) != BookmarksModel::FolderBookmark) ? getModel()->getRootItem() : folder);
 }
 
 QStringList BookmarksManager::getKeywords()

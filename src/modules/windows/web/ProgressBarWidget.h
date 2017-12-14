@@ -30,7 +30,7 @@ namespace Otter
 class WebWidget;
 class Window;
 
-class ProgressBarWidget : public QFrame
+class ProgressBarWidget final : public QFrame
 {
 	Q_OBJECT
 
@@ -44,10 +44,11 @@ protected:
 	void timerEvent(QTimerEvent *event) override;
 
 protected slots:
+	void handleActionsStateChanged(const QVector<int> &identifiers);
 	void updateLoadingState(WebWidget::LoadingState state);
 
 private:
-	WebWidget *m_webWidget;;
+	WebWidget *m_webWidget;
 	Window *m_window;
 	int m_geometryUpdateTimer;
 };

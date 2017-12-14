@@ -25,7 +25,6 @@
 #include <QtGui/QIcon>
 #include <QtGui/QStandardItemModel>
 #include <QtNetwork/QNetworkAccessManager>
-#include <QtNetwork/QNetworkReply>
 
 namespace Otter
 {
@@ -42,7 +41,7 @@ public:
 		KeywordRole
 	};
 
-	struct SearchUrl
+	struct SearchUrl final
 	{
 		QString url;
 		QString enctype;
@@ -50,7 +49,7 @@ public:
 		QUrlQuery parameters;
 	};
 
-	struct SearchEngineDefinition
+	struct SearchEngineDefinition final
 	{
 		QString identifier;
 		QString title;
@@ -105,33 +104,6 @@ private:
 signals:
 	void searchEnginesModified();
 	void searchEnginesModelModified();
-};
-
-class SearchEngineFetchJob : public QObject
-{
-	Q_OBJECT
-
-public:
-	explicit SearchEngineFetchJob(const QUrl &url, const QString &identifier = {}, bool saveSearchEngine = true, QObject *parent = nullptr);
-	~SearchEngineFetchJob();
-
-	SearchEnginesManager::SearchEngineDefinition getSearchEngine() const;
-
-public slots:
-	void cancel();
-
-protected slots:
-	void handleRequestFailed();
-	void handleRequestFinished();
-
-private:
-	QNetworkReply *m_reply;
-	SearchEnginesManager::SearchEngineDefinition m_searchEngine;
-	bool m_isFetchingIcon;
-	bool m_needsToSaveSearchEngine;
-
-signals:
-	void jobFinished(bool isSuccess);
 };
 
 }

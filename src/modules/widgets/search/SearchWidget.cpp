@@ -19,6 +19,7 @@
 **************************************************************************/
 
 #include "SearchWidget.h"
+#include "../../../core/Job.h"
 #include "../../../core/SearchEnginesManager.h"
 #include "../../../core/SearchSuggester.h"
 #include "../../../core/SettingsManager.h"
@@ -28,7 +29,6 @@
 #include "../../../ui/ToolBarWidget.h"
 #include "../../../ui/Window.h"
 
-#include <QtGui/QClipboard>
 #include <QtGui/QPainter>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QMessageBox>
@@ -49,8 +49,9 @@ void SearchDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option
 	{
 		QStyleOptionFrame frameOption;
 		frameOption.palette = option.palette;
-		frameOption.rect = option.rect;
-		frameOption.state = option.state;
+		frameOption.palette.setCurrentColorGroup(QPalette::Disabled);
+		frameOption.rect = option.rect.marginsRemoved(QMargins(3, 0, 3, 0));
+		frameOption.state = QStyle::State_None;
 		frameOption.frameShape = QFrame::HLine;
 
 		QApplication::style()->drawControl(QStyle::CE_ShapedFrame, &frameOption, painter);
@@ -68,8 +69,9 @@ void SearchDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option
 	}
 
 	QRect decorationRectangle(option.rect);
+	const bool isRightToLeft(option.direction == Qt::RightToLeft);
 
-	if (option.direction == Qt::RightToLeft)
+	if (isRightToLeft)
 	{
 		decorationRectangle.setLeft(option.rect.width() - option.rect.height());
 	}
@@ -82,7 +84,7 @@ void SearchDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option
 
 	index.data(Qt::DecorationRole).value<QIcon>().paint(painter, decorationRectangle, option.decorationAlignment);
 
-	if (option.direction == Qt::RightToLeft)
+	if (isRightToLeft)
 	{
 		titleRectangle.setRight(option.rect.width() - option.rect.height());
 	}
@@ -104,7 +106,7 @@ void SearchDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option
 	{
 		QRect shortcutReactangle(option.rect);
 
-		if (option.direction == Qt::RightToLeft)
+		if (isRightToLeft)
 		{
 			shortcutReactangle.setRight(shortcutWidth);
 
@@ -154,14 +156,27 @@ SearchWidget::SearchWidget(Window *window, QWidget *parent) : LineEditWidget(par
 
 	if (toolBar && toolBar->getIdentifier() != ToolBarsManager::AddressBar)
 	{
-		connect(toolBar, SIGNAL(windowChanged(Window*)), this, SLOT(setWindow(Window*)));
+		connect(toolBar, &ToolBarWidget::windowChanged, this, &SearchWidget::setWindow);
 	}
 
-	connect(SearchEnginesManager::getInstance(), SIGNAL(searchEnginesModified()), this, SLOT(storeCurrentSearchEngine()));
-	connect(SearchEnginesManager::getInstance(), SIGNAL(searchEnginesModelModified()), this, SLOT(restoreCurrentSearchEngine()));
-	connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int,QVariant)));
-	connect(this, SIGNAL(textChanged(QString)), this, SLOT(setQuery(QString)));
-	connect(this, SIGNAL(textDropped(QString)), this, SLOT(sendRequest(QString)));
+	connect(SearchEnginesManager::getInstance(), &SearchEnginesManager::searchEnginesModified, this, &SearchWidget::storeCurrentSearchEngine);
+	connect(SearchEnginesManager::getInstance(), &SearchEnginesManager::searchEnginesModelModified, this, &SearchWidget::restoreCurrentSearchEngine);
+	connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &SearchWidget::handleOptionChanged);
+	connect(this, &SearchWidget::textChanged, this, &SearchWidget::setQuery);
+	connect(this, &SearchWidget::textDropped, this, &SearchWidget::sendRequest);
+	connect(this, &SearchWidget::popupClicked, this, [&](const QModelIndex &index)
+	{
+		if (m_suggester && getPopup()->model() == m_suggester->getModel())
+		{
+			setText(index.data(Qt::DisplayRole).toString());
+			sendRequest();
+			hidePopup();
+		}
+		else
+		{
+			setSearchEngine(index);
+		}
+	});
 
 	setWindow(window);
 }
@@ -234,49 +249,37 @@ void SearchWidget::focusInEvent(QFocusEvent *event)
 
 void SearchWidget::keyPressEvent(QKeyEvent *event)
 {
-	if ((event->key() == Qt::Key_Enter || event->key() == Qt::Key_Return) && !isPopupVisible())
+	switch (event->key())
 	{
-		sendRequest(text().trimmed());
+		case Qt::Key_Enter:
+		case Qt::Key_Return:
+			if (isPopupVisible() && getPopup()->getCurrentIndex().isValid())
+			{
+				sendRequest(getPopup()->getCurrentIndex().data(Qt::DisplayRole).toString());
+			}
+			else
+			{
+				sendRequest(text().trimmed());
+			}
 
-		event->accept();
+			hidePopup();
 
-		return;
-	}
+			event->accept();
 
-	if ((event->key() == Qt::Key_Down || event->key() == Qt::Key_Up) && !m_isSearchEngineLocked && !isPopupVisible())
-	{
-		showCompletion(true);
+			return;
+		case Qt::Key_Down:
+		case Qt::Key_Up:
+			if (!m_isSearchEngineLocked && !isPopupVisible())
+			{
+				showSearchEngines();
+			}
+
+			break;
+		default:
+			break;
 	}
 
 	LineEditWidget::keyPressEvent(event);
-}
-
-void SearchWidget::contextMenuEvent(QContextMenuEvent *event)
-{
-	QMenu menu(this);
-	menu.addAction(ThemesManager::createIcon(QLatin1String("edit-undo")), tr("Undo"), this, SLOT(undo()), QKeySequence(QKeySequence::Undo))->setEnabled(isUndoAvailable());
-	menu.addAction(ThemesManager::createIcon(QLatin1String("edit-redo")), tr("Redo"), this, SLOT(redo()), QKeySequence(QKeySequence::Redo))->setEnabled(isRedoAvailable());
-	menu.addSeparator();
-	menu.addAction(ThemesManager::createIcon(QLatin1String("edit-cut")), tr("Cut"), this, SLOT(cut()), QKeySequence(QKeySequence::Cut))->setEnabled(hasSelectedText());
-	menu.addAction(ThemesManager::createIcon(QLatin1String("edit-copy")), tr("Copy"), this, SLOT(copy()), QKeySequence(QKeySequence::Copy))->setEnabled(hasSelectedText());
-	menu.addAction(ThemesManager::createIcon(QLatin1String("edit-paste")), tr("Paste"), this, SLOT(paste()), QKeySequence(QKeySequence::Paste))->setEnabled(!QApplication::clipboard()->text().isEmpty());
-	menu.addAction(tr("Paste and Go"), this, SLOT(pasteAndGo()))->setEnabled(!QApplication::clipboard()->text().isEmpty());
-	menu.addAction(ThemesManager::createIcon(QLatin1String("edit-delete")), tr("Delete"), this, SLOT(deleteText()), QKeySequence(QKeySequence::Delete))->setEnabled(hasSelectedText());
-	menu.addSeparator();
-	menu.addAction(tr("Copy to Note"), this, SLOT(copyToNote()))->setEnabled(!text().isEmpty());
-	menu.addSeparator();
-	menu.addAction(tr("Clear All"), this, SLOT(clear()))->setEnabled(!text().isEmpty());
-	menu.addAction(ThemesManager::createIcon(QLatin1String("edit-select-all")), tr("Select All"), this, SLOT(selectAll()))->setEnabled(!text().isEmpty());
-
-	const ToolBarWidget *toolBar(qobject_cast<ToolBarWidget*>(parentWidget()));
-
-	if (toolBar)
-	{
-		menu.addSeparator();
-		menu.addMenu(ToolBarWidget::createCustomizationMenu(toolBar->getIdentifier(), QVector<QAction*>(), &menu));
-	}
-
-	menu.exec(event->globalPos());
 }
 
 void SearchWidget::mouseMoveEvent(QMouseEvent *event)
@@ -300,7 +303,7 @@ void SearchWidget::mouseReleaseEvent(QMouseEvent *event)
 		if (m_addButtonRectangle.contains(event->pos()))
 		{
 			QMenu menu(this);
-			const QVector<WebWidget::LinkUrl> searchEngines((m_window && m_window->getContentsWidget()->getWebWidget()) ? m_window->getContentsWidget()->getWebWidget()->getSearchEngines() : QVector<WebWidget::LinkUrl>());
+			const QVector<WebWidget::LinkUrl> searchEngines((m_window && m_window->getWebWidget()) ? m_window->getWebWidget()->getSearchEngines() : QVector<WebWidget::LinkUrl>());
 
 			for (int i = 0; i < searchEngines.count(); ++i)
 			{
@@ -310,7 +313,7 @@ void SearchWidget::mouseReleaseEvent(QMouseEvent *event)
 				}
 			}
 
-			connect(&menu, SIGNAL(triggered(QAction*)), this, SLOT(addSearchEngine(QAction*)));
+			connect(&menu, &QMenu::triggered, this, &SearchWidget::addSearchEngine);
 
 			menu.exec(mapToGlobal(m_addButtonRectangle.bottomLeft()));
 		}
@@ -320,7 +323,7 @@ void SearchWidget::mouseReleaseEvent(QMouseEvent *event)
 		}
 		else if (!m_isSearchEngineLocked && !isPopupVisible() && m_dropdownArrowRectangle.united(m_iconRectangle).contains(event->pos()))
 		{
-			showCompletion(true);
+			showSearchEngines();
 		}
 	}
 
@@ -375,27 +378,25 @@ void SearchWidget::wheelEvent(QWheelEvent *event)
 	}
 }
 
-void SearchWidget::showCompletion(bool showSearchModel)
+void SearchWidget::showSearchEngines()
 {
-	QStandardItemModel *model(showSearchModel ? SearchEnginesManager::getSearchEnginesModel() : m_suggester->getModel());
-
-	if (model->rowCount() == 0)
-	{
-		return;
-	}
-
 	PopupViewWidget *popupWidget(getPopup());
-	popupWidget->setModel(model);
+	popupWidget->setModel(SearchEnginesManager::getSearchEnginesModel());
 	popupWidget->setItemDelegate(new SearchDelegate(this));
 
-	if (!isPopupVisible())
+	showPopup();
+
+	popupWidget->setCurrentIndex(getCurrentIndex());
+}
+
+void SearchWidget::showSearchSuggestions()
+{
+	if (m_suggester->getModel()->rowCount() > 0)
 	{
-		connect(popupWidget, SIGNAL(clicked(QModelIndex)), this, SLOT(setSearchEngine(QModelIndex)));
+		getPopup()->setModel(m_suggester->getModel());
 
 		showPopup();
 	}
-
-	popupWidget->setCurrentIndex(getCurrentIndex());
 }
 
 void SearchWidget::sendRequest(const QString &query)
@@ -411,7 +412,12 @@ void SearchWidget::sendRequest(const QString &query)
 
 		if (searchEngine.formUrl.isValid())
 		{
-			emit requestedOpenUrl(searchEngine.formUrl, SessionsManager::calculateOpenHints());
+			MainWindow *mainWindow(m_window ? MainWindow::findMainWindow(m_window) : MainWindow::findMainWindow(this));
+
+			if (mainWindow)
+			{
+				mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), searchEngine.formUrl}, {QLatin1String("hints"), QVariant(SessionsManager::calculateOpenHints())}});
+			}
 		}
 	}
 	else
@@ -420,17 +426,11 @@ void SearchWidget::sendRequest(const QString &query)
 	}
 }
 
-void SearchWidget::pasteAndGo()
-{
-	paste();
-	sendRequest();
-}
-
 void SearchWidget::addSearchEngine(QAction *action)
 {
 	if (action)
 	{
-		SearchEngineFetchJob *job(new SearchEngineFetchJob(action->data().toUrl(), QString(), true, this));
+		SearchEngineFetchJob *job(new SearchEngineFetchJob(action->data().toUrl(), {}, true, this));
 
 		connect(job, &SearchEngineFetchJob::jobFinished, [&](bool isSuccess)
 		{
@@ -446,7 +446,7 @@ void SearchWidget::storeCurrentSearchEngine()
 {
 	hidePopup();
 
-	disconnect(this, SIGNAL(textChanged(QString)), this, SLOT(setQuery(QString)));
+	disconnect(this, &SearchWidget::textChanged, this, &SearchWidget::setQuery);
 }
 
 void SearchWidget::restoreCurrentSearchEngine()
@@ -455,13 +455,13 @@ void SearchWidget::restoreCurrentSearchEngine()
 	{
 		setSearchEngine(m_searchEngine);
 
-		m_searchEngine = QString();
+		m_searchEngine.clear();
 	}
 
 	updateGeometries();
 	setText(m_query);
 
-	connect(this, SIGNAL(textChanged(QString)), this, SLOT(setQuery(QString)));
+	connect(this, &SearchWidget::textChanged, this, &SearchWidget::setQuery);
 }
 
 void SearchWidget::handleOptionChanged(int identifier, const QVariant &value)
@@ -496,15 +496,15 @@ void SearchWidget::handleOptionChanged(int identifier, const QVariant &value)
 			{
 				m_suggester = new SearchSuggester(m_searchEngine, this);
 
-				connect(this, SIGNAL(textEdited(QString)), m_suggester, SLOT(setQuery(QString)));
-				connect(m_suggester, SIGNAL(suggestionsChanged(QVector<SearchSuggester::SearchSuggestion>)), this, SLOT(showCompletion()));
+				connect(this, &SearchWidget::textEdited, m_suggester, &SearchSuggester::setQuery);
+				connect(m_suggester, &SearchSuggester::suggestionsChanged, this, &SearchWidget::showSearchSuggestions);
 			}
 			else if (!value.toBool() && m_suggester)
 			{
 				m_suggester->deleteLater();
 				m_suggester = nullptr;
 
-				disconnect(m_suggester, SIGNAL(suggestionsChanged(QVector<SearchSuggester::SearchSuggestion>)), this, SLOT(showCompletion()));
+				disconnect(m_suggester, &SearchSuggester::suggestionsChanged, this, &SearchWidget::showSearchSuggestions);
 			}
 
 			break;
@@ -528,13 +528,13 @@ void SearchWidget::updateGeometries()
 	panel.rect = rect();
 	panel.lineWidth = 1;
 
-	const QVector<WebWidget::LinkUrl> searchEngines((m_window && m_window->getContentsWidget()->getWebWidget()) ? m_window->getContentsWidget()->getWebWidget()->getSearchEngines() : QVector<WebWidget::LinkUrl>());
+	const QVector<WebWidget::LinkUrl> searchEngines((m_window && m_window->getWebWidget()) ? m_window->getWebWidget()->getSearchEngines() : QVector<WebWidget::LinkUrl>());
 	QMargins margins(qMax(((height() - 16) / 2), 2), 0, 2, 0);
 	const bool isRightToLeft(layoutDirection() == Qt::RightToLeft);
 
-	m_searchButtonRectangle = QRect();
-	m_addButtonRectangle = QRect();
-	m_dropdownArrowRectangle = QRect();
+	m_searchButtonRectangle = {};
+	m_addButtonRectangle = {};
+	m_dropdownArrowRectangle = {};
 
 	if (isRightToLeft)
 	{
@@ -626,12 +626,12 @@ void SearchWidget::setSearchEngine(const QString &searchEngine)
 
 	if (searchEngines.isEmpty())
 	{
-		m_searchEngine = QString();
+		m_searchEngine.clear();
 
 		hidePopup();
 		setEnabled(false);
-		setToolTip(QString());
-		setPlaceholderText(QString());
+		setToolTip({});
+		setPlaceholderText({});
 
 		return;
 	}
@@ -648,15 +648,6 @@ void SearchWidget::setSearchEngine(const QString &searchEngine)
 
 void SearchWidget::setSearchEngine(const QModelIndex &index, bool canSendRequest)
 {
-	if (m_suggester && getPopup()->model() == m_suggester->getModel())
-	{
-		setText(m_suggester->getModel()->itemFromIndex(index)->text());
-		sendRequest();
-		hidePopup();
-
-		return;
-	}
-
 	if (index.data(Qt::AccessibleDescriptionRole).toString().isEmpty())
 	{
 		m_searchEngine = index.data(SearchEnginesManager::IdentifierRole).toString();
@@ -675,7 +666,7 @@ void SearchWidget::setSearchEngine(const QModelIndex &index, bool canSendRequest
 		if (m_suggester)
 		{
 			m_suggester->setSearchEngine(m_searchEngine);
-			m_suggester->setQuery(QString());
+			m_suggester->setQuery({});
 		}
 
 		if (canSendRequest && !m_query.isEmpty())
@@ -691,17 +682,17 @@ void SearchWidget::setSearchEngine(const QModelIndex &index, bool canSendRequest
 		{
 			setText(query);
 		}
-
-		if (index.data(Qt::AccessibleDescriptionRole).toString() == QLatin1String("configure"))
-		{
-			PreferencesDialog dialog(QLatin1String("search"), this);
-			dialog.exec();
-		}
 	}
 
 	update();
 	setEnabled(true);
 	hidePopup();
+
+	if (index.data(Qt::AccessibleDescriptionRole).toString() == QLatin1String("configure"))
+	{
+		PreferencesDialog dialog(QLatin1String("search"), this);
+		dialog.exec();
+	}
 }
 
 void SearchWidget::setOptions(const QVariantMap &options)
@@ -740,11 +731,9 @@ void SearchWidget::setWindow(Window *window)
 	{
 		m_window->detachSearchWidget(this);
 
-		disconnect(this, SIGNAL(requestedOpenUrl(QUrl,SessionsManager::OpenHints)), m_window.data(), SLOT(handleOpenUrlRequest(QUrl,SessionsManager::OpenHints)));
-		disconnect(this, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)), m_window.data(), SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)));
-		disconnect(m_window.data(), SIGNAL(destroyed(QObject*)), this, SLOT(setWindow()));
-		disconnect(m_window.data(), SIGNAL(loadingStateChanged(WebWidget::LoadingState)), this, SLOT(updateGeometries()));
-		disconnect(m_window.data(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleWindowOptionChanged(int,QVariant)));
+		disconnect(this, &SearchWidget::requestedSearch, m_window.data(), &Window::requestedSearch);
+		disconnect(m_window.data(), &Window::loadingStateChanged, this, &SearchWidget::updateGeometries);
+		disconnect(m_window.data(), &Window::optionChanged, this, &SearchWidget::handleWindowOptionChanged);
 	}
 
 	m_window = window;
@@ -753,31 +742,39 @@ void SearchWidget::setWindow(Window *window)
 	{
 		if (mainWindow)
 		{
-			disconnect(this, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)), mainWindow, SLOT(search(QString,QString,SessionsManager::OpenHints)));
+			disconnect(this, &SearchWidget::requestedSearch, mainWindow, &MainWindow::search);
 		}
 
 		window->attachSearchWidget(this);
 
 		setSearchEngine(window->getOption(SettingsManager::Search_DefaultSearchEngineOption).toString());
 
-		connect(this, SIGNAL(requestedOpenUrl(QUrl,SessionsManager::OpenHints)), m_window.data(), SLOT(handleOpenUrlRequest(QUrl,SessionsManager::OpenHints)));
-		connect(this, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)), window, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)));
-		connect(window, SIGNAL(destroyed(QObject*)), this, SLOT(setWindow()));
-		connect(window, SIGNAL(loadingStateChanged(WebWidget::LoadingState)), this, SLOT(updateGeometries()));
-		connect(window, SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleWindowOptionChanged(int,QVariant)));
+		connect(this, &SearchWidget::requestedSearch, window, &Window::requestedSearch);
+		connect(window, &Window::loadingStateChanged, this, &SearchWidget::updateGeometries);
+		connect(window, &Window::optionChanged, this, &SearchWidget::handleWindowOptionChanged);
+		connect(window, &Window::destroyed, this, [&](QObject *object)
+		{
+			if (qobject_cast<Window*>(object) == m_window)
+			{
+				setWindow(nullptr);
+			}
+		});
 
 		const ToolBarWidget *toolBar(qobject_cast<ToolBarWidget*>(parentWidget()));
 
 		if (!toolBar || toolBar->getIdentifier() != ToolBarsManager::AddressBar)
 		{
-			connect(window, SIGNAL(aboutToClose()), this, SLOT(setWindow()));
+			connect(window, &Window::aboutToClose, this, [&]()
+			{
+				setWindow(nullptr);
+			});
 		}
 	}
 	else
 	{
 		if (mainWindow && !mainWindow->isAboutToClose())
 		{
-			connect(this, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)), mainWindow, SLOT(search(QString,QString,SessionsManager::OpenHints)));
+			connect(this, &SearchWidget::requestedSearch, mainWindow, &MainWindow::search);
 		}
 
 		setSearchEngine(SettingsManager::getOption(SettingsManager::Search_DefaultSearchEngineOption).toString());

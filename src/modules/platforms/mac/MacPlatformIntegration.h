@@ -30,7 +30,7 @@
 namespace Otter
 {
 
-class MacPlatformLinkDrag : public QDrag
+class MacPlatformLinkDrag final : public QDrag
 {
 public:
 	explicit MacPlatformLinkDrag(QObject *parent);
@@ -41,7 +41,7 @@ private:
 	QTemporaryDir m_directory;
 };
 
-class MacPlatformIntegration : public PlatformIntegration
+class MacPlatformIntegration final : public PlatformIntegration
 {
 	Q_OBJECT
 
@@ -62,7 +62,6 @@ protected:
 	void timerEvent(QTimerEvent *event) override;
 
 protected slots:
-	void triggerAction(QAction *action);
 	void updateTransfersProgress();
 
 private:

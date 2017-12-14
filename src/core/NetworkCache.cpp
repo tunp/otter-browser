@@ -38,7 +38,7 @@ NetworkCache::NetworkCache(QObject *parent) : QNetworkDiskCache(parent)
 		setCacheDirectory(cachePath);
 		setMaximumCacheSize(SettingsManager::getOption(SettingsManager::Cache_DiskCacheLimitOption).toInt() * 1024);
 
-		connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int,QVariant)));
+		connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &NetworkCache::handleOptionChanged);
 	}
 }
 
@@ -117,7 +117,7 @@ QString NetworkCache::getPathForUrl(const QUrl &url)
 {
 	if (!url.isValid() || !metaData(url).isValid())
 	{
-		return QString();
+		return {};
 	}
 
 	const QDir cacheMainDirectory(cacheDirectory());
@@ -146,7 +146,7 @@ QString NetworkCache::getPathForUrl(const QUrl &url)
 		}
 	}
 
-	return QString();
+	return {};
 }
 
 QVector<QUrl> NetworkCache::getEntries() const

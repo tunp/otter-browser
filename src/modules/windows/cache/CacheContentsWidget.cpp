@@ -39,29 +39,29 @@
 namespace Otter
 {
 
-CacheContentsWidget::CacheContentsWidget(const QVariantMap &parameters, Window *window) : ContentsWidget(parameters, window),
+CacheContentsWidget::CacheContentsWidget(const QVariantMap &parameters, Window *window, QWidget *parent) : ContentsWidget(parameters, window, parent),
 	m_model(new QStandardItemModel(this)),
 	m_isLoading(true),
 	m_ui(new Ui::CacheContentsWidget)
 {
 	m_ui->setupUi(this);
-	m_ui->previewLabel->hide();
+	m_ui->filterLineEditWidget->setClearOnEscape(true);
 	m_ui->cacheViewWidget->setViewMode(ItemViewWidget::TreeViewMode);
 	m_ui->cacheViewWidget->installEventFilter(this);
 	m_ui->cacheViewWidget->viewport()->installEventFilter(this);
-	m_ui->filterLineEdit->installEventFilter(this);
+	m_ui->previewLabel->hide();
 
 	if (isSidebarPanel())
 	{
 		m_ui->detailsWidget->hide();
 	}
 
-	QTimer::singleShot(100, this, SLOT(populateCache()));
+	QTimer::singleShot(100, this, &CacheContentsWidget::populateCache);
 
-	connect(m_ui->filterLineEdit, SIGNAL(textChanged(QString)), m_ui->cacheViewWidget, SLOT(setFilterString(QString)));
-	connect(m_ui->cacheViewWidget, SIGNAL(doubleClicked(QModelIndex)), this, SLOT(openEntry(QModelIndex)));
-	connect(m_ui->cacheViewWidget, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(showContextMenu(QPoint)));
-	connect(m_ui->deleteButton, SIGNAL(clicked()), this, SLOT(removeDomainEntriesOrEntry()));
+	connect(m_ui->filterLineEditWidget, &LineEditWidget::textChanged, m_ui->cacheViewWidget, &ItemViewWidget::setFilterString);
+	connect(m_ui->cacheViewWidget, &ItemViewWidget::doubleClicked, this, &CacheContentsWidget::openEntry);
+	connect(m_ui->cacheViewWidget, &ItemViewWidget::customContextMenuRequested, this, &CacheContentsWidget::showContextMenu);
+	connect(m_ui->deleteButton, &QPushButton::clicked, this, &CacheContentsWidget::removeDomainEntriesOrEntry);
 }
 
 CacheContentsWidget::~CacheContentsWidget()
@@ -94,7 +94,7 @@ void CacheContentsWidget::triggerAction(int identifier, const QVariantMap &param
 			break;
 		case ActionsManager::FindAction:
 		case ActionsManager::QuickFindAction:
-			m_ui->filterLineEdit->setFocus();
+			m_ui->filterLineEditWidget->setFocus();
 
 			break;
 		case ActionsManager::ActivateContentAction:
@@ -111,7 +111,9 @@ void CacheContentsWidget::triggerAction(int identifier, const QVariantMap &param
 void CacheContentsWidget::populateCache()
 {
 	m_model->clear();
-	m_model->setHorizontalHeaderLabels(QStringList({tr("Address"), tr("Type"), tr("Size"), tr("Last Modified"), tr("Expires")}));
+	m_model->setHorizontalHeaderLabels({tr("Address"), tr("Type"), tr("Size"), tr("Last Modified"), tr("Expires")});
+	m_model->setHeaderData(0, Qt::Horizontal, QSize(500, 0), Qt::SizeHintRole);
+	m_model->setHeaderData(2, Qt::Horizontal, QSize(150, 0), Qt::SizeHintRole);
 	m_model->setSortRole(Qt::DisplayRole);
 
 	const NetworkCache *cache(NetworkManagerFactory::getCache());
@@ -119,7 +121,7 @@ void CacheContentsWidget::populateCache()
 
 	for (int i = 0; i < entries.count(); ++i)
 	{
-		addEntry(entries.at(i));
+		handleEntryAdded(entries.at(i));
 	}
 
 	m_model->sort(0);
@@ -128,128 +130,17 @@ void CacheContentsWidget::populateCache()
 	{
 		m_ui->cacheViewWidget->setModel(m_model);
 		m_ui->cacheViewWidget->setLayoutDirection(Qt::LeftToRight);
-		m_ui->cacheViewWidget->setFilterRoles(QSet<int>({Qt::DisplayRole, Qt::UserRole}));
+		m_ui->cacheViewWidget->setFilterRoles({Qt::DisplayRole, Qt::UserRole});
 
 		m_isLoading = false;
 
 		emit loadingStateChanged(WebWidget::FinishedLoadingState);
 
-		connect(cache, SIGNAL(cleared()), this, SLOT(populateCache()));
-		connect(cache, SIGNAL(entryAdded(QUrl)), this, SLOT(addEntry(QUrl)));
-		connect(cache, SIGNAL(entryRemoved(QUrl)), this, SLOT(removeEntry(QUrl)));
-		connect(m_model, SIGNAL(modelReset()), this, SLOT(updateActions()));
-		connect(m_ui->cacheViewWidget, SIGNAL(needsActionsUpdate()), this, SLOT(updateActions()));
-	}
-}
-
-void CacheContentsWidget::addEntry(const QUrl &entry)
-{
-	const QString domain(entry.host());
-	QStandardItem *domainItem(findDomain(domain));
-
-	if (domainItem)
-	{
-		for (int i = 0; i < domainItem->rowCount(); ++i)
-		{
-			if (domainItem->index().child(i, 0).data(Qt::UserRole).toUrl() == entry)
-			{
-				return;
-			}
-		}
-	}
-	else
-	{
-		domainItem = new QStandardItem(HistoryManager::getIcon(QUrl(QStringLiteral("http://%1/").arg(domain))), domain);
-		domainItem->setToolTip(domain);
-
-		m_model->appendRow(domainItem);
-		m_model->setItem(domainItem->row(), 2, new QStandardItem(QString()));
-
-		if (sender())
-		{
-			m_model->sort(0);
-		}
-	}
-
-	NetworkCache *cache(NetworkManagerFactory::getCache());
-	QIODevice *device(cache->data(entry));
-	const QNetworkCacheMetaData metaData(cache->metaData(entry));
-	const QList<QPair<QByteArray, QByteArray> > headers(metaData.rawHeaders());
-	QString type;
-
-	for (int i = 0; i < headers.count(); ++i)
-	{
-		if (headers.at(i).first == QStringLiteral("Content-Type").toLatin1())
-		{
-			type = QString(headers.at(i).second);
-
-			break;
-		}
-	}
-
-	const QMimeType mimeType((type.isEmpty() && device) ? QMimeDatabase().mimeTypeForData(device) : QMimeDatabase().mimeTypeForName(type));
-	QList<QStandardItem*> entryItems({new QStandardItem(entry.path()), new QStandardItem(mimeType.name()), new QStandardItem(device ? Utils::formatUnit(device->size()) : QString()), new QStandardItem(Utils::formatDateTime(metaData.lastModified())), new QStandardItem(Utils::formatDateTime(metaData.expirationDate()))});
-	entryItems[0]->setData(entry, Qt::UserRole);
-	entryItems[0]->setFlags(entryItems[0]->flags() | Qt::ItemNeverHasChildren);
-	entryItems[1]->setFlags(entryItems[1]->flags() | Qt::ItemNeverHasChildren);
-	entryItems[2]->setData((device ? device->size() : 0), Qt::UserRole);
-	entryItems[2]->setFlags(entryItems[2]->flags() | Qt::ItemNeverHasChildren);
-	entryItems[3]->setFlags(entryItems[3]->flags() | Qt::ItemNeverHasChildren);
-	entryItems[4]->setFlags(entryItems[4]->flags() | Qt::ItemNeverHasChildren);
-
-	if (device)
-	{
-		QStandardItem *sizeItem(m_model->item(domainItem->row(), 2));
-
-		if (sizeItem)
-		{
-			sizeItem->setData((sizeItem->data(Qt::UserRole).toLongLong() + device->size()), Qt::UserRole);
-			sizeItem->setText(Utils::formatUnit(sizeItem->data(Qt::UserRole).toLongLong()));
-		}
-
-		device->deleteLater();
-	}
-
-	domainItem->appendRow(entryItems);
-	domainItem->setText(QStringLiteral("%1 (%2)").arg(domain).arg(domainItem->rowCount()));
-
-	if (sender())
-	{
-		domainItem->sortChildren(0, Qt::DescendingOrder);
-	}
-}
-
-void CacheContentsWidget::removeEntry(const QUrl &entry)
-{
-	QStandardItem *entryItem(findEntry(entry));
-
-	if (entryItem)
-	{
-		QStandardItem *domainItem(entryItem->parent());
-
-		if (domainItem)
-		{
-			const qint64 size(domainItem->index().child(entryItem->row(), 2).data(Qt::UserRole).toLongLong());
-
-			m_model->removeRow(entryItem->row(), domainItem->index());
-
-			if (domainItem->rowCount() == 0)
-			{
-				m_model->invisibleRootItem()->removeRow(domainItem->row());
-			}
-			else
-			{
-				QStandardItem *domainSizeItem(m_model->item(domainItem->row(), 2));
-
-				if (domainSizeItem && size > 0)
-				{
-					domainSizeItem->setData((domainSizeItem->data(Qt::UserRole).toLongLong() - size), Qt::UserRole);
-					domainSizeItem->setText(Utils::formatUnit(domainSizeItem->data(Qt::UserRole).toLongLong()));
-				}
-
-				domainItem->setText(QStringLiteral("%1 (%2)").arg(entry.host()).arg(domainItem->rowCount()));
-			}
-		}
+		connect(cache, &NetworkCache::cleared, this, &CacheContentsWidget::populateCache);
+		connect(cache, &NetworkCache::entryAdded, this, &CacheContentsWidget::handleEntryAdded);
+		connect(cache, &NetworkCache::entryRemoved, this, &CacheContentsWidget::handleEntryRemoved);
+		connect(m_model, &QStandardItemModel::modelReset, this, &CacheContentsWidget::updateActions);
+		connect(m_ui->cacheViewWidget, &ItemViewWidget::needsActionsUpdate, this, &CacheContentsWidget::updateActions);
 	}
 }
 
@@ -309,8 +200,12 @@ void CacheContentsWidget::openEntry(const QModelIndex &index)
 	if (url.isValid())
 	{
 		const QAction *action(qobject_cast<QAction*>(sender()));
+		MainWindow *mainWindow(MainWindow::findMainWindow(this));
 
-		emit requestedOpenUrl(url, (action ? static_cast<SessionsManager::OpenHints>(action->data().toInt()) : SessionsManager::DefaultOpen));
+		if (mainWindow)
+		{
+			mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}, {QLatin1String("hints"), QVariant(action ? static_cast<SessionsManager::OpenHints>(action->data().toInt()) : SessionsManager::DefaultOpen)}});
+		}
 	}
 }
 
@@ -321,6 +216,117 @@ void CacheContentsWidget::copyEntryLink()
 	if (entryItem)
 	{
 		QApplication::clipboard()->setText(entryItem->data(Qt::UserRole).toString());
+	}
+}
+
+void CacheContentsWidget::handleEntryAdded(const QUrl &entry)
+{
+	const QString domain(entry.host());
+	QStandardItem *domainItem(findDomain(domain));
+
+	if (domainItem)
+	{
+		for (int i = 0; i < domainItem->rowCount(); ++i)
+		{
+			if (domainItem->index().child(i, 0).data(Qt::UserRole).toUrl() == entry)
+			{
+				return;
+			}
+		}
+	}
+	else
+	{
+		domainItem = new QStandardItem(HistoryManager::getIcon(QUrl(QStringLiteral("http://%1/").arg(domain))), domain);
+		domainItem->setToolTip(domain);
+
+		m_model->appendRow(domainItem);
+		m_model->setItem(domainItem->row(), 2, new QStandardItem());
+
+		if (sender())
+		{
+			m_model->sort(0);
+		}
+	}
+
+	NetworkCache *cache(NetworkManagerFactory::getCache());
+	QIODevice *device(cache->data(entry));
+	const QNetworkCacheMetaData metaData(cache->metaData(entry));
+	const QList<QPair<QByteArray, QByteArray> > headers(metaData.rawHeaders());
+	QString type;
+
+	for (int i = 0; i < headers.count(); ++i)
+	{
+		if (headers.at(i).first == QStringLiteral("Content-Type").toLatin1())
+		{
+			type = QString(headers.at(i).second);
+
+			break;
+		}
+	}
+
+	const QMimeType mimeType((type.isEmpty() && device) ? QMimeDatabase().mimeTypeForData(device) : QMimeDatabase().mimeTypeForName(type));
+	QList<QStandardItem*> entryItems({new QStandardItem(entry.path()), new QStandardItem(mimeType.name()), new QStandardItem(device ? Utils::formatUnit(device->size()) : QString()), new QStandardItem(Utils::formatDateTime(metaData.lastModified())), new QStandardItem(Utils::formatDateTime(metaData.expirationDate()))});
+	entryItems[0]->setData(entry, Qt::UserRole);
+	entryItems[0]->setFlags(entryItems[0]->flags() | Qt::ItemNeverHasChildren);
+	entryItems[1]->setFlags(entryItems[1]->flags() | Qt::ItemNeverHasChildren);
+	entryItems[2]->setData((device ? device->size() : 0), Qt::UserRole);
+	entryItems[2]->setFlags(entryItems[2]->flags() | Qt::ItemNeverHasChildren);
+	entryItems[3]->setFlags(entryItems[3]->flags() | Qt::ItemNeverHasChildren);
+	entryItems[4]->setFlags(entryItems[4]->flags() | Qt::ItemNeverHasChildren);
+
+	if (device)
+	{
+		QStandardItem *sizeItem(m_model->item(domainItem->row(), 2));
+
+		if (sizeItem)
+		{
+			sizeItem->setData((sizeItem->data(Qt::UserRole).toLongLong() + device->size()), Qt::UserRole);
+			sizeItem->setText(Utils::formatUnit(sizeItem->data(Qt::UserRole).toLongLong()));
+		}
+
+		device->deleteLater();
+	}
+
+	domainItem->appendRow(entryItems);
+	domainItem->setText(QStringLiteral("%1 (%2)").arg(domain).arg(domainItem->rowCount()));
+
+	if (sender())
+	{
+		domainItem->sortChildren(0, Qt::DescendingOrder);
+	}
+}
+
+void CacheContentsWidget::handleEntryRemoved(const QUrl &entry)
+{
+	QStandardItem *entryItem(findEntry(entry));
+
+	if (entryItem)
+	{
+		QStandardItem *domainItem(entryItem->parent());
+
+		if (domainItem)
+		{
+			const qint64 size(domainItem->index().child(entryItem->row(), 2).data(Qt::UserRole).toLongLong());
+
+			m_model->removeRow(entryItem->row(), domainItem->index());
+
+			if (domainItem->rowCount() == 0)
+			{
+				m_model->invisibleRootItem()->removeRow(domainItem->row());
+			}
+			else
+			{
+				QStandardItem *domainSizeItem(m_model->item(domainItem->row(), 2));
+
+				if (domainSizeItem && size > 0)
+				{
+					domainSizeItem->setData((domainSizeItem->data(Qt::UserRole).toLongLong() - size), Qt::UserRole);
+					domainSizeItem->setText(Utils::formatUnit(domainSizeItem->data(Qt::UserRole).toLongLong()));
+				}
+
+				domainItem->setText(QStringLiteral("%1 (%2)").arg(entry.host()).arg(domainItem->rowCount()));
+			}
+		}
 	}
 }
 
@@ -361,10 +367,10 @@ void CacheContentsWidget::updateActions()
 	const QUrl url(getEntry(index));
 	const QString domain((index.isValid() && index.parent() == m_model->invisibleRootItem()->index()) ? index.sibling(index.row(), 0).data(Qt::ToolTipRole).toString() : url.host());
 
-	m_ui->locationLabelWidget->setText(QString());
-	m_ui->locationLabelWidget->setUrl(QUrl());
+	m_ui->locationLabelWidget->setText({});
+	m_ui->locationLabelWidget->setUrl({});
 	m_ui->previewLabel->hide();
-	m_ui->previewLabel->setPixmap(QPixmap());
+	m_ui->previewLabel->setPixmap({});
 	m_ui->deleteButton->setEnabled(!domain.isEmpty());
 
 	if (url.isValid())
@@ -468,11 +474,11 @@ void CacheContentsWidget::updateActions()
 	}
 	else
 	{
-		m_ui->addressLabelWidget->setText(QString());
-		m_ui->typeLabelWidget->setText(QString());
-		m_ui->sizeLabelWidget->setText(QString());
-		m_ui->lastModifiedLabelWidget->setText(QString());
-		m_ui->expiresLabelWidget->setText(QString());
+		m_ui->addressLabelWidget->setText({});
+		m_ui->typeLabelWidget->setText({});
+		m_ui->sizeLabelWidget->setText({});
+		m_ui->lastModifiedLabelWidget->setText({});
+		m_ui->expiresLabelWidget->setText({});
 
 		if (!domain.isEmpty())
 		{
@@ -480,7 +486,7 @@ void CacheContentsWidget::updateActions()
 		}
 	}
 
-	emit actionsStateChanged(ActionsManager::ActionDefinition::EditingCategory);
+	emit categorizedActionsStateChanged({ActionsManager::ActionDefinition::EditingCategory});
 }
 
 QStandardItem* CacheContentsWidget::findDomain(const QString &domain)
@@ -594,23 +600,15 @@ bool CacheContentsWidget::eventFilter(QObject *object, QEvent *event)
 				return ContentsWidget::eventFilter(object, event);
 			}
 
+			MainWindow *mainWindow(MainWindow::findMainWindow(this));
 			const QUrl url(entryIndex.sibling(entryIndex.row(), 0).data(Qt::UserRole).toUrl());
 
-			if (url.isValid())
+			if (mainWindow && url.isValid())
 			{
-				emit requestedOpenUrl(url, SessionsManager::calculateOpenHints(SessionsManager::NewTabOpen, mouseEvent->button(), mouseEvent->modifiers()));
+				mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}, {QLatin1String("hints"), QVariant(SessionsManager::calculateOpenHints(SessionsManager::NewTabOpen, mouseEvent->button(), mouseEvent->modifiers()))}});
 
 				return true;
 			}
-		}
-	}
-	else if (object == m_ui->filterLineEdit && event->type() == QEvent::KeyPress)
-	{
-		const QKeyEvent *keyEvent(static_cast<QKeyEvent*>(event));
-
-		if (keyEvent->key() == Qt::Key_Escape)
-		{
-			m_ui->filterLineEdit->clear();
 		}
 	}
 

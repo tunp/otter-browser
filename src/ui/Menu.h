@@ -20,15 +20,13 @@
 #ifndef OTTER_MENU_H
 #define OTTER_MENU_H
 
-#include "../core/ActionsManager.h"
+#include "../core/ActionExecutor.h"
 
 #include <QtCore/QJsonObject>
 #include <QtWidgets/QMenu>
 
 namespace Otter
 {
-
-class BookmarksItem;
 
 class Menu : public QMenu
 {
@@ -76,11 +74,13 @@ protected:
 	void mouseReleaseEvent(QMouseEvent *event) override;
 	void contextMenuEvent(QContextMenuEvent *event) override;
 	void appendAction(const QJsonValue &definition, const QStringList &includeSections, ActionExecutor::Object executor);
-	ActionExecutor::Object getExecutor();
+	ActionExecutor::Object getExecutor() const;
 	bool canInclude(const QJsonObject &definition, const QStringList &includeSections);
 
 protected slots:
+	void hideMenu();
 	void populateBookmarksMenu();
+	void populateBookmarkSelectorMenu();
 	void populateOptionMenu();
 	void populateCharacterEncodingMenu();
 	void populateClosedWindowsMenu();
@@ -97,18 +97,12 @@ protected slots:
 	void clearBookmarksMenu();
 	void clearClosedWindows();
 	void clearNotesMenu();
-	void openBookmark();
-	void openImporter(QAction *action);
-	void openSession(QAction *action);
-	void selectDictionary(QAction *action);
 	void selectOption(QAction *action);
-	void selectStyleSheet(QAction *action);
 	void updateClosedWindowsMenu();
 
 private:
 	QActionGroup *m_actionGroup;
 	QAction *m_clickedAction;
-	BookmarksItem *m_bookmark;
 	QString m_title;
 	ActionExecutor::Object m_executor;
 	QHash<QString, QActionGroup*> m_actionGroups;

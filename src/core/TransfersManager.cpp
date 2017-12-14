@@ -98,6 +98,9 @@ Transfer::Transfer(const QUrl &source, const QString &target, TransferOptions op
 {
 	QNetworkRequest request;
 	request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
+#if QT_VERSION >= 0x050600
+	request.setAttribute(QNetworkRequest::FollowRedirectsAttribute, true);
+#endif
 	request.setHeader(QNetworkRequest::UserAgentHeader, NetworkManagerFactory::getUserAgent());
 	request.setUrl(QUrl(source));
 
@@ -192,7 +195,7 @@ void Transfer::start(QNetworkReply *reply, const QString &target)
 	}
 	else if (temporaryFileName.contains(QLatin1Char('.')))
 	{
-		const QString suffix(mimeDatabase.suffixForFileName(temporaryFileName));
+		const QString suffix(mimeDatabase.suffixForFileName(temporaryFileName.simplified().remove(QLatin1Char(' '))));
 		int position(temporaryFileName.lastIndexOf(QLatin1Char('.')));
 
 		if (!suffix.isEmpty() && temporaryFileName.endsWith(suffix, Qt::CaseInsensitive))
@@ -235,19 +238,19 @@ void Transfer::start(QNetworkReply *reply, const QString &target)
 	m_target = m_device->fileName();
 	m_state = (m_reply->isFinished() ? FinishedState : RunningState);
 
-	downloadData();
+	handleDataAvailable();
 
 	const bool isRunning(m_state == RunningState);
 
 	if (isRunning)
 	{
-		connect(m_reply, SIGNAL(downloadProgress(qint64,qint64)), this, SLOT(downloadProgress(qint64,qint64)));
-		connect(m_reply, SIGNAL(finished()), this, SLOT(downloadFinished()));
-		connect(m_reply, SIGNAL(error(QNetworkReply::NetworkError)), this, SLOT(downloadError(QNetworkReply::NetworkError)));
+		connect(m_reply, &QNetworkReply::downloadProgress, this, &Transfer::handleDownloadProgress);
+		connect(m_reply, &QNetworkReply::finished, this, &Transfer::handleDownloadFinished);
+		connect(m_reply, static_cast<void(QNetworkReply::*)(QNetworkReply::NetworkError)>(&QNetworkReply::error), this, &Transfer::handleDownloadError);
 	}
 	else
 	{
-		markFinished();
+		markAsFinished();
 
 		if (m_options.testFlag(CanAutoDeleteOption) && !m_isSelectingPath)
 		{
@@ -261,11 +264,11 @@ void Transfer::start(QNetworkReply *reply, const QString &target)
 
 	m_device->seek(m_device->size());
 
-	downloadData();
+	handleDataAvailable();
 
 	if (isRunning)
 	{
-		connect(m_reply, SIGNAL(readyRead()), this, SLOT(downloadData()));
+		connect(m_reply, &QNetworkReply::readyRead, this, &Transfer::handleDataAvailable);
 	}
 
 	QString finalTarget;
@@ -287,7 +290,7 @@ void Transfer::start(QNetworkReply *reply, const QString &target)
 
 			if (QFile::exists(path + QDir::separator() + fileName) && QMessageBox::question(Application::getActiveWindow(), tr("Question"), tr("File with that name already exists.\nDo you want to overwrite it?"), QMessageBox::Yes, QMessageBox::No) == QMessageBox::No)
 			{
-				path = QString();
+				path.clear();
 			}
 		}
 
@@ -352,154 +355,6 @@ void Transfer::start(QNetworkReply *reply, const QString &target)
 	}
 }
 
-void Transfer::downloadProgress(qint64 bytesReceived, qint64 bytesTotal)
-{
-	m_bytesReceivedDifference += (bytesReceived - (m_bytesReceived - m_bytesStart));
-	m_bytesReceived = (m_bytesStart + bytesReceived);
-	m_bytesTotal = (m_bytesStart + bytesTotal);
-
-	emit progressChanged(bytesReceived, bytesTotal);
-}
-
-void Transfer::downloadData()
-{
-	if (!m_reply || !m_device)
-	{
-		return;
-	}
-
-	if (m_state == ErrorState)
-	{
-		m_state = RunningState;
-
-		if (m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).isValid() && m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() != 206)
-		{
-			m_device->reset();
-		}
-	}
-
-	m_device->write(m_reply->readAll());
-	m_device->seek(m_device->size());
-
-	if (m_state == RunningState && m_reply->attribute(QNetworkRequest::SourceIsFromCacheAttribute).toBool() && m_bytesTotal >= 0 && m_device->size() == m_bytesTotal)
-	{
-		downloadFinished();
-	}
-}
-
-void Transfer::downloadFinished()
-{
-	if (!m_reply)
-	{
-		if (m_device && !m_device->inherits(QStringLiteral("QTemporaryFile").toLatin1()))
-		{
-			m_device->close();
-			m_device->deleteLater();
-			m_device = nullptr;
-		}
-
-		if (m_options.testFlag(CanAutoDeleteOption) && !m_isSelectingPath)
-		{
-			deleteLater();
-		}
-
-		return;
-	}
-
-	if (!m_reply->attribute(QNetworkRequest::RedirectionTargetAttribute).isNull())
-	{
-		m_source = m_source.resolved(m_reply->attribute(QNetworkRequest::RedirectionTargetAttribute).toUrl());
-
-		restart();
-
-		return;
-	}
-
-	if (m_updateTimer != 0)
-	{
-		killTimer(m_updateTimer);
-
-		m_updateTimer = 0;
-	}
-
-	if (m_reply->size() > 0)
-	{
-		m_device->write(m_reply->readAll());
-	}
-
-	disconnect(m_reply, SIGNAL(downloadProgress(qint64,qint64)), this, SLOT(downloadProgress(qint64,qint64)));
-	disconnect(m_reply, SIGNAL(readyRead()), this, SLOT(downloadData()));
-	disconnect(m_reply, SIGNAL(finished()), this, SLOT(downloadFinished()));
-
-	m_bytesReceived = (m_device ? m_device->size() : -1);
-
-	if (m_bytesTotal <= 0 && m_bytesReceived > 0)
-	{
-		m_bytesTotal = m_bytesReceived;
-	}
-
-	if (m_bytesReceived == 0 || m_bytesReceived < m_bytesTotal)
-	{
-		m_state = ErrorState;
-	}
-	else
-	{
-		markFinished();
-
-		m_state = FinishedState;
-		m_mimeType = QMimeDatabase().mimeTypeForFile(m_target);
-	}
-
-	emit finished();
-	emit changed();
-
-	if (m_device && (m_options.testFlag(HasToOpenAfterFinishOption) || !m_device->inherits(QStringLiteral("QTemporaryFile").toLatin1())))
-	{
-		m_device->close();
-		m_device->deleteLater();
-		m_device = nullptr;
-
-		if (m_reply)
-		{
-			QTimer::singleShot(250, m_reply, SLOT(deleteLater()));
-		}
-	}
-
-	if (m_state == FinishedState && m_options.testFlag(HasToOpenAfterFinishOption))
-	{
-		openTarget();
-	}
-
-	if (m_options.testFlag(CanAutoDeleteOption) && !m_isSelectingPath)
-	{
-		deleteLater();
-	}
-}
-
-void Transfer::downloadError(QNetworkReply::NetworkError error)
-{
-	Q_UNUSED(error)
-
-	stop();
-
-	m_state = ErrorState;
-
-	if (m_options.testFlag(CanAutoDeleteOption) && !m_isSelectingPath)
-	{
-		deleteLater();
-	}
-}
-
-void Transfer::markStarted()
-{
-	m_timeStarted = QDateTime::currentDateTime();
-}
-
-void Transfer::markFinished(bool reset)
-{
-	m_timeFinished = (reset ? QDateTime() : QDateTime::currentDateTime());
-}
-
 void Transfer::openTarget() const
 {
 	Utils::runApplication(m_openCommand, QUrl::fromLocalFile(getTarget()));
@@ -513,7 +368,7 @@ void Transfer::cancel()
 	{
 		m_reply->abort();
 
-		QTimer::singleShot(250, m_reply, SLOT(deleteLater()));
+		QTimer::singleShot(250, m_reply, &QNetworkReply::deleteLater);
 	}
 
 	if (m_device)
@@ -542,7 +397,7 @@ void Transfer::stop()
 	{
 		m_reply->abort();
 
-		QTimer::singleShot(250, m_reply, SLOT(deleteLater()));
+		QTimer::singleShot(250, m_reply, &QNetworkReply::deleteLater);
 	}
 
 	if (m_device && !m_device->inherits(QStringLiteral("QTemporaryFile").toLatin1()))
@@ -564,6 +419,163 @@ void Transfer::stop()
 
 	emit stopped();
 	emit changed();
+}
+
+void Transfer::markAsStarted()
+{
+	m_timeStarted = QDateTime::currentDateTime();
+}
+
+void Transfer::markAsFinished()
+{
+	m_timeFinished = QDateTime::currentDateTime();
+}
+
+void Transfer::handleDownloadProgress(qint64 bytesReceived, qint64 bytesTotal)
+{
+	m_bytesReceivedDifference += (bytesReceived - (m_bytesReceived - m_bytesStart));
+	m_bytesReceived = (m_bytesStart + bytesReceived);
+	m_bytesTotal = (m_bytesStart + bytesTotal);
+
+	emit progressChanged(bytesReceived, bytesTotal);
+}
+
+void Transfer::handleDataAvailable()
+{
+	if (!m_reply || !m_device)
+	{
+		return;
+	}
+
+	if (m_state == ErrorState)
+	{
+		m_state = RunningState;
+
+		if (m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).isValid() && m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() != 206)
+		{
+			m_device->reset();
+		}
+	}
+
+	m_device->write(m_reply->readAll());
+	m_device->seek(m_device->size());
+
+	if (m_state == RunningState && m_reply->attribute(QNetworkRequest::SourceIsFromCacheAttribute).toBool() && m_bytesTotal >= 0 && m_device->size() == m_bytesTotal)
+	{
+		handleDownloadFinished();
+	}
+}
+
+void Transfer::handleDownloadFinished()
+{
+	if (!m_reply)
+	{
+		if (m_device && !m_device->inherits(QStringLiteral("QTemporaryFile").toLatin1()))
+		{
+			m_device->close();
+			m_device->deleteLater();
+			m_device = nullptr;
+		}
+
+		if (m_options.testFlag(CanAutoDeleteOption) && !m_isSelectingPath)
+		{
+			deleteLater();
+		}
+
+		return;
+	}
+
+	if (!m_reply->attribute(QNetworkRequest::RedirectionTargetAttribute).isNull())
+	{
+		const QUrl url(m_source.resolved(m_reply->attribute(QNetworkRequest::RedirectionTargetAttribute).toUrl()));
+
+		if (!url.isValid() || (m_source.scheme() == QLatin1String("https") && url.scheme() == QLatin1String("http")))
+		{
+			handleDownloadError(QNetworkReply::UnknownContentError);
+		}
+		else
+		{
+			m_source = url;
+
+			restart();
+		}
+
+		return;
+	}
+
+	if (m_updateTimer != 0)
+	{
+		killTimer(m_updateTimer);
+
+		m_updateTimer = 0;
+	}
+
+	if (m_reply->size() > 0)
+	{
+		m_device->write(m_reply->readAll());
+	}
+
+	disconnect(m_reply, &QNetworkReply::downloadProgress, this, &Transfer::handleDownloadProgress);
+	disconnect(m_reply, &QNetworkReply::readyRead, this, &Transfer::handleDataAvailable);
+	disconnect(m_reply, &QNetworkReply::finished, this, &Transfer::handleDownloadFinished);
+
+	m_bytesReceived = (m_device ? m_device->size() : -1);
+
+	if (m_bytesTotal <= 0 && m_bytesReceived > 0)
+	{
+		m_bytesTotal = m_bytesReceived;
+	}
+
+	if (m_bytesReceived == 0 || m_bytesReceived < m_bytesTotal)
+	{
+		m_state = ErrorState;
+	}
+	else
+	{
+		markAsFinished();
+
+		m_state = FinishedState;
+		m_mimeType = QMimeDatabase().mimeTypeForFile(m_target);
+	}
+
+	emit finished();
+	emit changed();
+
+	if (m_device && (m_options.testFlag(HasToOpenAfterFinishOption) || !m_device->inherits(QStringLiteral("QTemporaryFile").toLatin1())))
+	{
+		m_device->close();
+		m_device->deleteLater();
+		m_device = nullptr;
+
+		if (m_reply)
+		{
+			QTimer::singleShot(250, m_reply, &QNetworkReply::deleteLater);
+		}
+	}
+
+	if (m_state == FinishedState && m_options.testFlag(HasToOpenAfterFinishOption))
+	{
+		openTarget();
+	}
+
+	if (m_options.testFlag(CanAutoDeleteOption) && !m_isSelectingPath)
+	{
+		deleteLater();
+	}
+}
+
+void Transfer::handleDownloadError(QNetworkReply::NetworkError error)
+{
+	Q_UNUSED(error)
+
+	stop();
+
+	m_state = ErrorState;
+
+	if (m_options.testFlag(CanAutoDeleteOption) && !m_isSelectingPath)
+	{
+		deleteLater();
+	}
 }
 
 void Transfer::setOpenCommand(const QString &command)
@@ -756,12 +768,12 @@ bool Transfer::resume()
 
 	m_reply = NetworkManagerFactory::getNetworkManager()->get(request);
 
-	downloadData();
+	handleDataAvailable();
 
-	connect(m_reply, SIGNAL(downloadProgress(qint64,qint64)), this, SLOT(downloadProgress(qint64,qint64)));
-	connect(m_reply, SIGNAL(readyRead()), this, SLOT(downloadData()));
-	connect(m_reply, SIGNAL(finished()), this, SLOT(downloadFinished()));
-	connect(m_reply, SIGNAL(error(QNetworkReply::NetworkError)), this, SLOT(downloadError(QNetworkReply::NetworkError)));
+	connect(m_reply, &QNetworkReply::downloadProgress, this, &Transfer::handleDownloadProgress);
+	connect(m_reply, &QNetworkReply::readyRead, this, &Transfer::handleDataAvailable);
+	connect(m_reply, &QNetworkReply::finished, this, &Transfer::handleDownloadFinished);
+	connect(m_reply, static_cast<void(QNetworkReply::*)(QNetworkReply::NetworkError)>(&QNetworkReply::error), this, &Transfer::handleDownloadError);
 
 	if (m_updateTimer == 0 && m_updateInterval > 0)
 	{
@@ -793,16 +805,16 @@ bool Transfer::restart()
 	QNetworkRequest request;
 	request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
 	request.setHeader(QNetworkRequest::UserAgentHeader, NetworkManagerFactory::getUserAgent());
-	request.setUrl(QUrl(m_source));
+	request.setUrl(m_source);
 
 	m_reply = NetworkManagerFactory::getNetworkManager()->get(request);
 
-	downloadData();
+	handleDataAvailable();
 
-	connect(m_reply, SIGNAL(downloadProgress(qint64,qint64)), this, SLOT(downloadProgress(qint64,qint64)));
-	connect(m_reply, SIGNAL(readyRead()), this, SLOT(downloadData()));
-	connect(m_reply, SIGNAL(finished()), this, SLOT(downloadFinished()));
-	connect(m_reply, SIGNAL(error(QNetworkReply::NetworkError)), this, SLOT(downloadError(QNetworkReply::NetworkError)));
+	connect(m_reply, &QNetworkReply::downloadProgress, this, &Transfer::handleDownloadProgress);
+	connect(m_reply, &QNetworkReply::readyRead, this, &Transfer::handleDataAvailable);
+	connect(m_reply, &QNetworkReply::finished, this, &Transfer::handleDownloadFinished);
+	connect(m_reply, static_cast<void(QNetworkReply::*)(QNetworkReply::NetworkError)>(&QNetworkReply::error), this, &Transfer::handleDownloadError);
 
 	if (m_updateTimer == 0 && m_updateInterval > 0)
 	{
@@ -828,7 +840,7 @@ bool Transfer::setTarget(const QString &target, bool canOverwriteExisting)
 		if (result == QMessageBox::No)
 		{
 			QFileInfo information(target);
-			const QString path(Utils::getSavePath(information.fileName(), information.path(), QStringList(), true).path);
+			const QString path(Utils::getSavePath(information.fileName(), information.path(), {}, true).path);
 
 			if (path.isEmpty())
 			{
@@ -886,7 +898,7 @@ bool Transfer::setTarget(const QString &target, bool canOverwriteExisting)
 	{
 		if (m_reply && m_state == RunningState)
 		{
-			disconnect(m_reply, SIGNAL(readyRead()), this, SLOT(downloadData()));
+			disconnect(m_reply, &QNetworkReply::readyRead, this, &Transfer::handleDataAvailable);
 		}
 
 		m_device->reset();
@@ -899,15 +911,15 @@ bool Transfer::setTarget(const QString &target, bool canOverwriteExisting)
 
 	m_device = file;
 
-	downloadData();
+	handleDataAvailable();
 
 	if (!m_reply || m_reply->isFinished())
 	{
-		downloadFinished();
+		handleDownloadFinished();
 	}
 	else
 	{
-		connect(m_reply, SIGNAL(readyRead()), this, SLOT(downloadData()));
+		connect(m_reply, &QNetworkReply::readyRead, this, &Transfer::handleDataAvailable);
 	}
 
 	return false;
@@ -952,10 +964,10 @@ void TransfersManager::addTransfer(Transfer *transfer)
 
 	transfer->setUpdateInterval(500);
 
-	connect(transfer, SIGNAL(started()), m_instance, SLOT(transferStarted()));
-	connect(transfer, SIGNAL(finished()), m_instance, SLOT(transferFinished()));
-	connect(transfer, SIGNAL(changed()), m_instance, SLOT(transferChanged()));
-	connect(transfer, SIGNAL(stopped()), m_instance, SLOT(transferStopped()));
+	connect(transfer, &Transfer::started, m_instance, &TransfersManager::handleTransferStarted);
+	connect(transfer, &Transfer::finished, m_instance, &TransfersManager::handleTransferFinished);
+	connect(transfer, &Transfer::changed, m_instance, &TransfersManager::handleTransferChanged);
+	connect(transfer, &Transfer::stopped, m_instance, &TransfersManager::handleTransferStopped);
 
 	if (transfer->getOptions().testFlag(Transfer::CanNotifyOption) && transfer->getState() != Transfer::CancelledState)
 	{
@@ -1006,7 +1018,18 @@ void TransfersManager::save()
 	history.sync();
 }
 
-void TransfersManager::transferStarted()
+void TransfersManager::clearTransfers(int period)
+{
+	for (int i = (m_transfers.count() - 1); i >= 0; --i)
+	{
+		if (m_transfers.at(i)->getState() == Transfer::FinishedState && (period == 0 || (m_transfers.at(i)->getTimeFinished().isValid() && m_transfers.at(i)->getTimeFinished().secsTo(QDateTime::currentDateTime()) > (period * 3600))))
+		{
+			TransfersManager::removeTransfer(m_transfers.at(i));
+		}
+	}
+}
+
+void TransfersManager::handleTransferStarted()
 {
 	Transfer *transfer(qobject_cast<Transfer*>(sender()));
 
@@ -1018,7 +1041,7 @@ void TransfersManager::transferStarted()
 	}
 }
 
-void TransfersManager::transferFinished()
+void TransfersManager::handleTransferFinished()
 {
 	Transfer *transfer(qobject_cast<Transfer*>(sender()));
 
@@ -1026,7 +1049,7 @@ void TransfersManager::transferFinished()
 	{
 		if (transfer->getState() == Transfer::FinishedState)
 		{
-			connect(NotificationsManager::createNotification(NotificationsManager::TransferCompletedEvent, tr("Transfer completed:\n%1").arg(QFileInfo(transfer->getTarget()).fileName()), Notification::InformationLevel, this), SIGNAL(clicked()), transfer, SLOT(openTarget()));
+			connect(NotificationsManager::createNotification(NotificationsManager::TransferCompletedEvent, tr("Transfer completed:\n%1").arg(QFileInfo(transfer->getTarget()).fileName()), Notification::InformationLevel, this), &Notification::clicked, transfer, &Transfer::openTarget);
 		}
 
 		emit transferFinished(transfer);
@@ -1038,7 +1061,7 @@ void TransfersManager::transferFinished()
 	}
 }
 
-void TransfersManager::transferChanged()
+void TransfersManager::handleTransferChanged()
 {
 	Transfer *transfer(qobject_cast<Transfer*>(sender()));
 
@@ -1050,7 +1073,7 @@ void TransfersManager::transferChanged()
 	}
 }
 
-void TransfersManager::transferStopped()
+void TransfersManager::handleTransferStopped()
 {
 	Transfer *transfer(qobject_cast<Transfer*>(sender()));
 
@@ -1059,17 +1082,6 @@ void TransfersManager::transferStopped()
 		emit transferStopped(transfer);
 
 		scheduleSave();
-	}
-}
-
-void TransfersManager::clearTransfers(int period)
-{
-	for (int i = (m_transfers.count() - 1); i >= 0; --i)
-	{
-		if (m_transfers.at(i)->getState() == Transfer::FinishedState && (period == 0 || (m_transfers.at(i)->getTimeFinished().isValid() && m_transfers.at(i)->getTimeFinished().secsTo(QDateTime::currentDateTime()) > (period * 3600))))
-		{
-			TransfersManager::removeTransfer(m_transfers.at(i));
-		}
 	}
 }
 
@@ -1149,7 +1161,7 @@ QVector<Transfer*> TransfersManager::getTransfers()
 
 		m_isInitilized = true;
 
-		connect(QCoreApplication::instance(), SIGNAL(aboutToQuit()), m_instance, SLOT(save()));
+		connect(QCoreApplication::instance(), &Application::aboutToQuit, m_instance, &TransfersManager::save);
 	}
 
 	return m_transfers;

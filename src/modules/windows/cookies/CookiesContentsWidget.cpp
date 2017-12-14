@@ -37,27 +37,27 @@
 namespace Otter
 {
 
-CookiesContentsWidget::CookiesContentsWidget(const QVariantMap &parameters, Window *window) : ContentsWidget(parameters, window),
+CookiesContentsWidget::CookiesContentsWidget(const QVariantMap &parameters, Window *window, QWidget *parent) : ContentsWidget(parameters, window, parent),
 	m_model(new QStandardItemModel(this)),
 	m_isLoading(true),
 	m_ui(new Ui::CookiesContentsWidget)
 {
 	m_ui->setupUi(this);
+	m_ui->filterLineEditWidget->setClearOnEscape(true);
 	m_ui->cookiesViewWidget->installEventFilter(this);
-	m_ui->filterLineEdit->installEventFilter(this);
 
 	if (isSidebarPanel())
 	{
 		m_ui->detailsWidget->hide();
 	}
 
-	QTimer::singleShot(100, this, SLOT(populateCookies()));
+	QTimer::singleShot(100, this, &CookiesContentsWidget::populateCookies);
 
-	connect(m_ui->filterLineEdit, SIGNAL(textChanged(QString)), m_ui->cookiesViewWidget, SLOT(setFilterString(QString)));
-	connect(m_ui->cookiesViewWidget, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(showContextMenu(QPoint)));
-	connect(m_ui->propertiesButton, SIGNAL(clicked()), this, SLOT(cookieProperties()));
-	connect(m_ui->deleteButton, SIGNAL(clicked()), this, SLOT(removeCookies()));
-	connect(m_ui->addButton, SIGNAL(clicked()), this, SLOT(addCookie()));
+	connect(m_ui->filterLineEditWidget, &LineEditWidget::textChanged, m_ui->cookiesViewWidget, &ItemViewWidget::setFilterString);
+	connect(m_ui->cookiesViewWidget, &ItemViewWidget::customContextMenuRequested, this, &CookiesContentsWidget::showContextMenu);
+	connect(m_ui->propertiesButton, &QPushButton::clicked, this, &CookiesContentsWidget::cookieProperties);
+	connect(m_ui->deleteButton, &QPushButton::clicked, this, &CookiesContentsWidget::removeCookies);
+	connect(m_ui->addButton, &QPushButton::clicked, this, &CookiesContentsWidget::addCookie);
 }
 
 CookiesContentsWidget::~CookiesContentsWidget()
@@ -82,7 +82,7 @@ void CookiesContentsWidget::populateCookies()
 
 	for (int i = 0; i < cookies.count(); ++i)
 	{
-		addCookie(cookies.at(i));
+		handleCookieAdded(cookies.at(i));
 	}
 
 	m_model->sort(0);
@@ -95,10 +95,10 @@ void CookiesContentsWidget::populateCookies()
 
 	emit loadingStateChanged(WebWidget::FinishedLoadingState);
 
-	connect(cookieJar, SIGNAL(cookieAdded(QNetworkCookie)), this, SLOT(addCookie(QNetworkCookie)));
-	connect(cookieJar, SIGNAL(cookieRemoved(QNetworkCookie)), this, SLOT(removeCookie(QNetworkCookie)));
-	connect(m_model, SIGNAL(modelReset()), this, SLOT(updateActions()));
-	connect(m_ui->cookiesViewWidget, SIGNAL(needsActionsUpdate()), this, SLOT(updateActions()));
+	connect(cookieJar, &CookieJar::cookieAdded, this, &CookiesContentsWidget::handleCookieAdded);
+	connect(cookieJar, &CookieJar::cookieRemoved, this, &CookiesContentsWidget::handleCookieRemoved);
+	connect(m_model, &QStandardItemModel::modelReset, this, &CookiesContentsWidget::updateActions);
+	connect(m_ui->cookiesViewWidget, &ItemViewWidget::needsActionsUpdate, this, &CookiesContentsWidget::updateActions);
 }
 
 void CookiesContentsWidget::addCookie()
@@ -108,89 +108,6 @@ void CookiesContentsWidget::addCookie()
 	if (dialog.exec() == QDialog::Accepted)
 	{
 		NetworkManagerFactory::getCookieJar()->forceInsertCookie(dialog.getModifiedCookie());
-	}
-}
-
-void CookiesContentsWidget::addCookie(const QNetworkCookie &cookie)
-{
-	const QString domain(cookie.domain().startsWith(QLatin1Char('.')) ? cookie.domain().mid(1) : cookie.domain());
-	QStandardItem *domainItem(findDomain(domain));
-
-	if (domainItem)
-	{
-		for (int i = 0; i < domainItem->rowCount(); ++i)
-		{
-			QStandardItem *childItem(domainItem->child(i, 0));
-
-			if (childItem && cookie.hasSameIdentifier(getCookie(childItem->index())))
-			{
-				childItem->setData(cookie.toRawForm());
-
-				updateActions();
-
-				return;
-			}
-		}
-	}
-	else
-	{
-		domainItem = new QStandardItem(HistoryManager::getIcon(QUrl(QStringLiteral("http://%1/").arg(domain))), domain);
-		domainItem->setToolTip(domain);
-
-		m_model->appendRow(domainItem);
-
-		if (sender())
-		{
-			m_model->sort(0);
-		}
-	}
-
-	QStandardItem *cookieItem(new QStandardItem(QString(cookie.name())));
-	cookieItem->setData(cookie.toRawForm(), Qt::UserRole);
-	cookieItem->setToolTip(cookie.name());
-	cookieItem->setFlags(cookieItem->flags() | Qt::ItemNeverHasChildren);
-
-	domainItem->appendRow(cookieItem);
-	domainItem->setText(QStringLiteral("%1 (%2)").arg(domain).arg(domainItem->rowCount()));
-}
-
-void CookiesContentsWidget::removeCookie(const QNetworkCookie &cookie)
-{
-	const QString domain(cookie.domain().startsWith(QLatin1Char('.')) ? cookie.domain().mid(1) : cookie.domain());
-	QStandardItem *domainItem(findDomain(domain));
-
-	if (domainItem)
-	{
-		QPoint point;
-
-		for (int j = 0; j < domainItem->rowCount(); ++j)
-		{
-			if (cookie.hasSameIdentifier(getCookie(domainItem->index().child(j, 0))))
-			{
-				point = m_ui->cookiesViewWidget->visualRect(domainItem->index().child(j, 0)).center();
-
-				domainItem->removeRow(j);
-
-				break;
-			}
-		}
-
-		if (domainItem->rowCount() == 0)
-		{
-			m_model->invisibleRootItem()->removeRow(domainItem->row());
-		}
-		else
-		{
-			domainItem->setText(QStringLiteral("%1 (%2)").arg(domain).arg(domainItem->rowCount()));
-		}
-
-		if (!point.isNull())
-		{
-			const QModelIndex index(m_ui->cookiesViewWidget->indexAt(point));
-
-			m_ui->cookiesViewWidget->setCurrentIndex(index);
-			m_ui->cookiesViewWidget->selectionModel()->select(index, QItemSelectionModel::Select);
-		}
 	}
 }
 
@@ -259,7 +176,7 @@ void CookiesContentsWidget::removeDomainCookies()
 
 	for (int i = 0; i < indexes.count(); ++i)
 	{
-		const QStandardItem *domainItem((indexes.at(i).isValid() && indexes.at(i).parent() == m_model->invisibleRootItem()->index()) ? findDomain(indexes.at(i).sibling(indexes.at(i).row(), 0).data(Qt::ToolTipRole).toString()) : m_model->itemFromIndex(indexes.at(i).parent()));
+		const QStandardItem *domainItem((indexes.at(i).isValid() && indexes.at(i).parent() == m_model->invisibleRootItem()->index()) ? findDomainItem(indexes.at(i).sibling(indexes.at(i).row(), 0).data(Qt::ToolTipRole).toString()) : m_model->itemFromIndex(indexes.at(i).parent()));
 
 		if (domainItem)
 		{
@@ -326,6 +243,89 @@ void CookiesContentsWidget::cookieProperties()
 	}
 }
 
+void CookiesContentsWidget::handleCookieAdded(const QNetworkCookie &cookie)
+{
+	const QString domain(cookie.domain().startsWith(QLatin1Char('.')) ? cookie.domain().mid(1) : cookie.domain());
+	QStandardItem *domainItem(findDomainItem(domain));
+
+	if (domainItem)
+	{
+		for (int i = 0; i < domainItem->rowCount(); ++i)
+		{
+			QStandardItem *childItem(domainItem->child(i, 0));
+
+			if (childItem && cookie.hasSameIdentifier(getCookie(childItem->index())))
+			{
+				childItem->setData(cookie.toRawForm());
+
+				updateActions();
+
+				return;
+			}
+		}
+	}
+	else
+	{
+		domainItem = new QStandardItem(HistoryManager::getIcon(QUrl(QStringLiteral("http://%1/").arg(domain))), domain);
+		domainItem->setToolTip(domain);
+
+		m_model->appendRow(domainItem);
+
+		if (sender())
+		{
+			m_model->sort(0);
+		}
+	}
+
+	QStandardItem *cookieItem(new QStandardItem(QString(cookie.name())));
+	cookieItem->setData(cookie.toRawForm(), Qt::UserRole);
+	cookieItem->setToolTip(cookie.name());
+	cookieItem->setFlags(cookieItem->flags() | Qt::ItemNeverHasChildren);
+
+	domainItem->appendRow(cookieItem);
+	domainItem->setText(QStringLiteral("%1 (%2)").arg(domain).arg(domainItem->rowCount()));
+}
+
+void CookiesContentsWidget::handleCookieRemoved(const QNetworkCookie &cookie)
+{
+	const QString domain(cookie.domain().startsWith(QLatin1Char('.')) ? cookie.domain().mid(1) : cookie.domain());
+	QStandardItem *domainItem(findDomainItem(domain));
+
+	if (domainItem)
+	{
+		QPoint point;
+
+		for (int j = 0; j < domainItem->rowCount(); ++j)
+		{
+			if (cookie.hasSameIdentifier(getCookie(domainItem->index().child(j, 0))))
+			{
+				point = m_ui->cookiesViewWidget->visualRect(domainItem->index().child(j, 0)).center();
+
+				domainItem->removeRow(j);
+
+				break;
+			}
+		}
+
+		if (domainItem->rowCount() == 0)
+		{
+			m_model->invisibleRootItem()->removeRow(domainItem->row());
+		}
+		else
+		{
+			domainItem->setText(QStringLiteral("%1 (%2)").arg(domain).arg(domainItem->rowCount()));
+		}
+
+		if (!point.isNull())
+		{
+			const QModelIndex index(m_ui->cookiesViewWidget->indexAt(point));
+
+			m_ui->cookiesViewWidget->setCurrentIndex(index);
+			m_ui->cookiesViewWidget->selectionModel()->select(index, QItemSelectionModel::Select);
+		}
+	}
+}
+
 void CookiesContentsWidget::showContextMenu(const QPoint &position)
 {
 	MainWindow *mainWindow(MainWindow::findMainWindow(this));
@@ -376,7 +376,7 @@ void CookiesContentsWidget::triggerAction(int identifier, const QVariantMap &par
 			break;
 		case ActionsManager::FindAction:
 		case ActionsManager::QuickFindAction:
-			m_ui->filterLineEdit->setFocus();
+			m_ui->filterLineEditWidget->setFocus();
 
 			break;
 		case ActionsManager::ActivateContentAction:
@@ -417,16 +417,18 @@ void CookiesContentsWidget::updateActions()
 		}
 	}
 
-	emit actionsStateChanged(ActionsManager::ActionDefinition::EditingCategory);
+	emit categorizedActionsStateChanged({ActionsManager::ActionDefinition::EditingCategory});
 }
 
-QStandardItem* CookiesContentsWidget::findDomain(const QString &domain)
+QStandardItem* CookiesContentsWidget::findDomainItem(const QString &domain)
 {
 	for (int i = 0; i < m_model->rowCount(); ++i)
 	{
-		if (domain == m_model->item(i, 0)->toolTip())
+		QStandardItem *item(m_model->item(i, 0));
+
+		if (item && domain == item->toolTip())
 		{
-			return m_model->item(i, 0);
+			return item;
 		}
 	}
 
@@ -467,7 +469,7 @@ ActionsManager::ActionDefinition::State CookiesContentsWidget::getActionState(in
 	switch (identifier)
 	{
 		case ActionsManager::DeleteAction:
-			state.text = QT_TRANSLATE_NOOP("actions", "Remove Cookie");
+			state.text = QCoreApplication::translate("actions", "Remove Cookie");
 			state.isEnabled = m_ui->deleteButton->isEnabled();
 
 			return state;
@@ -498,15 +500,6 @@ bool CookiesContentsWidget::eventFilter(QObject *object, QEvent *event)
 			removeCookies();
 
 			return true;
-		}
-	}
-	else if (object == m_ui->filterLineEdit && event->type() == QEvent::KeyPress)
-	{
-		const QKeyEvent *keyEvent(static_cast<QKeyEvent*>(event));
-
-		if (keyEvent->key() == Qt::Key_Escape)
-		{
-			m_ui->filterLineEdit->clear();
 		}
 	}
 

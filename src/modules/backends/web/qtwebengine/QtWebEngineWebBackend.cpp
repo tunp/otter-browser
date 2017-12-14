@@ -47,23 +47,19 @@ QtWebEngineWebBackend::QtWebEngineWebBackend(QObject *parent) : WebBackend(paren
 	m_isInitialized(false)
 {
 	const QString userAgent(QWebEngineProfile::defaultProfile()->httpUserAgent());
-	const QRegularExpression platformExpression(QLatin1String("(\\([^\\)]+\\))"));
-	const QRegularExpression engineExpression(QLatin1String("Chrome/([\\d\\.]+)"));
 
-	m_userAgentComponents[QLatin1String("platform")] = platformExpression.match(userAgent).captured(1);
-	m_userAgentComponents[QLatin1String("engineVersion")] = QLatin1String("AppleWebKit/537.36 (KHTML, like Gecko) Chrome/") + engineExpression.match(userAgent).captured(1);
-	m_userAgentComponents[QLatin1String("applicationVersion")] = QCoreApplication::applicationName() + QLatin1Char('/') + QCoreApplication::applicationVersion();
+	m_engineVersion = QRegularExpression(QLatin1String("Chrome/([\\d\\.]+)")).match(userAgent).captured(1);
 
-	m_engineVersion = engineExpression.match(userAgent).captured(1);
+	m_userAgentComponents = {{QLatin1String("platform"), QRegularExpression(QLatin1String("(\\([^\\)]+\\))")).match(userAgent).captured(1)}, {QLatin1String("engineVersion"), QLatin1String("AppleWebKit/537.36 (KHTML, like Gecko) Chrome/") + m_engineVersion}, {QLatin1String("applicationVersion"), QCoreApplication::applicationName() + QLatin1Char('/') + QCoreApplication::applicationVersion()}};
 }
 
-void QtWebEngineWebBackend::downloadFile(QWebEngineDownloadItem *item)
+void QtWebEngineWebBackend::handleDownloadRequested(QWebEngineDownloadItem *item)
 {
 #if QT_VERSION >= 0x050700
 	if (item->savePageFormat() != QWebEngineDownloadItem::UnknownSaveFormat)
 	{
 		const QStringList filters({tr("HTML file (*.html *.htm)"), tr("HTML file with all resources (*.html *.htm)"), tr("Web archive (*.mht)")});
-		const SaveInformation result(Utils::getSavePath(QFileInfo(item->path()).baseName() + QLatin1String(".html"), QString(), filters));
+		const SaveInformation result(Utils::getSavePath(QFileInfo(item->path()).baseName() + QLatin1String(".html"), {}, filters));
 
 		if (result.path.isEmpty())
 		{
@@ -139,7 +135,7 @@ void QtWebEngineWebBackend::downloadFile(QWebEngineDownloadItem *item)
 			break;
 		case HandlersManager::HandlerDefinition::SaveAsTransfer:
 			{
-				const QString path(Utils::getSavePath(transfer->getSuggestedFileName(), handler.downloadsPath, QStringList(), true).path);
+			const QString path(Utils::getSavePath(transfer->getSuggestedFileName(), handler.downloadsPath, {}, true).path);
 
 				if (path.isEmpty())
 				{
@@ -154,6 +150,8 @@ void QtWebEngineWebBackend::downloadFile(QWebEngineDownloadItem *item)
 				TransfersManager::addTransfer(transfer);
 			}
 
+			break;
+		default:
 			break;
 	}
 }
@@ -247,8 +245,8 @@ WebWidget* QtWebEngineWebBackend::createWidget(const QVariantMap &parameters, Co
 		handleOptionChanged(SettingsManager::Content_DefaultFontSizeOption);
 		handleOptionChanged(SettingsManager::Permissions_EnableFullScreenOption);
 
-		connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int)));
-		connect(QWebEngineProfile::defaultProfile(), SIGNAL(downloadRequested(QWebEngineDownloadItem*)), this, SLOT(downloadFile(QWebEngineDownloadItem*)));
+		connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &QtWebEngineWebBackend::handleOptionChanged);
+		connect(QWebEngineProfile::defaultProfile(), &QWebEngineProfile::downloadRequested, this, &QtWebEngineWebBackend::handleDownloadRequested);
 	}
 
 	return new QtWebEngineWebWidget(parameters, this, parent);

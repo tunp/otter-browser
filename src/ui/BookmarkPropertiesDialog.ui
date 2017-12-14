@@ -19,7 +19,7 @@
         <string>Title:</string>
        </property>
        <property name="buddy">
-        <cstring>titleLineEdit</cstring>
+        <cstring>titleLineEditWidget</cstring>
        </property>
       </widget>
      </item>
@@ -29,7 +29,7 @@
         <string>Description:</string>
        </property>
        <property name="buddy">
-        <cstring>descriptionTextEdit</cstring>
+        <cstring>descriptionTextEditWidget</cstring>
        </property>
       </widget>
      </item>
@@ -39,7 +39,7 @@
         <string>Address:</string>
        </property>
        <property name="buddy">
-        <cstring>addressLineEdit</cstring>
+        <cstring>addressLineEditWidget</cstring>
        </property>
       </widget>
      </item>
@@ -75,13 +75,13 @@
       </layout>
      </item>
      <item row="1" column="1">
-      <widget class="QLineEdit" name="addressLineEdit"/>
+      <widget class="Otter::LineEditWidget" name="addressLineEditWidget"/>
      </item>
      <item row="2" column="1">
-      <widget class="QLineEdit" name="titleLineEdit"/>
+      <widget class="Otter::LineEditWidget" name="titleLineEditWidget"/>
      </item>
      <item row="3" column="1">
-      <widget class="QPlainTextEdit" name="descriptionTextEdit">
+      <widget class="Otter::TextEditWidget" name="descriptionTextEditWidget">
        <property name="sizePolicy">
         <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
          <horstretch>0</horstretch>
@@ -152,12 +152,12 @@
         <string>Keyword:</string>
        </property>
        <property name="buddy">
-        <cstring>keywordLineEdit</cstring>
+        <cstring>keywordLineEditWidget</cstring>
        </property>
       </widget>
      </item>
      <item row="4" column="1">
-      <widget class="QLineEdit" name="keywordLineEdit"/>
+      <widget class="Otter::LineEditWidget" name="keywordLineEditWidget"/>
      </item>
     </layout>
    </item>
@@ -172,9 +172,9 @@
  </widget>
  <customwidgets>
   <customwidget>
-   <class>Otter::BookmarksComboBoxWidget</class>
-   <extends>QComboBox</extends>
-   <header>src/ui/BookmarksComboBoxWidget.h</header>
+   <class>Otter::LineEditWidget</class>
+   <extends>QLineEdit</extends>
+   <header>src/ui/LineEditWidget.h</header>
   </customwidget>
   <customwidget>
    <class>Otter::TextLabelWidget</class>
@@ -182,14 +182,24 @@
    <header>src/ui/TextLabelWidget.h</header>
    <container>1</container>
   </customwidget>
+  <customwidget>
+   <class>Otter::TextEditWidget</class>
+   <extends>QPlainTextEdit</extends>
+   <header>src/ui/TextEditWidget.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Otter::BookmarksComboBoxWidget</class>
+   <extends>QComboBox</extends>
+   <header>src/ui/BookmarksComboBoxWidget.h</header>
+  </customwidget>
  </customwidgets>
  <tabstops>
   <tabstop>folderComboBox</tabstop>
   <tabstop>newFolderButton</tabstop>
-  <tabstop>addressLineEdit</tabstop>
-  <tabstop>titleLineEdit</tabstop>
-  <tabstop>descriptionTextEdit</tabstop>
-  <tabstop>keywordLineEdit</tabstop>
+  <tabstop>addressLineEditWidget</tabstop>
+  <tabstop>titleLineEditWidget</tabstop>
+  <tabstop>descriptionTextEditWidget</tabstop>
+  <tabstop>keywordLineEditWidget</tabstop>
   <tabstop>buttonBox</tabstop>
  </tabstops>
  <resources/>

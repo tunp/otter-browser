@@ -24,7 +24,6 @@
 
 #include "AddonsManager.h"
 
-#include <QtCore/QPointer>
 #include <QtCore/QVariantMap>
 #include <QtGui/QIcon>
 
@@ -34,7 +33,14 @@ namespace Otter
 class KeyboardProfile final : public Addon
 {
 public:
-	struct Action
+	enum LoadMode
+	{
+		StandardMode = 0,
+		MetaDataOnlyMode,
+		FullMode
+	};
+
+	struct Action final
 	{
 		QVariantMap parameters;
 		QVector<QKeySequence> shortcuts;
@@ -43,7 +49,7 @@ public:
 		bool operator ==(const Action &other) const;
 	};
 
-	explicit KeyboardProfile(const QString &identifier = QString(), bool onlyMetaData = false);
+	explicit KeyboardProfile(const QString &identifier = {}, LoadMode mode = StandardMode);
 
 	void setTitle(const QString &title);
 	void setDescription(const QString &description);
@@ -76,6 +82,13 @@ class ActionsManager final : public QObject
 	Q_ENUMS(ActionIdentifier)
 
 public:
+	enum ShortcutCheck
+	{
+		AllChecks = 0,
+		DisallowSingleKeyShortcutCheck,
+		DisallowStandardShortcutCheck
+	};
+
 	enum GesturesContext
 	{
 		UnknownContext = 0,
@@ -85,6 +98,7 @@ public:
 	enum ActionIdentifier
 	{
 		RunMacroAction = 0,
+		SetOptionAction,
 		NewTabAction,
 		NewTabPrivateAction,
 		NewWindowAction,
@@ -92,6 +106,7 @@ public:
 		OpenAction,
 		SaveAction,
 		CloneTabAction,
+		PeekTabAction,
 		PinTabAction,
 		DetachTabAction,
 		MaximizeTabAction,
@@ -235,8 +250,8 @@ public:
 		ShowErrorConsoleAction,
 		LockToolBarsAction,
 		ResetToolBarsAction,
+		ShowPanelAction,
 		OpenPanelAction,
-		ClosePanelAction,
 		ContentBlockingAction,
 		HistoryAction,
 		ClearHistoryAction,
@@ -259,7 +274,7 @@ public:
 		OtherAction
 	};
 
-	struct ActionDefinition
+	struct ActionDefinition final
 	{
 		enum ActionCategory
 		{
@@ -274,8 +289,6 @@ public:
 			BookmarkCategory,
 			UserCategory
 		};
-
-		Q_DECLARE_FLAGS(ActionCategories, ActionCategory)
 
 		enum ActionFlag
 		{
@@ -292,12 +305,13 @@ public:
 		enum ActionScope
 		{
 			OtherScope = 0,
+			EditorScope,
 			WindowScope,
 			MainWindowScope,
 			ApplicationScope
 		};
 
-		struct State
+		struct State final
 		{
 			QString text;
 			QIcon icon;
@@ -341,6 +355,7 @@ public:
 	static QVector<KeyboardProfile::Action> getShortcutDefinitions();
 	static ActionDefinition getActionDefinition(int identifier);
 	static int getActionIdentifier(const QString &name);
+	static bool isShortcutAllowed(const QKeySequence &shortcut, ShortcutCheck check = AllChecks, bool areSingleKeyShortcutsAllowed = true);
 
 protected:
 	explicit ActionsManager(QObject *parent);
@@ -360,41 +375,13 @@ private:
 	static ActionsManager *m_instance;
 	static QMap<int, QVector<QKeySequence> > m_shortcuts;
 	static QMultiMap<int, QPair<QVariantMap, QVector<QKeySequence> > > m_extraShortcuts;
+	static QVector<QKeySequence> m_disallowedShortcuts;
 	static QVector<ActionDefinition> m_definitions;
 	static int m_actionIdentifierEnumerator;
 };
 
-class ActionExecutor
-{
-public:
-	class Object final
-	{
-	public:
-		explicit Object();
-		explicit Object(QObject *object, ActionExecutor *executor);
-		Object(const Object &other);
-
-		void triggerAction(int identifier, const QVariantMap &parameters = {});
-		QObject* getObject() const;
-		Object& operator=(const Object &other);
-		ActionsManager::ActionDefinition::State getActionState(int identifier, const QVariantMap &parameters = {}) const;
-		bool isValid() const;
-
-	private:
-		QPointer<QObject> m_object;
-		ActionExecutor *m_executor;
-	};
-
-	ActionExecutor();
-	virtual ~ActionExecutor();
-
-	virtual ActionsManager::ActionDefinition::State getActionState(int identifier, const QVariantMap &parameters = {}) const = 0;
-	virtual void triggerAction(int identifier, const QVariantMap &parameters = {}) = 0;
-};
-
 }
 
-Q_DECLARE_OPERATORS_FOR_FLAGS(Otter::ActionsManager::ActionDefinition::ActionCategories)
 Q_DECLARE_OPERATORS_FOR_FLAGS(Otter::ActionsManager::ActionDefinition::ActionFlags)
 
 #endif

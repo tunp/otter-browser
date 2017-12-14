@@ -26,6 +26,7 @@
 #include "../../../../core/ContentBlockingManager.h"
 #include "../../../../core/NetworkManager.h"
 #include "../../../../core/NetworkManagerFactory.h"
+#include "../../../../core/Utils.h"
 
 #include <QtNetwork/QNetworkRequest>
 
@@ -49,7 +50,7 @@ public:
 	WebWidget::SslInformation getSslInformation() const;
 	QStringList getBlockedElements() const;
 	QVector<NetworkManager::ResourceInformation> getBlockedRequests() const;
-	QHash<QByteArray, QByteArray> getHeaders() const;
+	QMap<QByteArray, QByteArray> getHeaders() const;
 	WebWidget::ContentStates getContentState() const;
 
 protected:
@@ -69,7 +70,7 @@ protected:
 	QVariant getOption(int identifier, const QUrl &url) const;
 
 protected slots:
-	void downloadProgress(qint64 bytesReceived, qint64 bytesTotal);
+	void handleDownloadProgress(qint64 bytesReceived, qint64 bytesTotal);
 	void handleRequestFinished(QNetworkReply *reply);
 	void handleTransferFinished();
 	void handleAuthenticationRequired(QNetworkReply *reply, QAuthenticator *authenticator);
@@ -79,13 +80,6 @@ protected slots:
 	void handleLoadFinished(bool result);
 
 private:
-	enum SecurityState
-	{
-		UnknownState = 0,
-		InsecureState,
-		SecureState
-	};
-
 	QtWebKitWebWidget *m_widget;
 	CookieJar *m_cookieJar;
 	QtWebKitCookieJar *m_cookieJarProxy;
@@ -97,15 +91,17 @@ private:
 	QUrl m_mainRequestUrl;
 	WebWidget::SslInformation m_sslInformation;
 	QStringList m_blockedElements;
+	QStringList m_unblockedHosts;
 	QVector<QNetworkReply*> m_transfers;
 	QVector<NetworkManager::ResourceInformation> m_blockedRequests;
 	QVector<int> m_contentBlockingProfiles;
 	QSet<QUrl> m_contentBlockingExceptions;
 	QHash<QNetworkReply*, QPair<qint64, bool> > m_replies;
+	QMap<QByteArray, QByteArray> m_headers;
 	QMap<WebWidget::PageInformation, QVariant> m_pageInformation;
 	WebWidget::ContentStates m_contentState;
 	NetworkManagerFactory::DoNotTrackPolicy m_doNotTrackPolicy;
-	SecurityState m_securityState;
+	TrileanValue m_isSecureValue;
 	qint64 m_bytesReceivedDifference;
 	int m_loadingSpeedTimer;
 	bool m_areImagesEnabled;

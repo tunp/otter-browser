@@ -12,7 +12,7 @@ project(otter-browser)
 
 set(MAJOR_VERSION "0")
 set(MINOR_VERSION "9")
-set(PATCH_VERSION "91")
+set(PATCH_VERSION "94")
 set(WEEKLY_VERSION "" CACHE STRING "")
 
 add_definitions(-DOTTER_VERSION_MAIN="${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION}")
@@ -94,6 +94,7 @@ set_package_properties(Hunspell PROPERTIES URL "https://hunspell.github.io/" DES
 
 set(otter_src
 	src/main.cpp
+	src/core/ActionExecutor.cpp
 	src/core/ActionsManager.cpp
 	src/core/AddonsManager.cpp
 	src/core/AddressCompletionModel.cpp
@@ -112,6 +113,7 @@ set(otter_src
 	src/core/Importer.cpp
 	src/core/IniSettings.cpp
 	src/core/InputInterpreter.cpp
+	src/core/Job.cpp
 	src/core/JsonSettings.cpp
 	src/core/LocalListingNetworkReply.cpp
 	src/core/LongTermTimer.cpp
@@ -191,8 +193,10 @@ set(otter_src
 	src/ui/Style.cpp
 	src/ui/TabBarWidget.cpp
 	src/ui/TabSwitcherWidget.cpp
+	src/ui/TextEditWidget.cpp
 	src/ui/TextLabelWidget.cpp
 	src/ui/ToolBarDialog.cpp
+	src/ui/ToolBarDropZoneWidget.cpp
 	src/ui/ToolBarWidget.cpp
 	src/ui/ToolButtonWidget.cpp
 	src/ui/TransferDialog.cpp
@@ -246,6 +250,7 @@ set(otter_src
 	src/modules/windows/cookies/CookiesContentsWidget.cpp
 	src/modules/windows/history/HistoryContentsWidget.cpp
 	src/modules/windows/notes/NotesContentsWidget.cpp
+	src/modules/windows/pageInformation/PageInformationContentsWidget.cpp
 	src/modules/windows/passwords/PasswordsContentsWidget.cpp
 	src/modules/windows/transfers/TransfersContentsWidget.cpp
 	src/modules/windows/web/PasswordBarWidget.cpp
@@ -316,6 +321,7 @@ qt5_wrap_ui(otter_ui
 	src/modules/windows/cookies/CookiesContentsWidget.ui
 	src/modules/windows/history/HistoryContentsWidget.ui
 	src/modules/windows/notes/NotesContentsWidget.ui
+	src/modules/windows/pageInformation/PageInformationContentsWidget.ui
 	src/modules/windows/passwords/PasswordsContentsWidget.ui
 	src/modules/windows/transfers/TransfersContentsWidget.ui
 	src/modules/windows/web/PasswordBarWidget.ui
@@ -355,6 +361,8 @@ if (Qt5WebKitWidgets_FOUND AND ENABLE_QTWEBKIT)
 		add_definitions(-DOTTER_ENABLE_QTWEBKIT_LEGACY)
 
 		list(APPEND OTTER_BACKENDS_WEB "QtWebKit (legacy)")
+
+		message(WARNING "Detected QtWebKit version is outdated and insecure, please update to version 5.212 or newer.")
 	endif (${Qt5WebKitWidgets_VERSION_MINOR} GREATER 200)
 
 	set(otter_src
@@ -431,6 +439,8 @@ if (HUNSPELL_FOUND)
 		3rdparty/sonnet/src/core/spellerplugin.cpp
 		3rdparty/sonnet/src/core/settings.cpp
 		3rdparty/sonnet/src/core/textbreaks.cpp
+		3rdparty/sonnet/src/core/tokenizer.cpp
+		3rdparty/sonnet/src/ui/highlighter.cpp
 		3rdparty/sonnet/src/plugins/hunspell/hunspellclient.cpp
 		3rdparty/sonnet/src/plugins/hunspell/hunspelldebug.cpp
 		3rdparty/sonnet/src/plugins/hunspell/hunspelldict.cpp

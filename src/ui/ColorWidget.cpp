@@ -18,6 +18,7 @@
 **************************************************************************/
 
 #include "ColorWidget.h"
+#include "LineEditWidget.h"
 #include "../core/ThemesManager.h"
 
 #include <QtGui/QClipboard>
@@ -32,16 +33,18 @@ namespace Otter
 {
 
 ColorWidget::ColorWidget(QWidget *parent) : QWidget(parent),
-	m_lineEdit(new QLineEdit(this))
+	m_lineEditWidget(new LineEditWidget(this))
 {
 	QHBoxLayout *layout(new QHBoxLayout(this));
-	layout->addWidget(m_lineEdit);
-	layout->setContentsMargins((m_lineEdit->height() + 2), 0, 0, 0);
+	layout->addWidget(m_lineEditWidget);
+	layout->setContentsMargins((m_lineEditWidget->height() + 2), 0, 0, 0);
 
 	setLayout(layout);
 	setFocusPolicy(Qt::StrongFocus);
 	setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 	setColor(QColor());
+
+	connect(m_lineEditWidget, &LineEditWidget::textChanged, this, &ColorWidget::updateColor);
 }
 
 void ColorWidget::changeEvent(QEvent *event)
@@ -68,17 +71,17 @@ void ColorWidget::resizeEvent(QResizeEvent *event)
 {
 	QWidget::resizeEvent(event);
 
-	layout()->setContentsMargins((m_lineEdit->height() + 2), 0, 0, 0);
+	layout()->setContentsMargins((m_lineEditWidget->height() + 2), 0, 0, 0);
 
 	m_buttonRectangle = rect();
 
 	if (isRightToLeft())
 	{
-		m_buttonRectangle.setLeft(m_buttonRectangle.right() - m_lineEdit->height());
+		m_buttonRectangle.setLeft(m_buttonRectangle.right() - m_lineEditWidget->height());
 	}
 	else
 	{
-		m_buttonRectangle.setRight(m_lineEdit->height());
+		m_buttonRectangle.setRight(m_lineEditWidget->height());
 	}
 
 	m_buttonRectangle.adjust(2, 2, -2, -2);
@@ -88,7 +91,7 @@ void ColorWidget::focusInEvent(QFocusEvent *event)
 {
 	QWidget::focusInEvent(event);
 
-	m_lineEdit->setFocus();
+	m_lineEditWidget->setFocus();
 }
 
 void ColorWidget::mouseReleaseEvent(QMouseEvent *event)
@@ -125,8 +128,6 @@ void ColorWidget::selectColor()
 	if (dialog.exec() == QDialog::Accepted)
 	{
 		setColor(dialog.currentColor());
-
-		emit colorChanged(dialog.currentColor());
 	}
 }
 
@@ -164,14 +165,30 @@ void ColorWidget::setColor(const QString &color)
 
 void ColorWidget::setColor(const QColor &color)
 {
-	m_color = color;
+	if (color != m_color)
+	{
+		const QString text(color.isValid() ? color.name((color.alpha() < 255) ? QColor::HexArgb : QColor::HexRgb).toUpper() : tr("Invalid"));
 
-	const QString text(color.isValid() ? color.name((color.alpha() < 255) ? QColor::HexArgb : QColor::HexRgb).toUpper() : tr("Invalid"));
+		if (!m_lineEditWidget->hasFocus())
+		{
+			m_lineEditWidget->setText(text);
+		}
 
-	m_lineEdit->setText(text);
+		setToolTip(text);
+		update();
 
-	setToolTip(text);
-	update();
+		m_color = color;
+
+		emit colorChanged(color);
+	}
+}
+
+void ColorWidget::updateColor(const QString &text)
+{
+	if (QColor::isValidColor(text))
+	{
+		setColor(text);
+	}
 }
 
 QColor ColorWidget::getColor() const

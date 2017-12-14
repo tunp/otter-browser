@@ -32,9 +32,16 @@ namespace Otter
 class MouseProfile final : public Addon
 {
 public:
-	struct Gesture
+	enum LoadMode
 	{
-		struct Step
+		StandardMode = 0,
+		MetaDataOnlyMode,
+		FullMode
+	};
+
+	struct Gesture final
+	{
+		struct Step final
 		{
 			QEvent::Type type = QEvent::None;
 			Qt::MouseButton button = Qt::NoButton;
@@ -42,8 +49,8 @@ public:
 			MouseGestures::MouseAction direction = MouseGestures::UnknownMouseAction;
 
 			Step();
-			Step(QEvent::Type type, MouseGestures::MouseAction direction, Qt::KeyboardModifiers modifiers = Qt::NoModifier);
-			Step(QEvent::Type type, Qt::MouseButton button, Qt::KeyboardModifiers modifiers = Qt::NoModifier);
+			Step(QEvent::Type typeValue, MouseGestures::MouseAction directionValue, Qt::KeyboardModifiers modifiersValue = Qt::NoModifier);
+			Step(QEvent::Type typeValue, Qt::MouseButton buttonValue, Qt::KeyboardModifiers modifiersValue = Qt::NoModifier);
 			explicit Step(const QInputEvent *event);
 
 			QString toString() const;
@@ -59,7 +66,7 @@ public:
 		bool operator ==(const Gesture &other) const;
 	};
 
-	explicit MouseProfile(const QString &identifier = QString(), bool onlyMetaData = false);
+	explicit MouseProfile(const QString &identifier = {}, LoadMode mode = StandardMode);
 
 	void setTitle(const QString &title);
 	void setDescription(const QString &description);
@@ -113,7 +120,7 @@ public:
 	static QObject* getTrackedObject();
 	static QString getContextName(int identifier);
 	static int getContextIdentifier(const QString &name);
-	static bool startGesture(QObject *object, QEvent *event, QVector<GesturesContext> contexts = QVector<GesturesContext>({GenericContext}), const QVariantMap &parameters = {});
+	static bool startGesture(QObject *object, QEvent *event, QVector<GesturesContext> contexts = {GenericContext}, const QVariantMap &parameters = {});
 	static bool continueGesture(QObject *object);
 	static bool isTracking();
 

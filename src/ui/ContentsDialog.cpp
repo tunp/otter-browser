@@ -150,8 +150,8 @@ ContentsDialog::ContentsDialog(const QIcon &icon, const QString &title, const QS
 
 			if (dialog)
 			{
-				connect(this, SIGNAL(accepted(bool)), dialog, SLOT(accept()));
-				connect(this, SIGNAL(rejected(bool)), dialog, SLOT(reject()));
+				connect(this, &ContentsDialog::accepted, dialog, &QDialog::accept);
+				connect(this, &ContentsDialog::rejected, dialog, &QDialog::reject);
 				connect(dialog, &QDialog::finished, [&](int result)
 				{
 					m_isAccepted = (result == QDialog::Accepted);
@@ -173,7 +173,7 @@ ContentsDialog::ContentsDialog(const QIcon &icon, const QString &title, const QS
 
 		m_contentsLayout->addWidget(m_buttonBox);
 
-		connect(m_buttonBox, SIGNAL(clicked(QAbstractButton*)), this, SLOT(handleButtonClick(QAbstractButton*)));
+		connect(m_buttonBox, &QDialogButtonBox::clicked, this, &ContentsDialog::handleButtonClick);
 	}
 
 	setContextMenuPolicy(Qt::PreventContextMenu);
@@ -274,8 +274,12 @@ void ContentsDialog::handleButtonClick(QAbstractButton *button)
 
 void ContentsDialog::updateSize()
 {
+	m_headerWidget->setMaximumWidth(0);
+
 	adjustSize();
 	resize(sizeHint());
+
+	m_headerWidget->setMaximumWidth(QWIDGETSIZE_MAX);
 
 	if (parentWidget())
 	{
@@ -303,7 +307,11 @@ void ContentsDialog::setCheckBox(const QString &text, bool state)
 	m_checkBox->setText(text);
 	m_checkBox->setChecked(state);
 
+	m_headerWidget->setMaximumWidth(0);
+
 	adjustSize();
+
+	m_headerWidget->setMaximumWidth(QWIDGETSIZE_MAX);
 }
 
 bool ContentsDialog::getCheckBoxState() const

@@ -140,16 +140,17 @@ QWidget* ConfigurationOptionDelegate::createEditor(QWidget *parent, const QStyle
 		widget->setChoices(definition.choices);
 	}
 
-	connect(widget, SIGNAL(commitData(QWidget*)), this, SIGNAL(commitData(QWidget*)));
+	connect(widget, &OptionWidget::commitData, this, &ConfigurationOptionDelegate::commitData);
 
 	return widget;
 }
 
-ConfigurationContentsWidget::ConfigurationContentsWidget(const QVariantMap &parameters, Window *window) : ContentsWidget(parameters, window),
+ConfigurationContentsWidget::ConfigurationContentsWidget(const QVariantMap &parameters, Window *window, QWidget *parent) : ContentsWidget(parameters, window, parent),
 	m_model(new QStandardItemModel(this)),
 	m_ui(new Ui::ConfigurationContentsWidget)
 {
 	m_ui->setupUi(this);
+	m_ui->filterLineEditWidget->setClearOnEscape(true);
 
 	NetworkManagerFactory::initialize();
 
@@ -165,7 +166,7 @@ ConfigurationContentsWidget::ConfigurationContentsWidget(const QVariantMap &para
 		const QVariant value(SettingsManager::getOption(identifier));
 		const SettingsManager::OptionDefinition definition(SettingsManager::getOptionDefinition(identifier));
 
-		if (!definition.flags.testFlag(SettingsManager::IsEnabledFlag) || !definition.flags.testFlag(SettingsManager::IsVisibleFlag))
+		if (!definition.flags.testFlag(SettingsManager::OptionDefinition::IsEnabledFlag) || !definition.flags.testFlag(SettingsManager::OptionDefinition::IsVisibleFlag))
 		{
 			continue;
 		}
@@ -188,6 +189,11 @@ ConfigurationContentsWidget::ConfigurationContentsWidget(const QVariantMap &para
 		optionItems[2]->setData(options.at(i), NameRole);
 		optionItems[2]->setFlags(optionItems[2]->flags() | Qt::ItemNeverHasChildren);
 
+		if (definition.flags.testFlag(SettingsManager::OptionDefinition::RequiresRestartFlag))
+		{
+			optionItems[2]->setData(true, RequiresRestartRole);
+		}
+
 		if (value != definition.defaultValue)
 		{
 			QFont font(optionItems[0]->font());
@@ -204,15 +210,15 @@ ConfigurationContentsWidget::ConfigurationContentsWidget(const QVariantMap &para
 		groupItem->appendRow(optionItems);
 	}
 
-	m_model->setHorizontalHeaderLabels(QStringList({tr("Name"), tr("Type"), tr("Value")}));
+	m_model->setHorizontalHeaderLabels({tr("Name"), tr("Type"), tr("Value")});
 	m_model->sort(0);
 
 	m_ui->configurationViewWidget->setViewMode(ItemViewWidget::TreeViewMode);
 	m_ui->configurationViewWidget->setModel(m_model);
 	m_ui->configurationViewWidget->setLayoutDirection(Qt::LeftToRight);
 	m_ui->configurationViewWidget->setItemDelegateForColumn(2, new ConfigurationOptionDelegate(this));
-	m_ui->configurationViewWidget->setFilterRoles(QSet<int>({Qt::DisplayRole, NameRole}));
-	m_ui->filterLineEdit->installEventFilter(this);
+	m_ui->configurationViewWidget->setFilterRoles({Qt::DisplayRole, NameRole});
+	m_ui->configurationViewWidget->installEventFilter(this);
 	m_ui->resetAllButton->setEnabled(canResetAll);
 
 	if (isSidebarPanel())
@@ -220,16 +226,17 @@ ConfigurationContentsWidget::ConfigurationContentsWidget(const QVariantMap &para
 		m_ui->detailsWidget->hide();
 	}
 
-	connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int,QVariant)));
-	connect(m_ui->configurationViewWidget, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(showContextMenu(QPoint)));
-	connect(m_ui->configurationViewWidget, SIGNAL(needsActionsUpdate()), this, SLOT(updateActions()));
+	connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &ConfigurationContentsWidget::handleOptionChanged);
+	connect(m_ui->configurationViewWidget, &ItemViewWidget::customContextMenuRequested, this, &ConfigurationContentsWidget::showContextMenu);
+	connect(m_ui->configurationViewWidget, &ItemViewWidget::needsActionsUpdate, this, &ConfigurationContentsWidget::updateActions);
+	connect(m_ui->configurationViewWidget, &ItemViewWidget::clicked, this, &ConfigurationContentsWidget::handleIndexClicked);
 	connect(m_ui->configurationViewWidget, &ItemViewWidget::modified, [&]()
 	{
 		m_ui->resetAllButton->setEnabled(true);
 		m_ui->saveAllButton->setEnabled(true);
 	});
-	connect(m_ui->configurationViewWidget->selectionModel(), SIGNAL(currentChanged(QModelIndex,QModelIndex)), this, SLOT(currentChanged(QModelIndex,QModelIndex)));
-	connect(m_ui->filterLineEdit, SIGNAL(textChanged(QString)), m_ui->configurationViewWidget, SLOT(setFilterString(QString)));
+	connect(m_ui->configurationViewWidget->selectionModel(), &QItemSelectionModel::currentChanged, this, &ConfigurationContentsWidget::handleCurrentIndexChanged);
+	connect(m_ui->filterLineEditWidget, &LineEditWidget::textChanged, m_ui->configurationViewWidget, &ItemViewWidget::setFilterString);
 	connect(m_ui->resetAllButton, &QPushButton::clicked, [&]()
 	{
 		saveAll(true);
@@ -261,7 +268,7 @@ void ConfigurationContentsWidget::triggerAction(int identifier, const QVariantMa
 	{
 		case ActionsManager::FindAction:
 		case ActionsManager::QuickFindAction:
-			m_ui->filterLineEdit->setFocus();
+			m_ui->filterLineEditWidget->setFocus();
 
 			break;
 		case ActionsManager::ActivateContentAction:
@@ -300,16 +307,6 @@ void ConfigurationContentsWidget::closeEvent(QCloseEvent *event)
 void ConfigurationContentsWidget::print(QPrinter *printer)
 {
 	m_ui->configurationViewWidget->render(printer);
-}
-
-void ConfigurationContentsWidget::currentChanged(const QModelIndex &currentIndex, const QModelIndex &previousIndex)
-{
-	m_ui->configurationViewWidget->closePersistentEditor(previousIndex.parent().child(previousIndex.row(), 2));
-
-	if (currentIndex.parent().isValid())
-	{
-		m_ui->configurationViewWidget->openPersistentEditor(currentIndex.parent().child(currentIndex.row(), 2));
-	}
 }
 
 void ConfigurationContentsWidget::copyOptionName()
@@ -369,34 +366,34 @@ void ConfigurationContentsWidget::saveAll(bool reset)
 
 	for (int i = 0; i < m_model->rowCount(); ++i)
 	{
-		const QStandardItem *groupItem(m_model->item(i, 0));
+		const QModelIndex groupIndex(m_model->index(i, 0));
+		const int optionAmount(m_model->rowCount(groupIndex));
 
-		if (!groupItem)
+		if (optionAmount == 0)
 		{
 			continue;
 		}
 
-		for (int j = 0; j < groupItem->rowCount(); ++j)
+		for (int j = 0; j < optionAmount; ++j)
 		{
-			QStandardItem *optionItem(groupItem->child(j, 0));
-			const bool isModified(optionItem && optionItem->data(IsModifiedRole).toBool());
+			const QModelIndex optionIndex(groupIndex.child(j, 0));
+			const bool isModified(optionIndex.data(IsModifiedRole).toBool());
 
-			if (optionItem && (reset || isModified))
+			if (reset || isModified)
 			{
-				const QModelIndex valueIndex(m_model->index(j, 2, groupItem->index()));
+				const QModelIndex valueIndex(groupIndex.child(j, 2));
 				const int identifier(valueIndex.data(IdentifierRole).toInt());
 				const QVariant defaultValue(SettingsManager::getOptionDefinition(identifier).defaultValue);
 
 				if (reset && identifier != SettingsManager::Browser_MigrationsOption && valueIndex.data(Qt::EditRole) != defaultValue)
 				{
-					m_model->setData(valueIndex, defaultValue, Qt::EditRole);
-
 					SettingsManager::setOption(identifier, defaultValue);
 
-					QFont font(optionItem->font());
+					QFont font(optionIndex.data(Qt::FontRole).isNull() ? m_ui->configurationViewWidget->font() : optionIndex.data(Qt::FontRole).value<QFont>());
 					font.setBold(false);
 
-					optionItem->setFont(font);
+					m_model->setData(optionIndex, font, Qt::FontRole);
+					m_model->setData(valueIndex, defaultValue, Qt::EditRole);
 				}
 				else if (!reset && isModified)
 				{
@@ -405,7 +402,7 @@ void ConfigurationContentsWidget::saveAll(bool reset)
 
 				if (isModified)
 				{
-					m_model->setData(optionItem->index(), false, IsModifiedRole);
+					m_model->setData(optionIndex, false, IsModifiedRole);
 				}
 			}
 		}
@@ -419,8 +416,7 @@ void ConfigurationContentsWidget::saveAll(bool reset)
 		m_ui->resetAllButton->setEnabled(false);
 	}
 
-	connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int,QVariant)));
-	connect(m_ui->configurationViewWidget, SIGNAL(needsActionsUpdate()), this, SLOT(updateActions()));
+	connect(m_ui->configurationViewWidget, &ItemViewWidget::needsActionsUpdate, this, &ConfigurationContentsWidget::updateActions);
 
 	updateActions();
 }
@@ -428,30 +424,35 @@ void ConfigurationContentsWidget::saveAll(bool reset)
 void ConfigurationContentsWidget::handleOptionChanged(int identifier, const QVariant &value)
 {
 	const QString name(SettingsManager::getOptionName(identifier));
+	const bool wasModified(m_ui->configurationViewWidget->isModified());
 
 	for (int i = 0; i < m_model->rowCount(); ++i)
 	{
-		const QStandardItem *groupItem(m_model->item(i, 0));
+		const QModelIndex groupIndex(m_model->index(i, 0));
+		const QString groupTitle(groupIndex.data(Qt::DisplayRole).toString());
 
-		if (!groupItem || !name.startsWith(groupItem->text()))
+		if (groupTitle.isEmpty() || !name.startsWith(groupTitle))
 		{
 			continue;
 		}
 
-		for (int j = 0; j < groupItem->rowCount(); ++j)
-		{
-			QStandardItem *optionItem(groupItem->child(j, 0));
+		const int optionAmount(m_model->rowCount(groupIndex));
 
-			if (optionItem && optionItem->index().sibling(j, 2).data(IdentifierRole).toInt() == identifier)
+		for (int j = 0; j < optionAmount; ++j)
+		{
+			const QModelIndex valueIndex(groupIndex.child(j, 2));
+
+			if (valueIndex.data(IdentifierRole).toInt() == identifier)
 			{
-				if (!optionItem->data(IsModifiedRole).toBool())
+				const QModelIndex optionIndex(groupIndex.child(j, 0));
+
+				if (!optionIndex.data(IsModifiedRole).toBool())
 				{
-					QFont font(optionItem->font());
+					QFont font(optionIndex.data(Qt::FontRole).isNull() ? m_ui->configurationViewWidget->font() : optionIndex.data(Qt::FontRole).value<QFont>());
 					font.setBold(value != SettingsManager::getOptionDefinition(identifier).defaultValue);
 
-					optionItem->setFont(font);
-
-					groupItem->child(j, 2)->setData(value, Qt::EditRole);
+					m_model->setData(optionIndex, font, Qt::FontRole);
+					m_model->setData(valueIndex, value, Qt::EditRole);
 				}
 
 				break;
@@ -459,7 +460,33 @@ void ConfigurationContentsWidget::handleOptionChanged(int identifier, const QVar
 		}
 	}
 
+	if (!wasModified)
+	{
+		m_ui->configurationViewWidget->setModified(false);
+	}
+
 	updateActions();
+}
+
+void ConfigurationContentsWidget::handleCurrentIndexChanged(const QModelIndex &currentIndex, const QModelIndex &previousIndex)
+{
+	if (previousIndex.parent().isValid() && previousIndex.column() == 2)
+	{
+		m_ui->configurationViewWidget->closePersistentEditor(previousIndex);
+	}
+
+	if (currentIndex.parent().isValid() && currentIndex.column() == 2)
+	{
+		m_ui->configurationViewWidget->openPersistentEditor(currentIndex);
+	}
+}
+
+void ConfigurationContentsWidget::handleIndexClicked(const QModelIndex &index)
+{
+	if (index.parent().isValid() && index.column() != 2)
+	{
+		m_ui->configurationViewWidget->setCurrentIndex(index.sibling(index.row(), 2));
+	}
 }
 
 void ConfigurationContentsWidget::showContextMenu(const QPoint &position)
@@ -523,13 +550,14 @@ QIcon ConfigurationContentsWidget::getIcon() const
 
 bool ConfigurationContentsWidget::eventFilter(QObject *object, QEvent *event)
 {
-	if (object == m_ui->filterLineEdit && event->type() == QEvent::KeyPress)
+	if (object == m_ui->configurationViewWidget && event->type() == QEvent::KeyPress)
 	{
 		const QKeyEvent *keyEvent(static_cast<QKeyEvent*>(event));
+		const QModelIndex index(m_ui->configurationViewWidget->currentIndex());
 
-		if (keyEvent->key() == Qt::Key_Escape)
+		if (keyEvent && keyEvent->key() == Qt::Key_Right && index.parent().isValid())
 		{
-			m_ui->filterLineEdit->clear();
+			m_ui->configurationViewWidget->setCurrentIndex(index.sibling(index.row(), 2));
 		}
 	}
 

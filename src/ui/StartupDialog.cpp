@@ -26,38 +26,41 @@
 namespace Otter
 {
 
-StartupDialog::StartupDialog(const QString &session, QWidget *parent) : Dialog(parent),
+StartupDialog::StartupDialog(const QString &sessionName, QWidget *parent) : Dialog(parent),
 	m_windowsModel(new QStandardItemModel(this)),
 	m_ui(new Ui::StartupDialog)
 {
 	m_ui->setupUi(this);
 	m_ui->windowsTreeView->setModel(m_windowsModel);
 
-	const QStringList sessions(SessionsManager::getSessions());
+	const QStringList sessionNames(SessionsManager::getSessions());
 	QMultiHash<QString, SessionInformation> information;
 
-	for (int i = 0; i < sessions.count(); ++i)
+	for (int i = 0; i < sessionNames.count(); ++i)
 	{
-		const SessionInformation session(SessionsManager::getSession(sessions.at(i)));
+		const SessionInformation session(SessionsManager::getSession(sessionNames.at(i)));
 
 		information.insert((session.title.isEmpty() ? tr("(Untitled)") : session.title), session);
 	}
 
-	const QList<SessionInformation> sorted(information.values());
+	const QList<SessionInformation> sessions(information.values());
 
-	for (int i = 0; i < sorted.count(); ++i)
+	for (int i = 0; i < sessions.count(); ++i)
 	{
-		m_ui->sessionComboBox->addItem((sorted.at(i).title.isEmpty() ? tr("(Untitled)") : sorted.at(i).title), sorted.at(i).path);
+		m_ui->sessionComboBox->addItem((sessions.at(i).title.isEmpty() ? tr("(Untitled)") : sessions.at(i).title), sessions.at(i).path);
 	}
 
-	const int index(qMax(0, m_ui->sessionComboBox->findData(session)));
+	const int index(qMax(0, m_ui->sessionComboBox->findData(sessionName)));
 
 	m_ui->sessionComboBox->setCurrentIndex(index);
 
 	setSession(index);
 
-	connect(m_ui->buttonGroup, SIGNAL(buttonClicked(int)), this, SLOT(modeChanged()));
-	connect(m_ui->sessionComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(setSession(int)));
+	connect(m_ui->buttonGroup, static_cast<void(QButtonGroup::*)(int)>(&QButtonGroup::buttonClicked), this, [&]()
+	{
+		m_ui->continueSessionWidget->setEnabled(m_ui->continueSessionButton->isChecked());
+	});
+	connect(m_ui->sessionComboBox, static_cast<void(QComboBox::*)(int)>(&QComboBox::currentIndexChanged), this, &StartupDialog::setSession);
 }
 
 StartupDialog::~StartupDialog()
@@ -73,11 +76,6 @@ void StartupDialog::changeEvent(QEvent *event)
 	{
 		m_ui->retranslateUi(this);
 	}
-}
-
-void StartupDialog::modeChanged()
-{
-	m_ui->continueSessionWidget->setEnabled(m_ui->continueSessionButton->isChecked());
 }
 
 void StartupDialog::setSession(int index)
@@ -133,24 +131,25 @@ SessionInformation StartupDialog::getSession() const
 
 		for (int i = 0; i < m_windowsModel->rowCount(); ++i)
 		{
-			QStandardItem *windowItem(m_windowsModel->item(i, 0));
+			const QModelIndex windowIndex(m_windowsModel->index(i, 0));
 
-			if (!windowItem || (windowItem->flags().testFlag(Qt::ItemIsUserCheckable) && windowItem->data(Qt::CheckStateRole).toInt() == Qt::Unchecked))
+			if (!windowIndex.isValid() || (windowIndex.flags().testFlag(Qt::ItemIsUserCheckable) && windowIndex.data(Qt::CheckStateRole).toInt() == Qt::Unchecked))
 			{
 				continue;
 			}
 
 			const int index(session.windows.value(i, SessionMainWindow()).index - 1);
+			const int windowAmount(m_windowsModel->rowCount(windowIndex));
 			SessionMainWindow window;
 			window.index = (index + 1);
-			window.geometry = windowItem->data(Qt::UserRole).toByteArray();
-			window.windows.reserve(windowItem->rowCount());
+			window.geometry = windowIndex.data(Qt::UserRole).toByteArray();
+			window.windows.reserve(windowAmount);
 
-			for (int j = 0; j < windowItem->rowCount(); ++j)
+			for (int j = 0; j < windowAmount; ++j)
 			{
-				QStandardItem *tabItem(windowItem->child(j, 0));
+				const QModelIndex tabIndex(windowIndex.child(j, 0));
 
-				if (tabItem && tabItem->data(Qt::CheckStateRole).toInt() == Qt::Checked)
+				if (tabIndex.isValid() && tabIndex.data(Qt::CheckStateRole).toInt() == Qt::Checked)
 				{
 					window.windows.append(session.windows.value(i, SessionMainWindow()).windows.value(j, SessionWindow()));
 				}

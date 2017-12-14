@@ -70,7 +70,8 @@
 			"history",
 			"notes",
 			"passwords",
-			"transfers"
+			"transfers",
+			"pageInformation"
 		]
 	},
 	{
@@ -79,7 +80,17 @@
 		"iconSize": 20,
 		"actions":
 		[
-			"ShowSidebarAction",
+			{
+				"identifier": "ShowToolBarAction",
+				"options":
+				{
+					"icon": "sidebar-show"
+				},
+				"parameters":
+				{
+					"toolBar": "SideBar"
+				}
+			},
 			"StatusMessageWidget",
 			"ZoomOutAction",
 			"ZoomWidget",

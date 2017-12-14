@@ -53,10 +53,10 @@ public:
 	enum TransferState
 	{
 		UnknownState = 0,
-		RunningState = 1,
-		FinishedState = 2,
-		ErrorState = 3,
-		CancelledState = 4
+		ErrorState,
+		CancelledState,
+		RunningState,
+		FinishedState
 	};
 
 	explicit Transfer(TransferOptions options = CanAskForPathOption, QObject *parent = nullptr);
@@ -93,12 +93,12 @@ protected:
 	void start(QNetworkReply *reply, const QString &target);
 
 protected slots:
-	void downloadProgress(qint64 bytesReceived, qint64 bytesTotal);
-	void downloadData();
-	void downloadFinished();
-	void downloadError(QNetworkReply::NetworkError error);
-	void markStarted();
-	void markFinished(bool reset = false);
+	void markAsStarted();
+	void markAsFinished();
+	void handleDownloadProgress(qint64 bytesReceived, qint64 bytesTotal);
+	void handleDataAvailable();
+	void handleDownloadFinished();
+	void handleDownloadError(QNetworkReply::NetworkError error);
 
 private:
 	QPointer<QNetworkReply> m_reply;
@@ -153,10 +153,10 @@ protected:
 
 protected slots:
 	void save();
-	void transferStarted();
-	void transferFinished();
-	void transferChanged();
-	void transferStopped();
+	void handleTransferStarted();
+	void handleTransferFinished();
+	void handleTransferChanged();
+	void handleTransferStopped();
 
 private:
 	int m_saveTimer;

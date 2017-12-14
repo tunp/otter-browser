@@ -19,20 +19,19 @@
 **************************************************************************/
 
 #include "OpenAddressDialog.h"
-#include "../core/InputInterpreter.h"
+#include "../core/BookmarksModel.h"
 #include "../modules/widgets/address/AddressWidget.h"
 
 #include "ui_OpenAddressDialog.h"
 
 #include <QtGui/QKeyEvent>
-#include <QtWidgets/QLineEdit>
 
 namespace Otter
 {
 
-OpenAddressDialog::OpenAddressDialog(QWidget *parent) : Dialog(parent),
+OpenAddressDialog::OpenAddressDialog(ActionExecutor::Object executor, QWidget *parent) : Dialog(parent),
 	m_addressWidget(nullptr),
-	m_inputInterpreter(nullptr),
+	m_executor(executor),
 	m_ui(new Ui::OpenAddressDialog)
 {
 	m_ui->setupUi(this);
@@ -43,7 +42,7 @@ OpenAddressDialog::OpenAddressDialog(QWidget *parent) : Dialog(parent),
 	m_ui->verticalLayout->insertWidget(1, m_addressWidget);
 	m_ui->label->setBuddy(m_addressWidget);
 
-	connect(this, SIGNAL(accepted()), this, SLOT(handleUserInput()));
+	connect(this, &OpenAddressDialog::accepted, this, &OpenAddressDialog::handleUserInput);
 }
 
 OpenAddressDialog::~OpenAddressDialog()
@@ -65,7 +64,7 @@ void OpenAddressDialog::keyPressEvent(QKeyEvent *event)
 {
 	if (event->key() == Qt::Key_Enter || event->key() == Qt::Key_Return)
 	{
-		handleUserInput();
+		accept();
 
 		event->accept();
 	}
@@ -77,27 +76,42 @@ void OpenAddressDialog::keyPressEvent(QKeyEvent *event)
 
 void OpenAddressDialog::handleUserInput()
 {
-	if (m_addressWidget->text().trimmed().isEmpty())
-	{
-		close();
-	}
-	else if (!m_inputInterpreter)
-	{
-		m_inputInterpreter = new InputInterpreter(this);
+	const QString text(m_addressWidget->text().trimmed());
 
-		connect(m_inputInterpreter, SIGNAL(requestedOpenBookmark(BookmarksItem*,SessionsManager::OpenHints)), this, SIGNAL(requestedOpenBookmark(BookmarksItem*,SessionsManager::OpenHints)));
-		connect(m_inputInterpreter, SIGNAL(requestedOpenUrl(QUrl,SessionsManager::OpenHints)), this, SIGNAL(requestedLoadUrl(QUrl,SessionsManager::OpenHints)));
-		connect(m_inputInterpreter, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)), this, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)));
-		connect(m_inputInterpreter, SIGNAL(destroyed()), this, SLOT(accept()));
+	if (!text.isEmpty())
+	{
+		m_result = InputInterpreter::interpret(text, InputInterpreter::NoBookmarkKeywordsFlag);
 
-		m_inputInterpreter->interpret(m_addressWidget->text(), SessionsManager::calculateOpenHints(SessionsManager::CurrentTabOpen));
+		if (m_result.isValid() && m_executor.isValid())
+		{
+			switch (m_result.type)
+			{
+				case InputInterpreter::InterpreterResult::BookmarkType:
+					m_executor.triggerAction(ActionsManager::OpenBookmarkAction, {{QLatin1String("bookmark"), m_result.bookmark->getIdentifier()}, {QLatin1String("hints"), QVariant(SessionsManager::calculateOpenHints(SessionsManager::CurrentTabOpen))}});
+
+					break;
+				case InputInterpreter::InterpreterResult::UrlType:
+					m_executor.triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), m_result.url}, {QLatin1String("hints"), QVariant(SessionsManager::calculateOpenHints(SessionsManager::CurrentTabOpen))}});
+
+					break;
+				default:
+					break;
+			}
+		}
 	}
+
+	close();
 }
 
 void OpenAddressDialog::setText(const QString &text)
 {
 	m_addressWidget->setText(text);
 	m_addressWidget->activate(Qt::OtherFocusReason);
+}
+
+InputInterpreter::InterpreterResult OpenAddressDialog::getResult() const
+{
+	return m_result;
 }
 
 }

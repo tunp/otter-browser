@@ -26,6 +26,7 @@
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QToolBar>
 
+#include "../core/SessionsManager.h"
 #include "../core/ToolBarsManager.h"
 
 namespace Otter
@@ -34,32 +35,8 @@ namespace Otter
 class BookmarksItem;
 class MainWindow;
 class SidebarWidget;
+class TabBarWidget;
 class Window;
-
-class ToolBarDropZoneWidget final : public QToolBar
-{
-	Q_OBJECT
-
-public:
-	explicit ToolBarDropZoneWidget(MainWindow *parent);
-
-	QSize sizeHint() const override;
-
-protected:
-	void paintEvent(QPaintEvent *event) override;
-	void dragEnterEvent(QDragEnterEvent *event) override;
-	void dragMoveEvent(QDragMoveEvent *event) override;
-	void dragLeaveEvent(QDragLeaveEvent *event) override;
-	void dropEvent(QDropEvent *event) override;
-	bool canDrop(QDropEvent *event);
-
-private:
-	MainWindow *m_mainWindow;
-	bool m_isDropTarget;
-
-signals:
-	void toolBarDraggedChanged(bool isDragging);
-};
 
 class ToolBarWidget : public QToolBar
 {
@@ -71,19 +48,24 @@ public:
 	static QMenu* createCustomizationMenu(int identifier, QVector<QAction*> actions = {}, QWidget *parent = nullptr);
 	void reload();
 	void setDefinition(const ToolBarsManager::ToolBarDefinition &definition);
+	void setState(const ToolBarState &state);
 	QString getTitle() const;
 	ToolBarsManager::ToolBarDefinition getDefinition() const;
-	Qt::ToolBarArea getArea();
+	ToolBarState getState() const;
+	Qt::ToolBarArea getArea() const;
 	Qt::ToolButtonStyle getButtonStyle() const;
 	int getIdentifier() const;
 	int getIconSize() const;
 	int getMaximumButtonSize() const;
+	static bool calculateShouldBeVisible(const ToolBarsManager::ToolBarDefinition &definition, const ToolBarState &state, ToolBarsManager::ToolBarsMode mode);
 	bool canDrop(QDropEvent *event) const;
-	bool shouldBeVisible(bool isFullScreen) const;
+	bool isCollapsed() const;
+	virtual bool shouldBeVisible(ToolBarsManager::ToolBarsMode mode) const;
 	bool event(QEvent *event) override;
 
 public slots:
 	void resetGeometry();
+	void setArea(Qt::ToolBarArea area);
 
 protected:
 	void timerEvent(QTimerEvent *event) override;
@@ -101,8 +83,13 @@ protected:
 	void dragMoveEvent(QDragMoveEvent *event) override;
 	void dragLeaveEvent(QDragLeaveEvent *event) override;
 	void dropEvent(QDropEvent *event) override;
+	virtual void clearEntries();
+	virtual void populateEntries();
 	void updateDropIndex(const QPoint &position);
 	void updateToggleGeometry();
+	MainWindow* getMainWindow() const;
+	Window* getWindow() const;
+	bool isDragHandle(const QPoint &position) const;
 
 protected slots:
 	void scheduleBookmarksReload();
@@ -114,7 +101,7 @@ protected slots:
 	void handleBookmarkModified(BookmarksItem *bookmark);
 	void handleBookmarkMoved(BookmarksItem *bookmark, BookmarksItem *previousParent);
 	void handleBookmarkRemoved(BookmarksItem *bookmark, BookmarksItem *previousParent);
-	void updateVisibility();
+	void handleFullScreenStateChanged(bool isFullScreen);
 	void setToolBarLocked(bool locked);
 
 private:
@@ -125,6 +112,8 @@ private:
 	BookmarksItem *m_dropBookmark;
 	QPushButton *m_toggleButton;
 	QPoint m_dragStartPosition;
+	ToolBarState m_state;
+	Qt::ToolBarArea m_area;
 	int m_reloadTimer;
 	int m_identifier;
 	int m_dropIndex;
@@ -138,6 +127,31 @@ signals:
 	void iconSizeChanged(int size);
 	void maximumButtonSizeChanged(int size);
 	void toolBarModified();
+};
+
+class TabBarToolBarWidget final : public ToolBarWidget
+{
+	Q_OBJECT
+
+public:
+	explicit TabBarToolBarWidget(int identifier, Window *window, QWidget *parent);
+
+	bool shouldBeVisible(ToolBarsManager::ToolBarsMode mode) const override;
+	bool event(QEvent *event) override;
+
+protected:
+	void paintEvent(QPaintEvent *event) override;
+	void resizeEvent(QResizeEvent *event) override;
+	void contextMenuEvent(QContextMenuEvent *event) override;
+	void findTabBar();
+	void clearEntries() override;
+	void populateEntries() override;
+
+protected slots:
+	void updateVisibility();
+
+private:
+	TabBarWidget *m_tabBar;
 };
 
 }

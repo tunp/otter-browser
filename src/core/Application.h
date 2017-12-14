@@ -1,7 +1,7 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
 * Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
-* Copyright (C) 2015 - 2016 Jan Bajer aka bajasoft <jbajer@gmail.com>
+* Copyright (C) 2015 - 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -21,7 +21,7 @@
 #ifndef OTTER_APPLICATION_H
 #define OTTER_APPLICATION_H
 
-#include "ActionsManager.h"
+#include "ActionExecutor.h"
 #include "UpdateChecker.h"
 #include "SessionsManager.h"
 
@@ -33,13 +33,14 @@
 namespace Otter
 {
 
+class LongTermTimer;
 class MainWindow;
 class Notification;
 class PlatformIntegration;
 class Style;
 class TrayIcon;
 
-class Application : public QApplication, public ActionExecutor
+class Application final : public QApplication, public ActionExecutor
 {
 	Q_OBJECT
 
@@ -51,6 +52,7 @@ public:
 		KeyboardShortcutsReport = 2,
 		PathsReport = 4,
 		SettingsReport = 8,
+		StandardReport = (EnvironmentReport | PathsReport | SettingsReport),
 		FullReport = (EnvironmentReport | KeyboardShortcutsReport | PathsReport | SettingsReport)
 	};
 
@@ -60,20 +62,20 @@ public:
 	~Application();
 
 	static void triggerAction(int identifier, const QVariantMap &parameters, QObject *target);
-	static void removeWindow(MainWindow* window);
+	static void removeWindow(MainWindow *mainWindow);
 	static void showNotification(Notification *notification);
-	static void handlePositionalArguments(QCommandLineParser *parser);
+	static void handlePositionalArguments(QCommandLineParser *parser, bool forceOpen = false);
 	static void setHidden(bool isHidden);
-	static void setLocale(const QString &locale);
-	static MainWindow* createWindow(const QVariantMap &parameters = {}, const SessionMainWindow &windows = SessionMainWindow());
+	static MainWindow* createWindow(const QVariantMap &parameters = {}, const SessionMainWindow &session = {});
 	static Application* getInstance();
 	static MainWindow* getWindow();
 	static MainWindow* getActiveWindow();
+	static QObject* getFocusObject(bool ignoreMenus);
 	static Style* getStyle();
 	static TrayIcon* getTrayIcon();
 	static PlatformIntegration* getPlatformIntegration();
 	static QCommandLineParser* getCommandLineParser();
-	static QString createReport(ReportOptions options = FullReport);
+	static QString createReport(ReportOptions options = StandardReport);
 	static QString getFullVersion();
 	static QString getLocalePath();
 	ActionsManager::ActionDefinition::State getActionState(int identifier, const QVariantMap &parameters = {}) const override;
@@ -88,16 +90,22 @@ public slots:
 	void triggerAction(int identifier, const QVariantMap &parameters = {}) override;
 	void close();
 
+protected:
+	static void setLocale(const QString &locale);
+
 protected slots:
 	void openUrl(const QUrl &url);
 	void periodicUpdateCheck();
 	void handleOptionChanged(int identifier, const QVariant &value);
 	void handleAboutToQuit();
 	void handleNewConnection();
-	void handleUpdateCheckResult(const QVector<UpdateChecker::UpdateInformation> &availableUpdates);
+	void handleFocusObjectChanged(QObject *object);
+	void handleUpdateCheckResult(const QVector<UpdateChecker::UpdateInformation> &availableUpdates, int latestVersionIndex);
 	void showUpdateDetails();
 
 private:
+	LongTermTimer *m_updateCheckTimer;
+
 	static Application *m_instance;
 	static PlatformIntegration *m_platformIntegration;
 	static TrayIcon *m_trayIcon;
@@ -105,6 +113,7 @@ private:
 	static QTranslator *m_applicationTranslator;
 	static QLocalServer *m_localServer;
 	static QPointer<MainWindow> m_activeWindow;
+	static QPointer<QObject> m_nonMenuFocusObject;
 	static QString m_localePath;
 	static QCommandLineParser m_commandLineParser;
 	static QVector<MainWindow*> m_windows;
@@ -113,9 +122,9 @@ private:
 	static bool m_isUpdating;
 
 signals:
-	void windowAdded(MainWindow *window);
-	void windowRemoved(MainWindow *window);
-	void actionsStateChanged(const QVector<int> &identifiers);
+	void windowAdded(MainWindow *mainWindow);
+	void windowRemoved(MainWindow *mainWindow);
+	void arbitraryActionsStateChanged(const QVector<int> &identifiers);
 };
 
 }

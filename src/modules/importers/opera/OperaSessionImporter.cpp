@@ -32,8 +32,10 @@ OperaSessionImporter::OperaSessionImporter(QObject *parent): Importer(parent)
 {
 }
 
-QWidget* OperaSessionImporter::getOptionsWidget()
+QWidget* OperaSessionImporter::createOptionsWidget(QWidget *parent)
 {
+	Q_UNUSED(parent)
+
 	return nullptr;
 }
 
@@ -89,7 +91,7 @@ QUrl OperaSessionImporter::getHomePage() const
 
 QStringList OperaSessionImporter::getFileFilters() const
 {
-	return QStringList(tr("Opera session files (*.win)"));
+	return {tr("Opera session files (*.win)")};
 }
 
 Importer::ImportType OperaSessionImporter::getImportType() const
@@ -105,8 +107,12 @@ bool OperaSessionImporter::import(const QString &path)
 
 	if (originalSession.getValue(QLatin1String("version")).toInt() == 0)
 	{
+		emit importFinished(SessionsImport, FailedImport, 0);
+
 		return false;
 	}
+
+	emit importStarted(SessionsImport, 1);
 
 	SessionInformation session;
 	session.title = QFileInfo(path).completeBaseName();
@@ -254,6 +260,8 @@ bool OperaSessionImporter::import(const QString &path)
 	const bool result(SessionsManager::saveSession(session));
 
 	qDeleteAll(mainWindows);
+
+	emit importFinished(SessionsImport, (result ? SuccessfullImport : FailedImport), 1);
 
 	return result;
 }

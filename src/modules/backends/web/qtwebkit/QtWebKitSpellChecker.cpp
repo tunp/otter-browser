@@ -33,7 +33,7 @@ QtWebKitSpellChecker::QtWebKitSpellChecker() : QWebSpellChecker()
 {
 	setDictionary(QtWebKitWebBackend::getActiveDictionary());
 
-	connect(QtWebKitWebBackend::getInstance(), SIGNAL(activeDictionaryChanged(QString)), this, SLOT(setDictionary(QString)));
+	connect(QtWebKitWebBackend::getInstance(), &QtWebKitWebBackend::activeDictionaryChanged, this, &QtWebKitSpellChecker::setDictionary);
 }
 
 void QtWebKitSpellChecker::toggleContinousSpellChecking()
@@ -151,7 +151,7 @@ QString QtWebKitSpellChecker::autoCorrectSuggestionForMisspelledWord(const QStri
 {
 	Q_UNUSED(word)
 
-	return QString();
+	return {};
 }
 
 QStringList QtWebKitSpellChecker::getSuggestions(const QString &word)
@@ -163,7 +163,7 @@ QStringList QtWebKitSpellChecker::getSuggestions(const QString &word)
 
 	if (m_speller->isCorrect(word))
 	{
-		return QStringList();
+		return {};
 	}
 
 	return m_speller->suggest(word);

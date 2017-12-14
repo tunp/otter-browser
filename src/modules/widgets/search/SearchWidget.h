@@ -53,7 +53,7 @@ public:
 	bool event(QEvent *event) override;
 
 public slots:
-	void setWindow(Window *window = nullptr);
+	void setWindow(Window *window);
 	void setOptions(const QVariantMap &options);
 	void setQuery(const QString &query);
 
@@ -63,7 +63,6 @@ protected:
 	void resizeEvent(QResizeEvent *event) override;
 	void focusInEvent(QFocusEvent *event) override;
 	void keyPressEvent(QKeyEvent *event) override;
-	void contextMenuEvent(QContextMenuEvent *event) override;
 	void mouseMoveEvent(QMouseEvent *event) override;
 	void mouseReleaseEvent(QMouseEvent *event) override;
 	void wheelEvent(QWheelEvent *event) override;
@@ -71,8 +70,8 @@ protected:
 
 protected slots:
 	void sendRequest(const QString &query = {});
-	void showCompletion(bool showSearchModel = false);
-	void pasteAndGo();
+	void showSearchEngines();
+	void showSearchSuggestions();
 	void addSearchEngine(QAction *action);
 	void storeCurrentSearchEngine();
 	void restoreCurrentSearchEngine();
@@ -95,7 +94,6 @@ private:
 	bool m_isSearchEngineLocked;
 
 signals:
-	void requestedOpenUrl(const QUrl &url, SessionsManager::OpenHints hints);
 	void requestedSearch(const QString &query, const QString &searchEngine, SessionsManager::OpenHints hints);
 };
 

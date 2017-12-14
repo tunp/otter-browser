@@ -22,7 +22,7 @@
 #ifndef OTTER_MAINWINDOW_H
 #define OTTER_MAINWINDOW_H
 
-#include "../core/ActionsManager.h"
+#include "../core/ActionExecutor.h"
 #include "../core/SessionsManager.h"
 
 #include <QtWidgets/QMainWindow>
@@ -55,11 +55,11 @@ public:
 	explicit MainWindow(const QVariantMap &parameters = {}, const SessionMainWindow &session = SessionMainWindow(), QWidget *parent = nullptr);
 	~MainWindow();
 
-	void restore(const SessionMainWindow &session);
-	void restore(int index = 0);
-	void moveWindow(Window *window, MainWindow *mainWindow = nullptr, int index = -1);
+	void restoreSession(const SessionMainWindow &session);
+	void restoreClosedWindow(int index = 0);
+	void moveWindow(Window *window, MainWindow *mainWindow = nullptr, const QVariantMap &parameters = {});
+	void setActiveEditorExecutor(ActionExecutor::Object executor);
 	static MainWindow* findMainWindow(QObject *parent);
-	TabBarWidget* getTabBar() const;
 	Window* getActiveWindow() const;
 	Window* getWindowByIndex(int index) const;
 	Window* getWindowByIdentifier(quint64 identifier) const;
@@ -68,6 +68,7 @@ public:
 	QUrl getUrl() const;
 	ActionsManager::ActionDefinition::State getActionState(int identifier, const QVariantMap &parameters = {}) const override;
 	SessionMainWindow getSession() const;
+	ToolBarState getToolBarState(int identifier) const;
 	QVector<ToolBarWidget*> getToolBars(Qt::ToolBarArea area) const;
 	QVector<ClosedWindow> getClosedWindows() const;
 	quint64 getIdentifier() const;
@@ -75,13 +76,13 @@ public:
 	int getWindowCount() const;
 	int getWindowIndex(quint64 identifier) const;
 	bool hasUrl(const QUrl &url, bool activate = false);
-	bool isAboutToClose() const;
+	bool isAboutToClose() const override;
 	bool isPrivate() const;
+	bool isSessionRestored() const;
 	bool eventFilter(QObject *object, QEvent *event) override;
 
 public slots:
 	void triggerAction(int identifier, const QVariantMap &parameters = {}) override;
-	void openUrl(const QString &text = {}, bool isPrivate = false);
 	void storeWindowState();
 	void restoreWindowState();
 	void raiseWindow();
@@ -91,6 +92,7 @@ public slots:
 	void setActiveWindowByIndex(int index, bool updateLastActivity = true);
 	void setActiveWindowByIdentifier(quint64 identifier, bool updateLastActivity = true);
 	void setOption(int identifier, const QVariant &value);
+	Window* openWindow(ContentsWidget *widget, SessionsManager::OpenHints hints = SessionsManager::DefaultOpen, const QVariantMap &parameters = {});
 
 protected:
 	void timerEvent(QTimerEvent *event) override;
@@ -101,27 +103,22 @@ protected:
 	void mouseReleaseEvent(QMouseEvent *event) override;
 	void beginToolBarDragging(bool isSidebar = false);
 	void endToolBarDragging();
+	TabBarWidget* getTabBar() const;
 	QVector<quint64> createOrderedWindowList(bool includeMinimized) const;
 	bool event(QEvent *event) override;
 
 protected slots:
-	void saveToolBarPositions();
-	void open(const QUrl &url = {}, SessionsManager::OpenHints hints = SessionsManager::DefaultOpen);
-	void open(BookmarksItem *bookmark, SessionsManager::OpenHints hints = SessionsManager::DefaultOpen);
 	void removeStoredUrl(const QString &url);
 	void handleOptionChanged(int identifier);
-	void handleWindowClose(Window *window);
+	void handleRequestedCloseWindow(Window *window);
 	void handleWindowIsPinnedChanged(bool isPinned);
 	void handleToolBarAdded(int identifier);
-	void handleToolBarModified(int identifier);
-	void handleToolBarMoved(int identifier);
 	void handleToolBarRemoved(int identifier);
 	void handleTransferStarted();
 	void setCurrentWindow(Window *window);
 	void setStatusMessage(const QString &message);
 	void updateWindowTitle();
 	void updateShortcuts();
-	Window* openWindow(ContentsWidget *widget, SessionsManager::OpenHints hints = SessionsManager::DefaultOpen, int index = -1);
 
 private:
 	TabSwitcherWidget *m_tabSwitcher;
@@ -129,14 +126,17 @@ private:
 	TabBarWidget *m_tabBar;
 	MenuBarWidget *m_menuBar;
 	StatusBarWidget *m_statusBar;
-	Window *m_currentWindow;
+	QPointer<Window> m_currentWindow;
 	QString m_currentBookmark;
 	QString m_windowTitle;
+	ActionExecutor::Object m_editorExecutor;
 	QVector<Shortcut*> m_shortcuts;
 	QVector<Window*> m_privateWindows;
 	QVector<ClosedWindow> m_closedWindows;
 	QVector<quint64> m_tabSwitchingOrderList;
 	QHash<quint64, Window*> m_windows;
+	QMap<int, ToolBarWidget*> m_toolBars;
+	QMap<int, ToolBarState> m_toolBarStates;
 	Qt::WindowStates m_previousState;
 	Qt::WindowStates m_previousRaisedState;
 	quint64 m_identifier;
@@ -145,25 +145,28 @@ private:
 	bool m_isAboutToClose;
 	bool m_isDraggingToolBar;
 	bool m_isPrivate;
-	bool m_isRestored;
-	bool m_hasToolBars;
+	bool m_isSessionRestored;
 	Ui::MainWindow *m_ui;
 
 	static quint64 m_identifierCounter;
 
 signals:
-	void activated(MainWindow *window);
+	void activated();
 	void statusMessageChanged(const QString &message);
 	void titleChanged(const QString &title);
+	void toolBarStateChanged(int identifier, const ToolBarState &state);
 	void windowAdded(quint64 identifier);
 	void windowRemoved(quint64 identifier);
 	void currentWindowChanged(quint64 identifier);
 	void closedWindowsAvailableChanged(bool available);
-	void areToolBarsVisibleChanged(bool areVisible);
+	void sessionRestored();
 	void actionsStateChanged();
-	void actionsStateChanged(const QVector<int> &identifiers);
-	void actionsStateChanged(ActionsManager::ActionDefinition::ActionCategories categories);
+	void arbitraryActionsStateChanged(const QVector<int> &identifiers);
+	void categorizedActionsStateChanged(const QVector<int> &categories);
+	void fullScreenStateChanged(bool isFullScreen);
 
+friend class MainWindowSessionItem;
+friend class TabBarToolBarWidget;
 friend class ToolBarDropZoneWidget;
 friend class ToolBarWidget;
 };

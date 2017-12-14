@@ -113,13 +113,13 @@ void IniSettings::removeGroup(const QString &group)
 
 	if (m_group == group)
 	{
-		m_group = QString();
+		m_group.clear();
 	}
 }
 
 void IniSettings::endGroup()
 {
-	m_group = QString();
+	m_group.clear();
 }
 
 void IniSettings::setComment(const QString &comment)
@@ -179,7 +179,7 @@ QStringList IniSettings::getKeys() const
 			return m_data[m_group].keys();
 		}
 
-		return QStringList();
+		return {};
 	}
 
 	QStringList keys;

@@ -70,7 +70,7 @@ QWidget* ColorItemDelegate::createEditor(QWidget *parent, const QStyleOptionView
 	OptionWidget *widget(new OptionWidget(index.data(Qt::EditRole), SettingsManager::ColorType, parent));
 	widget->setFocus();
 
-	connect(widget, SIGNAL(commitData(QWidget*)), this, SIGNAL(commitData(QWidget*)));
+	connect(widget, &OptionWidget::commitData, this, &ColorItemDelegate::commitData);
 
 	return widget;
 }
@@ -105,7 +105,7 @@ QWidget* FontItemDelegate::createEditor(QWidget *parent, const QStyleOptionViewI
 	OptionWidget *widget(new OptionWidget(index.data(Qt::EditRole), SettingsManager::FontType, parent));
 	widget->setFocus();
 
-	connect(widget, SIGNAL(commitData(QWidget*)), this, SIGNAL(commitData(QWidget*)));
+	connect(widget, &OptionWidget::commitData, this, &FontItemDelegate::commitData);
 
 	return widget;
 }
@@ -130,7 +130,8 @@ PreferencesContentPageWidget::PreferencesContentPageWidget(QWidget *parent) :
 	m_ui->popupsComboBox->setCurrentIndex((popupsPolicyIndex < 0) ? 0 : popupsPolicyIndex);
 
 	QStandardItemModel *fontsModel(new QStandardItemModel(this));
-	fontsModel->setHorizontalHeaderLabels(QStringList({tr("Style"), tr("Font"), tr("Preview")}));
+	fontsModel->setHorizontalHeaderLabels({tr("Style"), tr("Font"), tr("Preview")});
+	fontsModel->setHeaderData(2, Qt::Horizontal, QSize(300, 0), Qt::SizeHintRole);
 
 	const QVector<QLatin1String> fonts({QLatin1String("StandardFont"), QLatin1String("FixedFont"), QLatin1String("SerifFont"), QLatin1String("SansSerifFont"), QLatin1String("CursiveFont"), QLatin1String("FantasyFont")});
 	const QStringList fontCategories({tr("Standard font"), tr("Fixed-width font"), tr("Serif font"), tr("Sans-serif font"), tr("Cursive font"), tr("Fantasy font")});
@@ -152,17 +153,18 @@ PreferencesContentPageWidget::PreferencesContentPageWidget(QWidget *parent) :
 	m_ui->fontsViewWidget->setItemDelegateForColumn(1, new FontItemDelegate(this));
 
 	QStandardItemModel *colorsModel(new QStandardItemModel(this));
-	colorsModel->setHorizontalHeaderLabels(QStringList({tr("Type"), tr("Preview")}));
+	colorsModel->setHorizontalHeaderLabels({tr("Type"), tr("Preview")});
+	colorsModel->setHeaderData(0, Qt::Horizontal, QSize(300, 0), Qt::SizeHintRole);
 
 	const QVector<QLatin1String> colors({QLatin1String("BackgroundColor"), QLatin1String("TextColor"), QLatin1String("LinkColor"), QLatin1String("VisitedLinkColor")});
 	const QStringList colorTypes({tr("Background Color"), tr("Text Color"), tr("Link Color"), tr("Visited Link Color")});
 
 	for (int i = 0; i < colors.count(); ++i)
 	{
-		const QString color(SettingsManager::getOption(SettingsManager::getOptionIdentifier(QLatin1String("Content/") + colors.at(i))).toString());
-		QList<QStandardItem*> items({new QStandardItem(colorTypes.at(i)), new QStandardItem(color)});
+		const QString optionName(QLatin1String("Content/") + colors.at(i));
+		QList<QStandardItem*> items({new QStandardItem(colorTypes.at(i)), new QStandardItem(SettingsManager::getOption(SettingsManager::getOptionIdentifier(optionName)).toString())});
 		items[0]->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled | Qt::ItemNeverHasChildren);
-		items[1]->setData(QLatin1String("Content/") + colors.at(i), Qt::UserRole);
+		items[1]->setData(optionName, Qt::UserRole);
 		items[1]->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled | Qt::ItemNeverHasChildren);
 
 		colorsModel->appendRow(items);
@@ -171,8 +173,8 @@ PreferencesContentPageWidget::PreferencesContentPageWidget(QWidget *parent) :
 	m_ui->colorsViewWidget->setModel(colorsModel);
 	m_ui->colorsViewWidget->setItemDelegateForColumn(1, new ColorItemDelegate(this));
 
-	connect(m_ui->fontsViewWidget->selectionModel(), SIGNAL(currentChanged(QModelIndex,QModelIndex)), this, SLOT(currentFontChanged(QModelIndex,QModelIndex)));
-	connect(m_ui->colorsViewWidget->selectionModel(), SIGNAL(currentChanged(QModelIndex,QModelIndex)), this, SLOT(currentColorChanged(QModelIndex,QModelIndex)));
+	connect(m_ui->fontsViewWidget->selectionModel(), &QItemSelectionModel::currentChanged, this, &PreferencesContentPageWidget::handleCurrentFontChanged);
+	connect(m_ui->colorsViewWidget->selectionModel(), &QItemSelectionModel::currentChanged, this, &PreferencesContentPageWidget::handleCurrentColorChanged);
 }
 
 PreferencesContentPageWidget::~PreferencesContentPageWidget()
@@ -190,7 +192,7 @@ void PreferencesContentPageWidget::changeEvent(QEvent *event)
 	}
 }
 
-void PreferencesContentPageWidget::currentFontChanged(const QModelIndex &currentIndex, const QModelIndex &previousIndex)
+void PreferencesContentPageWidget::handleCurrentFontChanged(const QModelIndex &currentIndex, const QModelIndex &previousIndex)
 {
 	m_ui->fontsViewWidget->closePersistentEditor(previousIndex.sibling(previousIndex.row(), 1));
 
@@ -200,7 +202,7 @@ void PreferencesContentPageWidget::currentFontChanged(const QModelIndex &current
 	}
 }
 
-void PreferencesContentPageWidget::currentColorChanged(const QModelIndex &currentIndex, const QModelIndex &previousIndex)
+void PreferencesContentPageWidget::handleCurrentColorChanged(const QModelIndex &currentIndex, const QModelIndex &previousIndex)
 {
 	m_ui->colorsViewWidget->closePersistentEditor(previousIndex.sibling(previousIndex.row(), 1));
 

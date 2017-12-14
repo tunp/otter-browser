@@ -37,7 +37,7 @@ class WindowsContentsWidget final : public ContentsWidget
 	Q_OBJECT
 
 public:
-	explicit WindowsContentsWidget(const QVariantMap &parameters, Window *window);
+	explicit WindowsContentsWidget(const QVariantMap &parameters, Window *window, QWidget *parent);
 	~WindowsContentsWidget();
 
 	void print(QPrinter *printer) override;
@@ -45,7 +45,6 @@ public:
 	QLatin1String getType() const override;
 	QUrl getUrl() const override;
 	QIcon getIcon() const override;
-	WebWidget::LoadingState getLoadingState() const override;
 
 public slots:
 	void triggerAction(int identifier, const QVariantMap &parameters = {}) override;
@@ -58,7 +57,6 @@ protected slots:
 	void showContextMenu(const QPoint &position);
 
 private:
-	bool m_isLoading;
 	Ui::WindowsContentsWidget *m_ui;
 };
 

@@ -60,6 +60,8 @@ public:
 	virtual QIcon getIcon() const;
 	virtual AddonType getType() const;
 	virtual bool isEnabled() const;
+	virtual bool canRemove() const;
+	virtual bool remove();
 
 protected:
 	void setEnabled(bool isEnabled);
@@ -75,18 +77,17 @@ class AddonsManager final : public QObject
 	Q_OBJECT
 
 public:
-	struct SpecialPageInformation
+	struct AddonInformation
 	{
 		QString title;
 		QString description;
-		QUrl url;
 		QIcon icon;
 
-		explicit SpecialPageInformation(const QString &valueTitle, const QString &valueDescription, const QUrl &valueUrl, const QIcon &valueIcon) : title(valueTitle), description(valueDescription), url(valueUrl), icon(valueIcon)
+		explicit AddonInformation(const QString &titleValue, const QString &descriptionValue, const QIcon &iconValue) : title(titleValue), description(descriptionValue), icon(iconValue)
 		{
 		}
 
-		SpecialPageInformation()
+		AddonInformation()
 		{
 		}
 
@@ -101,16 +102,41 @@ public:
 		}
 	};
 
+	struct SpecialPageInformation final : public AddonInformation
+	{
+		enum PageType
+		{
+			UnknownType = 0,
+			StandaloneType = 1,
+			SidebarPanelType = 2,
+			UniversalType = (StandaloneType | SidebarPanelType)
+		};
+
+		Q_DECLARE_FLAGS(PageTypes, PageType)
+
+		QUrl url;
+		PageTypes types;
+
+		explicit SpecialPageInformation(const QString &titleValue, const QString &descriptionValue, const QUrl &urlValue, const QIcon &iconValue, PageTypes typesValue) : AddonInformation(titleValue, descriptionValue, iconValue), url(urlValue), types(typesValue)
+		{
+		}
+
+		SpecialPageInformation()
+		{
+		}
+	};
+
 	static void createInstance();
 	static void registerWebBackend(WebBackend *backend, const QString &name);
 	static void registerSpecialPage(const SpecialPageInformation &information, const QString &name);
 	static void loadUserScripts();
+	static AddonsManager* getInstance();
 	static UserScript* getUserScript(const QString &name);
 	static WebBackend* getWebBackend(const QString &name = {});
 	static SpecialPageInformation getSpecialPage(const QString &name);
 	static QStringList getUserScripts();
 	static QStringList getWebBackends();
-	static QStringList getSpecialPages();
+	static QStringList getSpecialPages(SpecialPageInformation::PageTypes types = SpecialPageInformation::StandaloneType);
 
 protected:
 	explicit AddonsManager(QObject *parent);
@@ -121,8 +147,13 @@ private:
 	static QMap<QString, WebBackend*> m_webBackends;
 	static QMap<QString, SpecialPageInformation> m_specialPages;
 	static bool m_areUserScripsInitialized;
+
+signals:
+	void userScriptModified(const QString &name);
 };
 
 }
+
+Q_DECLARE_OPERATORS_FOR_FLAGS(Otter::AddonsManager::SpecialPageInformation::PageTypes)
 
 #endif

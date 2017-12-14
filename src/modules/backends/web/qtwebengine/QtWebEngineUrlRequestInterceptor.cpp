@@ -34,10 +34,10 @@ namespace Otter
 QtWebEngineUrlRequestInterceptor::QtWebEngineUrlRequestInterceptor(QObject *parent) : QWebEngineUrlRequestInterceptor(parent),
 	m_areImagesEnabled(SettingsManager::getOption(SettingsManager::Permissions_EnableImagesOption).toString() != QLatin1String("disabled"))
 {
-	QTimer::singleShot(1800000, this, SLOT(clearContentBlockingInformation()));
+	QTimer::singleShot(1800000, this, &QtWebEngineUrlRequestInterceptor::clearContentBlockingInformation);
 
-	connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int)));
-	connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant,QUrl)), this, SLOT(handleOptionChanged(int)));
+	connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &QtWebEngineUrlRequestInterceptor::handleOptionChanged);
+	connect(SettingsManager::getInstance(), &SettingsManager::hostOptionChanged, this, &QtWebEngineUrlRequestInterceptor::handleOptionChanged);
 }
 
 void QtWebEngineUrlRequestInterceptor::clearContentBlockingInformation()
@@ -45,7 +45,7 @@ void QtWebEngineUrlRequestInterceptor::clearContentBlockingInformation()
 	m_blockedElements.clear();
 	m_contentBlockingProfiles.clear();
 
-	QTimer::singleShot(1800000, this, SLOT(clearContentBlockingInformation()));
+	QTimer::singleShot(1800000, this, &QtWebEngineUrlRequestInterceptor::clearContentBlockingInformation);
 }
 
 void QtWebEngineUrlRequestInterceptor::handleOptionChanged(int identifier)

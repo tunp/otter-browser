@@ -32,8 +32,7 @@
 namespace Otter
 {
 
-WindowsContentsWidget::WindowsContentsWidget(const QVariantMap &parameters, Window *window) : ContentsWidget(parameters, window),
-	m_isLoading(true),
+WindowsContentsWidget::WindowsContentsWidget(const QVariantMap &parameters, Window *window, QWidget *parent) : ContentsWidget(parameters, window, parent),
 	m_ui(new Ui::WindowsContentsWidget)
 {
 	m_ui->setupUi(this);
@@ -43,8 +42,8 @@ WindowsContentsWidget::WindowsContentsWidget(const QVariantMap &parameters, Wind
 	m_ui->windowsViewWidget->expandAll();
 	m_ui->windowsViewWidget->viewport()->setMouseTracking(true);
 
-	connect(m_ui->windowsViewWidget, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(showContextMenu(QPoint)));
-	connect(m_ui->windowsViewWidget, SIGNAL(clicked(QModelIndex)), this, SLOT(activateWindow(QModelIndex)));
+	connect(m_ui->windowsViewWidget, &ItemViewWidget::customContextMenuRequested, this, &WindowsContentsWidget::showContextMenu);
+	connect(m_ui->windowsViewWidget, &ItemViewWidget::clicked, this, &WindowsContentsWidget::activateWindow);
 }
 
 WindowsContentsWidget::~WindowsContentsWidget()
@@ -183,11 +182,6 @@ QUrl WindowsContentsWidget::getUrl() const
 QIcon WindowsContentsWidget::getIcon() const
 {
 	return ThemesManager::createIcon(QLatin1String("tab"), false);
-}
-
-WebWidget::LoadingState WindowsContentsWidget::getLoadingState() const
-{
-	return WebWidget::FinishedLoadingState;
 }
 
 }

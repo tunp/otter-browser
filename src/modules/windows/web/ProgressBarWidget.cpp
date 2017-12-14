@@ -19,6 +19,7 @@
 
 #include "ProgressBarWidget.h"
 #include "WebContentsWidget.h"
+#include "../../../ui/MainWindow.h"
 #include "../../../ui/ToolBarWidget.h"
 #include "../../../ui/WebWidget.h"
 #include "../../../ui/Window.h"
@@ -52,7 +53,14 @@ ProgressBarWidget::ProgressBarWidget(Window *window, WebWidget *parent) : QFrame
 	updateLoadingState(window->getLoadingState());
 	setAutoFillBackground(true);
 
-	connect(window, SIGNAL(loadingStateChanged(WebWidget::LoadingState)), this, SLOT(updateLoadingState(WebWidget::LoadingState)));
+	const MainWindow *mainWindow(MainWindow::findMainWindow(this));
+
+	if (mainWindow)
+	{
+		connect(mainWindow, &MainWindow::arbitraryActionsStateChanged, this, &ProgressBarWidget::handleActionsStateChanged);
+	}
+
+	connect(window, &Window::loadingStateChanged, this, &ProgressBarWidget::updateLoadingState);
 }
 
 void ProgressBarWidget::timerEvent(QTimerEvent *event)
@@ -63,27 +71,36 @@ void ProgressBarWidget::timerEvent(QTimerEvent *event)
 
 		m_geometryUpdateTimer = 0;
 
-		if (!m_window || !m_webWidget)
-		{
-			return;
-		}
+		handleActionsStateChanged({ActionsManager::ShowToolBarAction});
+	}
+}
 
-		const ToolBarsManager::ToolBarVisibility visibility(ToolBarsManager::getToolBarDefinition(ToolBarsManager::ProgressBar).normalVisibility);
+void ProgressBarWidget::handleActionsStateChanged(const QVector<int> &identifiers)
+{
+	if (!m_window || !m_webWidget)
+	{
+		return;
+	}
 
-		if (visibility == ToolBarsManager::AlwaysVisibleToolBar || (visibility == ToolBarsManager::AutoVisibilityToolBar && m_window->getLoadingState() == WebWidget::OngoingLoadingState))
+	if (identifiers.contains(ActionsManager::ShowToolBarAction))
+	{
+		const MainWindow *mainWindow(MainWindow::findMainWindow(this));
+
+		if (m_window->getLoadingState() == WebWidget::OngoingLoadingState && mainWindow && mainWindow->getActionState(ActionsManager::ShowToolBarAction, {{QLatin1String("toolBar"), ToolBarsManager::ProgressBar}}).isChecked)
 		{
-			QRect geometry(m_webWidget->getProgressBarGeometry());
+			QRect geometry(m_webWidget->getGeometry(true));
 
 			if (!isVisible())
 			{
-				connect(m_webWidget, SIGNAL(progressBarGeometryChanged()), this, SLOT(scheduleGeometryUpdate()));
+				connect(m_webWidget, &WebWidget::geometryChanged, this, &ProgressBarWidget::scheduleGeometryUpdate);
 			}
 
 			if (!geometry.isValid())
 			{
-				geometry = QRect(QPoint(0, (m_webWidget->height() - 30)), QSize(m_webWidget->width(), 30));
+				geometry = m_webWidget->geometry();
 			}
 
+			geometry.setTop(geometry.bottom() - 30);
 			geometry.translate(m_webWidget->mapTo(m_window->getContentsWidget(), QPoint(0, 0)));
 
 			setGeometry(geometry);
@@ -92,7 +109,7 @@ void ProgressBarWidget::timerEvent(QTimerEvent *event)
 		}
 		else
 		{
-			disconnect(m_webWidget, SIGNAL(progressBarGeometryChanged()), this, SLOT(scheduleGeometryUpdate()));
+			disconnect(m_webWidget, &WebWidget::geometryChanged, this, &ProgressBarWidget::scheduleGeometryUpdate);
 
 			hide();
 		}
@@ -101,9 +118,9 @@ void ProgressBarWidget::timerEvent(QTimerEvent *event)
 
 void ProgressBarWidget::updateLoadingState(WebWidget::LoadingState state)
 {
-	const ToolBarsManager::ToolBarVisibility visibility(ToolBarsManager::getToolBarDefinition(ToolBarsManager::ProgressBar).normalVisibility);
+	const MainWindow *mainWindow(MainWindow::findMainWindow(this));
 
-	if (visibility == ToolBarsManager::AlwaysVisibleToolBar || (visibility == ToolBarsManager::AutoVisibilityToolBar && state == WebWidget::OngoingLoadingState))
+	if (state == WebWidget::OngoingLoadingState && mainWindow && mainWindow->getActionState(ActionsManager::ShowToolBarAction, {{QLatin1String("toolBar"), ToolBarsManager::ProgressBar}}).isChecked)
 	{
 		scheduleGeometryUpdate();
 	}
@@ -113,7 +130,7 @@ void ProgressBarWidget::updateLoadingState(WebWidget::LoadingState state)
 
 		if (m_window && m_webWidget)
 		{
-			disconnect(m_webWidget, SIGNAL(progressBarGeometryChanged()), this, SLOT(scheduleGeometryUpdate()));
+			disconnect(m_webWidget, &WebWidget::geometryChanged, this, &ProgressBarWidget::scheduleGeometryUpdate);
 		}
 	}
 }

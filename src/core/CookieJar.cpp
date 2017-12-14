@@ -77,7 +77,7 @@ CookieJar::CookieJar(bool isPrivate, QObject *parent) : QNetworkCookieJar(parent
 	handleOptionChanged(SettingsManager::Network_CookiesPolicyOption, SettingsManager::getOption(SettingsManager::Network_CookiesPolicyOption));
 	setAllCookies(allCookies);
 
-	connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int,QVariant)));
+	connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &CookieJar::handleOptionChanged);
 }
 
 void CookieJar::timerEvent(QTimerEvent *event)
@@ -204,7 +204,7 @@ QList<QNetworkCookie> CookieJar::cookiesForUrl(const QUrl &url) const
 {
 	if (m_generalCookiesPolicy == IgnoreCookies)
 	{
-		return QList<QNetworkCookie>();
+		return {};
 	}
 
 	return QNetworkCookieJar::cookiesForUrl(url);

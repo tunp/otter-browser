@@ -18,6 +18,9 @@
 **************************************************************************/
 
 #include "OpenBookmarkDialog.h"
+#include "../core/BookmarksManager.h"
+#include "../core/BookmarksModel.h"
+#include "../core/SessionsManager.h"
 
 #include "ui_OpenBookmarkDialog.h"
 
@@ -26,19 +29,20 @@
 namespace Otter
 {
 
-OpenBookmarkDialog::OpenBookmarkDialog(QWidget *parent) : Dialog(parent),
+OpenBookmarkDialog::OpenBookmarkDialog(ActionExecutor::Object executor, QWidget *parent) : Dialog(parent),
 	m_completer(nullptr),
+	m_executor(executor),
 	m_ui(new Ui::OpenBookmarkDialog)
 {
 	m_ui->setupUi(this);
 
-	m_completer = new QCompleter(new QStringListModel(BookmarksManager::getKeywords()), m_ui->lineEdit);
+	m_completer = new QCompleter(new QStringListModel(BookmarksManager::getKeywords()), m_ui->lineEditWidget);
 	m_completer->setCaseSensitivity(Qt::CaseSensitive);
 	m_completer->setCompletionMode(QCompleter::InlineCompletion);
 	m_completer->setFilterMode(Qt::MatchStartsWith);
 
-	connect(this, SIGNAL(accepted()), this, SLOT(openBookmark()));
-	connect(m_ui->lineEdit, SIGNAL(textEdited(QString)), this, SLOT(setCompletion(QString)));
+	connect(this, &OpenBookmarkDialog::accepted, this, &OpenBookmarkDialog::openBookmark);
+	connect(m_ui->lineEditWidget, &LineEditWidget::textEdited, this, &OpenBookmarkDialog::setCompletion);
 }
 
 OpenBookmarkDialog::~OpenBookmarkDialog()
@@ -58,7 +62,12 @@ void OpenBookmarkDialog::changeEvent(QEvent *event)
 
 void OpenBookmarkDialog::openBookmark()
 {
-	emit requestedOpenBookmark(BookmarksManager::getBookmark(m_ui->lineEdit->text()));
+	const BookmarksItem *bookmark(BookmarksManager::getBookmark(m_ui->lineEditWidget->text()));
+
+	if (bookmark && m_executor.isValid())
+	{
+		m_executor.triggerAction(ActionsManager::OpenBookmarkAction, {{QLatin1String("bookmark"), bookmark->getIdentifier()}, {QLatin1String("hints"), QVariant(SessionsManager::calculateOpenHints(SessionsManager::DefaultOpen))}});
+	}
 }
 
 void OpenBookmarkDialog::setCompletion(const QString &text)
@@ -67,7 +76,12 @@ void OpenBookmarkDialog::setCompletion(const QString &text)
 
 	if (m_completer->completionCount() == 1)
 	{
-		emit requestedOpenBookmark(BookmarksManager::getBookmark(m_completer->currentCompletion()));
+		const BookmarksItem *bookmark(BookmarksManager::getBookmark(m_completer->currentCompletion()));
+
+		if (bookmark && m_executor.isValid())
+		{
+			m_executor.triggerAction(ActionsManager::OpenBookmarkAction, {{QLatin1String("bookmark"), bookmark->getIdentifier()}, {QLatin1String("hints"), QVariant(SessionsManager::calculateOpenHints(SessionsManager::DefaultOpen))}});
+		}
 
 		close();
 	}

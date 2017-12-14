@@ -45,30 +45,24 @@ public:
 	{
 		IdentifierRole = Qt::UserRole,
 		OptionsRole,
-		ParametersRole
+		ParametersRole,
+		HasOptionsRole
 	};
 
-	explicit ToolBarDialog(const ToolBarsManager::ToolBarDefinition &definition = ToolBarsManager::ToolBarDefinition(), QWidget *parent = nullptr);
+	explicit ToolBarDialog(const ToolBarsManager::ToolBarDefinition &definition = {}, QWidget *parent = nullptr);
 	~ToolBarDialog();
 
 	ToolBarsManager::ToolBarDefinition getDefinition() const;
 	bool eventFilter(QObject *object, QEvent *event) override;
 
 protected:
-	struct OptionEntry
-	{
-		OptionWidget *widget = nullptr;
-		QString name;
-		QString label;
-	};
-
 	void changeEvent(QEvent *event) override;
 	void addEntry(const ToolBarsManager::ToolBarDefinition::Entry &entry, QStandardItem *parent = nullptr);
 	QStandardItem* createEntry(const QString &identifier, const QVariantMap &options = {}, const QVariantMap &parameters = {}) const;
 	ToolBarsManager::ToolBarDefinition::Entry getEntry(QStandardItem *item) const;
 
 protected slots:
-	void addEntry();
+	void addNewEntry();
 	void editEntry();
 	void addBookmark(QAction *action);
 	void restoreDefaults();

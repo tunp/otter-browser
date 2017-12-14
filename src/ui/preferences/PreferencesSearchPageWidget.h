@@ -35,6 +35,7 @@ namespace Ui
 }
 
 class Animation;
+class SearchEngineFetchJob;
 
 class SearchEngineTitleDelegate final : public ItemDelegate
 {
@@ -70,6 +71,9 @@ public:
 	static Animation* getUpdateAnimation();
 	static QStringList getKeywords(const QAbstractItemModel *model, int excludeRow = -1);
 
+public slots:
+	void save();
+
 protected:
 	void changeEvent(QEvent *event) override;
 	void addSearchEngine(const QString &path, const QString &identifier, bool isReadding);
@@ -85,7 +89,6 @@ protected slots:
 	void removeSearchEngine();
 	void handleSearchEngineUpdate(bool isSuccess);
 	void updateSearchEngineActions();
-	void save();
 
 private:
 	QStringList m_filesToRemove;

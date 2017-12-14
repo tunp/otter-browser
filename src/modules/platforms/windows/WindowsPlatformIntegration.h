@@ -85,7 +85,7 @@ enum RegistrationType
 
 class MainWindow;
 
-class WindowsPlatformIntegration : public PlatformIntegration
+class WindowsPlatformIntegration final : public PlatformIntegration
 {
 	Q_OBJECT
 
@@ -113,7 +113,7 @@ protected:
 	bool isBrowserRegistered() const;
 
 protected slots:
-	void removeWindow(MainWindow *window);
+	void removeWindow(MainWindow *mainWindow);
 	void updateTaskbarButtons();
 
 private:

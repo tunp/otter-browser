@@ -38,7 +38,7 @@ TabSwitcherWidget::TabSwitcherWidget(MainWindow *parent) : QWidget(parent),
 	m_model(new QStandardItemModel(this)),
 	m_tabsView(new ItemViewWidget(this)),
 	m_previewLabel(new QLabel(this)),
-	m_loadingAnimation(nullptr),
+	m_spinnerAnimation(nullptr),
 	m_reason(KeyboardReason),
 	m_isIgnoringMinimizedTabs(SettingsManager::getOption(SettingsManager::TabSwitcher_IgnoreMinimizedTabsOption).toBool())
 {
@@ -71,8 +71,8 @@ TabSwitcherWidget::TabSwitcherWidget(MainWindow *parent) : QWidget(parent),
 	m_previewLabel->setAlignment(Qt::AlignCenter);
 	m_previewLabel->setStyleSheet(QLatin1String("border:1px solid gray;"));
 
-	connect(m_tabsView, SIGNAL(clicked(QModelIndex)), this, SLOT(selectTab(QModelIndex)));
-	connect(m_tabsView->selectionModel(), SIGNAL(currentChanged(QModelIndex,QModelIndex)), this, SLOT(handleCurrentTabChanged(QModelIndex)));
+	connect(m_tabsView, &ItemViewWidget::clicked, this, &TabSwitcherWidget::handleIndexClicked);
+	connect(m_tabsView->selectionModel(), &QItemSelectionModel::currentChanged, this, &TabSwitcherWidget::handleCurrentTabChanged);
 }
 
 void TabSwitcherWidget::showEvent(QShowEvent *event)
@@ -106,16 +106,16 @@ void TabSwitcherWidget::showEvent(QShowEvent *event)
 
 	QWidget::showEvent(event);
 
-	connect(m_mainWindow, SIGNAL(windowAdded(quint64)), this, SLOT(handleWindowAdded(quint64)));
-	connect(m_mainWindow, SIGNAL(windowRemoved(quint64)), this, SLOT(handleWindowRemoved(quint64)));
+	connect(m_mainWindow, &MainWindow::windowAdded, this, &TabSwitcherWidget::handleWindowAdded);
+	connect(m_mainWindow, &MainWindow::windowRemoved, this, &TabSwitcherWidget::handleWindowRemoved);
 }
 
 void TabSwitcherWidget::hideEvent(QHideEvent *event)
 {
 	QWidget::hideEvent(event);
 
-	disconnect(m_mainWindow, SIGNAL(windowAdded(quint64)), this, SLOT(handleWindowAdded(quint64)));
-	disconnect(m_mainWindow, SIGNAL(windowRemoved(quint64)), this, SLOT(handleWindowRemoved(quint64)));
+	disconnect(m_mainWindow, &MainWindow::windowAdded, this, &TabSwitcherWidget::handleWindowAdded);
+	disconnect(m_mainWindow, &MainWindow::windowRemoved, this, &TabSwitcherWidget::handleWindowRemoved);
 
 	m_model->clear();
 }
@@ -158,12 +158,43 @@ void TabSwitcherWidget::keyReleaseEvent(QKeyEvent *event)
 	}
 }
 
+void TabSwitcherWidget::show(SwitcherReason reason)
+{
+	m_reason = reason;
+
+	QWidget::show();
+}
+
+void TabSwitcherWidget::accept()
+{
+	m_mainWindow->setActiveWindowByIdentifier(m_tabsView->currentIndex().data(IdentifierRole).toULongLong());
+
+	hide();
+}
+
+void TabSwitcherWidget::selectTab(bool next)
+{
+	const int currentRow(m_tabsView->currentIndex().row());
+
+	m_tabsView->setCurrentIndex(m_model->index((next ? ((currentRow == (m_model->rowCount() - 1)) ? 0 : (currentRow + 1)) : ((currentRow == 0) ? (m_model->rowCount() - 1) : (currentRow - 1))), 0));
+}
+
+void TabSwitcherWidget::handleIndexClicked(const QModelIndex &index)
+{
+	if (index.isValid())
+	{
+		m_mainWindow->setActiveWindowByIdentifier(index.data(IdentifierRole).toULongLong());
+
+		hide();
+	}
+}
+
 void TabSwitcherWidget::handleCurrentTabChanged(const QModelIndex &index)
 {
 	const Window *window(m_mainWindow->getWindowByIdentifier(index.data(IdentifierRole).toULongLong()));
 
 	m_previewLabel->setMovie(nullptr);
-	m_previewLabel->setPixmap(QPixmap());
+	m_previewLabel->setPixmap({});
 
 	if (!window)
 	{
@@ -172,25 +203,34 @@ void TabSwitcherWidget::handleCurrentTabChanged(const QModelIndex &index)
 
 	if (window->getLoadingState() == WebWidget::DeferredLoadingState || window->getLoadingState() == WebWidget::OngoingLoadingState)
 	{
-		if (!m_loadingAnimation)
+		if (!m_spinnerAnimation)
 		{
-			m_loadingAnimation = new Animation(ThemesManager::getAnimationPath(QLatin1String("loading")), m_previewLabel);
+			const QString path(ThemesManager::getAnimationPath(QLatin1String("spinner")));
 
-			connect(m_loadingAnimation, &Animation::frameChanged, [&]()
+			if (path.isEmpty())
 			{
-				m_previewLabel->setPixmap(m_loadingAnimation->getCurrentPixmap());
+				m_spinnerAnimation = new SpinnerAnimation(this);
+			}
+			else
+			{
+				m_spinnerAnimation = new GenericAnimation(path, this);
+			}
+
+			connect(m_spinnerAnimation, &Animation::frameChanged, m_previewLabel, [&]()
+			{
+				m_previewLabel->setPixmap(m_spinnerAnimation->getCurrentPixmap());
 			});
 		}
 
-		m_loadingAnimation->start();
+		m_spinnerAnimation->start();
 
-		m_previewLabel->setPixmap(m_loadingAnimation->getCurrentPixmap());
+		m_previewLabel->setPixmap(m_spinnerAnimation->getCurrentPixmap());
 	}
 	else
 	{
-		if (m_loadingAnimation && m_loadingAnimation->isRunning())
+		if (m_spinnerAnimation && m_spinnerAnimation->isRunning())
 		{
-			m_loadingAnimation->stop();
+			m_spinnerAnimation->stop();
 		}
 
 		m_previewLabel->setPixmap((window->getLoadingState() == WebWidget::CrashedLoadingState) ? ThemesManager::createIcon(QLatin1String("tab-crashed")).pixmap(32, 32) : window->createThumbnail());
@@ -215,37 +255,6 @@ void TabSwitcherWidget::handleWindowRemoved(quint64 identifier)
 	{
 		m_model->removeRow(row);
 	}
-}
-
-void TabSwitcherWidget::show(SwitcherReason reason)
-{
-	m_reason = reason;
-
-	QWidget::show();
-}
-
-void TabSwitcherWidget::accept()
-{
-	m_mainWindow->setActiveWindowByIdentifier(m_tabsView->currentIndex().data(IdentifierRole).toULongLong());
-
-	hide();
-}
-
-void TabSwitcherWidget::selectTab(const QModelIndex &index)
-{
-	if (index.isValid())
-	{
-		m_mainWindow->setActiveWindowByIdentifier(index.data(IdentifierRole).toULongLong());
-
-		hide();
-	}
-}
-
-void TabSwitcherWidget::selectTab(bool next)
-{
-	const int currentRow(m_tabsView->currentIndex().row());
-
-	m_tabsView->setCurrentIndex(m_model->index((next ? ((currentRow == (m_model->rowCount() - 1)) ? 0 : (currentRow + 1)) : ((currentRow == 0) ? (m_model->rowCount() - 1) : (currentRow - 1))), 0));
 }
 
 void TabSwitcherWidget::setTitle(const QString &title)
@@ -315,9 +324,9 @@ QStandardItem* TabSwitcherWidget::createRow(Window *window, const QVariant &inde
 	item->setData(index, OrderRole);
 	item->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);
 
-	connect(window, SIGNAL(titleChanged(QString)), this, SLOT(setTitle(QString)));
-	connect(window, SIGNAL(iconChanged(QIcon)), this, SLOT(setIcon(QIcon)));
-	connect(window, SIGNAL(loadingStateChanged(WebWidget::LoadingState)), this, SLOT(setLoadingState(WebWidget::LoadingState)));
+	connect(window, &Window::titleChanged, this, &TabSwitcherWidget::setTitle);
+	connect(window, &Window::iconChanged, this, &TabSwitcherWidget::setIcon);
+	connect(window, &Window::loadingStateChanged, this, &TabSwitcherWidget::setLoadingState);
 
 	return item;
 }

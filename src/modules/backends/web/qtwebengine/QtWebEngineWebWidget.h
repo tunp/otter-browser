@@ -20,6 +20,7 @@
 #ifndef OTTER_QTWEBENGINEWEBWIDGET_H
 #define OTTER_QTWEBENGINEWEBWIDGET_H
 
+#include "../../../../core/Utils.h"
 #include "../../../../ui/WebWidget.h"
 
 #include <QtNetwork/QNetworkReply>
@@ -30,6 +31,9 @@ namespace Otter
 {
 
 class ContentsDialog;
+#if QT_VERSION < 0x050700
+class IconFetchJob;
+#endif
 class QtWebEnginePage;
 class SourceViewerWebWidget;
 
@@ -38,6 +42,29 @@ class QtWebEngineWebWidget final : public WebWidget
 	Q_OBJECT
 
 public:
+	struct QtWebEngineHitTestResult final : public HitTestResult
+	{
+		explicit QtWebEngineHitTestResult(const QVariant &result)
+		{
+			const QVariantMap map(result.toMap());
+			const QVariantMap geometryMap(map.value(QLatin1String("geometry")).toMap());
+
+			title = map.value(QLatin1String("title")).toString();
+			tagName = map.value(QLatin1String("tagName")).toString();
+			alternateText = map.value(QLatin1String("alternateText")).toString();
+			longDescription = map.value(QLatin1String("longDescription")).toString();
+			formUrl = QUrl(map.value(QLatin1String("formUrl")).toString());
+			frameUrl = QUrl(map.value(QLatin1String("frameUrl")).toString());
+			imageUrl = QUrl(map.value(QLatin1String("imageUrl")).toString());
+			linkUrl = QUrl(map.value(QLatin1String("linkUrl")).toString());
+			mediaUrl = QUrl(map.value(QLatin1String("mediaUrl")).toString());
+			geometry = QRect(geometryMap.value(QLatin1String("x")).toInt(), geometryMap.value(QLatin1String("y")).toInt(), geometryMap.value(QLatin1String("w")).toInt(), geometryMap.value(QLatin1String("h")).toInt());
+			position = map.value(QLatin1String("position")).toPoint();
+			playbackRate = map.value(QLatin1String("playbackRate")).toReal();
+			flags = static_cast<HitTestFlags>(map.value(QLatin1String("flags")).toInt());
+		}
+	};
+
 	void search(const QString &query, const QString &searchEngine) override;
 	void print(QPrinter *printer) override;
 	WebWidget* clone(bool cloneHistory = true, bool isPrivate = false, const QStringList &excludedOptions = {}) const override;
@@ -47,12 +74,9 @@ public:
 	QVariant getPageInformation(PageInformation key) const override;
 	QUrl getUrl() const override;
 	QIcon getIcon() const override;
-	QPixmap createThumbnail() override;
 	QPoint getScrollPosition() const override;
-	QVector<SpellCheckManager::DictionaryInformation> getDictionaries() const override;
 	WindowHistoryInformation getHistory() const override;
 	HitTestResult getHitTestResult(const QPoint &position) override;
-	QHash<QByteArray, QByteArray> getHeaders() const override;
 	LoadingState getLoadingState() const override;
 	int getZoom() const override;
 	int findInPage(const QString &text, FindFlags flags = NoFlagsFind) override;
@@ -89,6 +113,7 @@ protected:
 	void setHistory(QDataStream &stream);
 	void setOptions(const QHash<int, QVariant> &options, const QStringList &excludedOptions = {}) override;
 	QWebEnginePage* getPage() const;
+	QString parsePosition(const QString &script, const QPoint &position) const;
 	QDateTime getLastUrlClickTime() const;
 	bool canGoBack() const override;
 	bool canGoForward() const override;
@@ -103,11 +128,7 @@ protected:
 protected slots:
 	void pageLoadStarted();
 	void pageLoadFinished();
-	void linkHovered(const QString &link);
-#if QT_VERSION < 0x050700
-	void iconReplyFinished();
-#endif
-	void viewSourceReplyFinished(QNetworkReply::NetworkError error = QNetworkReply::NoError);
+	void handleViewSourceReplyFinished();
 #if QT_VERSION < 0x050700
 	void handleIconChange(const QUrl &url);
 #endif
@@ -128,7 +149,7 @@ private:
 	QWebEngineView *m_webView;
 	QtWebEnginePage *m_page;
 #if QT_VERSION < 0x050700
-	QNetworkReply *m_iconReply;
+	IconFetchJob *m_iconFetchJob;
 #endif
 	QTime *m_loadingTime;
 #if QT_VERSION < 0x050700
@@ -141,6 +162,7 @@ private:
 #endif
 	QHash<QNetworkReply*, QPointer<SourceViewerWebWidget> > m_viewSourceReplies;
 	LoadingState m_loadingState;
+	TrileanValue m_canGoForwardValue;
 	int m_documentLoadingProgress;
 	int m_focusProxyTimer;
 #if QT_VERSION < 0x050700

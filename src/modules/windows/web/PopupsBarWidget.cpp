@@ -1,6 +1,7 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
 * Copyright (C) 2015 Jan Bajer aka bajasoft <jbajer@gmail.com>
+* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -19,6 +20,7 @@
 
 #include "PopupsBarWidget.h"
 #include "../../../core/ThemesManager.h"
+#include "../../../ui/MainWindow.h"
 
 #include "ui_PopupsBarWidget.h"
 
@@ -27,10 +29,11 @@
 namespace Otter
 {
 
-PopupsBarWidget::PopupsBarWidget(const QUrl &parentUrl, QWidget *parent) : QWidget(parent),
+PopupsBarWidget::PopupsBarWidget(const QUrl &parentUrl, bool isPrivate, QWidget *parent) : QWidget(parent),
 	m_popupsMenu(nullptr),
 	m_popupsGroup(new QActionGroup(this)),
 	m_parentUrl(parentUrl),
+	m_isPrivate(isPrivate),
 	m_ui(new Ui::PopupsBarWidget)
 {
 	m_ui->setupUi(this);
@@ -71,10 +74,10 @@ PopupsBarWidget::PopupsBarWidget(const QUrl &parentUrl, QWidget *parent) : QWidg
 
 	handleOptionChanged(SettingsManager::Permissions_ScriptsCanOpenWindowsOption);
 
-	connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int)));
-	connect(m_popupsGroup, SIGNAL(triggered(QAction*)), this, SLOT(setPolicy(QAction*)));
-	connect(m_popupsMenu, SIGNAL(triggered(QAction*)), this, SLOT(openUrl(QAction*)));
-	connect(m_ui->closeButton, SIGNAL(clicked()), this, SIGNAL(requestedClose()));
+	connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &PopupsBarWidget::handleOptionChanged);
+	connect(m_popupsGroup, &QActionGroup::triggered, this, &PopupsBarWidget::setPolicy);
+	connect(m_popupsMenu, &QMenu::triggered, this, &PopupsBarWidget::openUrl);
+	connect(m_ui->closeButton, &QToolButton::clicked, this, &PopupsBarWidget::requestedClose);
 }
 
 PopupsBarWidget::~PopupsBarWidget()
@@ -97,15 +100,19 @@ void PopupsBarWidget::addPopup(const QUrl &url)
 	QAction *action(m_popupsMenu->addAction(QString("%1").arg(fontMetrics().elidedText(url.url(), Qt::ElideMiddle, 256))));
 	action->setData(url.url());
 
-	m_ui->messageLabel->setText(tr("%1 wants to open %n pop-up window(s).", "", m_popupsMenu->actions().count() - 2).arg(m_parentUrl.host().isEmpty() ? QLatin1String("localhost") : m_parentUrl.host()));
+	m_ui->messageLabel->setText(tr("%1 wants to open %n pop-up window(s).", "", (m_popupsMenu->actions().count() - 2)).arg(m_parentUrl.host().isEmpty() ? QLatin1String("localhost") : m_parentUrl.host()));
 }
 
 void PopupsBarWidget::openUrl(QAction *action)
 {
-	if (!action)
+	MainWindow *mainWindow(MainWindow::findMainWindow(this));
+
+	if (!action || !mainWindow)
 	{
 		return;
 	}
+
+	const SessionsManager::OpenHints hints(m_isPrivate ? (SessionsManager::NewTabOpen | SessionsManager::PrivateOpen) : SessionsManager::NewTabOpen);
 
 	if (action->data().isNull())
 	{
@@ -115,14 +122,14 @@ void PopupsBarWidget::openUrl(QAction *action)
 
 			if (!url.isEmpty())
 			{
-				emit requestedNewWindow(url, SessionsManager::NewTabOpen);
+				mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}, {QLatin1String("hints"), QVariant(hints)}});
 			}
 		}
 
 		return;
 	}
 
-	emit requestedNewWindow(action->data().toUrl(), SessionsManager::NewTabOpen);
+	mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), action->data().toUrl()}, {QLatin1String("hints"), QVariant(hints)}});
 }
 
 void PopupsBarWidget::handleOptionChanged(int identifier)

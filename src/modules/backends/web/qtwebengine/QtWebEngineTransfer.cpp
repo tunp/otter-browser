@@ -32,10 +32,10 @@ QtWebEngineTransfer::QtWebEngineTransfer(QWebEngineDownloadItem *item, TransferO
 	m_item->accept();
 	m_item->setParent(this);
 
-	markStarted();
+	markAsStarted();
 
-	connect(m_item, SIGNAL(finished()), this, SLOT(markFinished()));
-	connect(m_item, SIGNAL(downloadProgress(qint64,qint64)), this, SLOT(downloadProgress(qint64,qint64)));
+	connect(m_item, &QWebEngineDownloadItem::finished, this, &QtWebEngineTransfer::markAsFinished);
+	connect(m_item, &QWebEngineDownloadItem::downloadProgress, this, &QtWebEngineTransfer::handleDownloadProgress);
 }
 
 void QtWebEngineTransfer::cancel()

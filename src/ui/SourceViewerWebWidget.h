@@ -43,7 +43,6 @@ public:
 	QString getSelectedText() const override;
 	QUrl getUrl() const override;
 	QIcon getIcon() const override;
-	QPixmap createThumbnail() override;
 	QPoint getScrollPosition() const override;
 	ActionsManager::ActionDefinition::State getActionState(int identifier, const QVariantMap &parameters = {}) const override;
 	WindowHistoryInformation getHistory() const override;
@@ -69,8 +68,8 @@ protected:
 	void setOptions(const QHash<int, QVariant> &options, const QStringList &excludedOptions = {}) override;
 
 protected slots:
-	void viewSourceReplyFinished();
-	void handleZoomChange();
+	void handleViewSourceReplyFinished();
+	void handleZoomChanged();
 	void notifyEditingActionsStateChanged();
 	void showContextMenu(const QPoint &position = QPoint(-1, -1)) override;
 	void setShowLineNumbers(bool show);

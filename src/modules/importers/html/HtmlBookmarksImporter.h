@@ -38,9 +38,8 @@ class HtmlBookmarksImporter final : public BookmarksImporter
 
 public:
 	explicit HtmlBookmarksImporter(QObject *parent = nullptr);
-	~HtmlBookmarksImporter();
 
-	QWidget* getOptionsWidget() override;
+	QWidget* createOptionsWidget(QWidget *parent) override;
 	QString getTitle() const override;
 	QString getDescription() const override;
 	QString getVersion() const override;
@@ -60,6 +59,8 @@ protected:
 
 private:
 	BookmarksImporterWidget *m_optionsWidget;
+	int m_currentAmount;
+	int m_totalAmount;
 };
 
 }

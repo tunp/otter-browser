@@ -25,8 +25,10 @@
 namespace Otter
 {
 
-class MacPlatformStyle : public Style
+class MacPlatformStyle final : public Style
 {
+	Q_OBJECT
+
 public:
 	explicit MacPlatformStyle(const QString &name);
 

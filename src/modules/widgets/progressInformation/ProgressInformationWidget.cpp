@@ -94,7 +94,7 @@ ProgressInformationWidget::ProgressInformationWidget(Window *window, const ToolB
 
 	if (toolBar && toolBar->getIdentifier() != ToolBarsManager::AddressBar)
 	{
-		connect(toolBar, SIGNAL(windowChanged(Window*)), this, SLOT(setWindow(Window*)));
+		connect(toolBar, &ToolBarWidget::windowChanged, this, &ProgressInformationWidget::setWindow);
 	}
 }
 
@@ -121,23 +121,23 @@ void ProgressInformationWidget::updateStatus(WebWidget::PageInformation key, con
 
 			break;
 		case TotalSizeType:
-			if (key == WebWidget::BytesReceivedInformation)
+			if (key == WebWidget::TotalBytesReceivedInformation)
 			{
-				m_label->setText(tr("Total: %1").arg(Utils::formatUnit(value.toULongLong(), false, 1)));
+				m_label->setText(tr("Total: %1").arg(Utils::formatUnit(value.toLongLong(), false, 1)));
 			}
 
 			break;
 		case ElementsType:
 			if (key == WebWidget::RequestsFinishedInformation)
 			{
-				m_label->setText(tr("Elements: %1/%2").arg(value.toInt()).arg((m_window && m_window->getContentsWidget()->getWebWidget()) ? m_window->getContentsWidget()->getWebWidget()->getPageInformation(WebWidget::RequestsStartedInformation).toInt() : 0));
+				m_label->setText(tr("Elements: %1/%2").arg(value.toInt()).arg((m_window && !m_window->isAboutToClose() && m_window->getWebWidget()) ? m_window->getWebWidget()->getPageInformation(WebWidget::RequestsStartedInformation).toInt() : 0));
 			}
 
 			break;
 		case SpeedType:
 			if (key == WebWidget::LoadingSpeedInformation)
 			{
-				m_label->setText(tr("Speed: %1").arg(Utils::formatUnit(value.toULongLong(), true, 1)));
+				m_label->setText(tr("Speed: %1").arg(Utils::formatUnit(value.toLongLong(), true, 1)));
 			}
 
 			break;
@@ -178,7 +178,7 @@ void ProgressInformationWidget::setWindow(Window *window)
 
 			break;
 		case TotalSizeType:
-			type = WebWidget::BytesReceivedInformation;
+			type = WebWidget::TotalBytesReceivedInformation;
 
 			break;
 		case ElementsType:
@@ -203,18 +203,22 @@ void ProgressInformationWidget::setWindow(Window *window)
 
 	if (m_window && !m_window->isAboutToClose())
 	{
-		disconnect(m_window, SIGNAL(pageInformationChanged(WebWidget::PageInformation,QVariant)), this, SLOT(updateStatus(WebWidget::PageInformation,QVariant)));
+		disconnect(m_window, &Window::pageInformationChanged, this, &ProgressInformationWidget::updateStatus);
 
 		updateStatus(type);
 	}
 
 	m_window = window;
 
-	if (window && window->getContentsWidget()->getWebWidget())
+	if (window && window->getWebWidget())
 	{
-		updateStatus(type, window->getContentsWidget()->getWebWidget()->getPageInformation(type));
+		updateStatus(type, window->getWebWidget()->getPageInformation(type));
 
-		connect(m_window, SIGNAL(pageInformationChanged(WebWidget::PageInformation,QVariant)), this, SLOT(updateStatus(WebWidget::PageInformation,QVariant)));
+		connect(m_window, &Window::pageInformationChanged, this, &ProgressInformationWidget::updateStatus);
+	}
+	else
+	{
+		updateStatus(type, {});
 	}
 }
 

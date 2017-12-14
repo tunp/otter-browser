@@ -40,21 +40,21 @@
 namespace Otter
 {
 
-AddonsContentsWidget::AddonsContentsWidget(const QVariantMap &parameters, Window *window) : ContentsWidget(parameters, window),
+AddonsContentsWidget::AddonsContentsWidget(const QVariantMap &parameters, Window *window, QWidget *parent) : ContentsWidget(parameters, window, parent),
 	m_model(new QStandardItemModel(this)),
 	m_isLoading(true),
 	m_ui(new Ui::AddonsContentsWidget)
 {
 	m_ui->setupUi(this);
+	m_ui->filterLineEditWidget->setClearOnEscape(true);
 	m_ui->addonsViewWidget->setViewMode(ItemViewWidget::TreeViewMode);
 	m_ui->addonsViewWidget->installEventFilter(this);
-	m_ui->filterLineEdit->installEventFilter(this);
 
-	QTimer::singleShot(100, this, SLOT(populateAddons()));
+	QTimer::singleShot(100, this, &AddonsContentsWidget::populateAddons);
 
-	connect(m_ui->filterLineEdit, SIGNAL(textChanged(QString)), m_ui->addonsViewWidget, SLOT(setFilterString(QString)));
-	connect(m_ui->addonsViewWidget, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(showContextMenu(QPoint)));
-	connect(m_ui->addonsViewWidget, SIGNAL(clicked(QModelIndex)), this, SLOT(save()));
+	connect(m_ui->filterLineEditWidget, &LineEditWidget::textChanged, m_ui->addonsViewWidget, &ItemViewWidget::setFilterString);
+	connect(m_ui->addonsViewWidget, &ItemViewWidget::customContextMenuRequested, this, &AddonsContentsWidget::showContextMenu);
+	connect(m_ui->addonsViewWidget, &ItemViewWidget::clicked, this, &AddonsContentsWidget::save);
 }
 
 AddonsContentsWidget::~AddonsContentsWidget()
@@ -72,14 +72,43 @@ void AddonsContentsWidget::changeEvent(QEvent *event)
 
 		for (int i = 0; i < m_model->rowCount(); ++i)
 		{
-			QStandardItem *item(m_model->item(i));
+			const QModelIndex index(m_model->index(i, 0));
 
-			if (item && static_cast<Addon::AddonType>(item->data(TypeRole).toInt()) == Addon::UserScriptType)
+			if (static_cast<Addon::AddonType>(index.data(TypeRole).toInt()) == Addon::UserScriptType)
 			{
-				item->setText(tr("User Scripts"));
+				m_model->setData(index, tr("User Scripts"), Qt::DisplayRole);
 			}
 		}
 	}
+}
+
+QVector<Addon*> AddonsContentsWidget::getSelectedAddons() const
+{
+	const QModelIndexList indexes(m_ui->addonsViewWidget->selectionModel()->selectedIndexes());
+	QVector<Addon*> addons;
+	addons.reserve(indexes.count());
+
+	for (int i = 0; i < indexes.count(); ++i)
+	{
+		if (indexes.at(i).isValid() && indexes.at(i).parent() != m_model->invisibleRootItem()->index())
+		{
+			Addon::AddonType type(static_cast<Addon::AddonType>(indexes.at(i).parent().data(TypeRole).toInt()));
+
+			if (type == Addon::UserScriptType)
+			{
+				UserScript *script(AddonsManager::getUserScript(indexes.at(i).data(NameRole).toString()));
+
+				if (script)
+				{
+					addons.append(script);
+				}
+			}
+		}
+	}
+
+	addons.squeeze();
+
+	return addons;
 }
 
 void AddonsContentsWidget::populateAddons()
@@ -106,18 +135,19 @@ void AddonsContentsWidget::populateAddons()
 
 	emit loadingStateChanged(WebWidget::FinishedLoadingState);
 
+	connect(AddonsManager::getInstance(), &AddonsManager::userScriptModified, this, &AddonsContentsWidget::updateAddon);
 	connect(m_ui->addonsViewWidget->selectionModel(), &QItemSelectionModel::selectionChanged, [&](const QItemSelection &selected, const QItemSelection &deselected)
 	{
 		Q_UNUSED(selected)
 		Q_UNUSED(deselected)
 
-		emit actionsStateChanged(QVector<int>({ActionsManager::DeleteAction}));
+		emit arbitraryActionsStateChanged({ActionsManager::DeleteAction});
 	});
 }
 
 void AddonsContentsWidget::addAddon()
 {
-	const QStringList sourcePaths(QFileDialog::getOpenFileNames(this, tr("Select Files"), QStandardPaths::standardLocations(QStandardPaths::HomeLocation).value(0), Utils::formatFileTypes(QStringList(tr("User Script files (*.js)")))));
+	const QStringList sourcePaths(QFileDialog::getOpenFileNames(this, tr("Select Files"), QStandardPaths::standardLocations(QStandardPaths::HomeLocation).value(0), Utils::formatFileTypes({tr("User Script files (*.js)")})));
 
 	if (sourcePaths.isEmpty())
 	{
@@ -234,7 +264,7 @@ void AddonsContentsWidget::addAddon(Addon *addon)
 		return;
 	}
 
-	QStandardItem *item(new QStandardItem(addon->getIcon(), (addon->getVersion().isEmpty() ? addon->getTitle() : QStringLiteral("%1 %2").arg(addon->getTitle()).arg(addon->getVersion()))));
+	QStandardItem *item(new QStandardItem(getAddonIcon(addon), (addon->getVersion().isEmpty() ? addon->getTitle() : QStringLiteral("%1 %2").arg(addon->getTitle()).arg(addon->getVersion()))));
 	item->setFlags(item->flags() | Qt::ItemNeverHasChildren);
 	item->setCheckable(true);
 	item->setCheckState(addon->isEnabled() ? Qt::Checked : Qt::Unchecked);
@@ -253,24 +283,47 @@ void AddonsContentsWidget::addAddon(Addon *addon)
 	typeItem->appendRow(item);
 }
 
+void AddonsContentsWidget::updateAddon(const QString &name)
+{
+	const QStandardItem *userScriptsItem(m_model->item(m_types.value(Addon::UserScriptType)));
+
+	if (!userScriptsItem)
+	{
+		return;
+	}
+
+	for (int i = 0; i < userScriptsItem->rowCount(); ++i)
+	{
+		const QModelIndex index(userScriptsItem->child(i)->index());
+
+		if (index.isValid() && index.data(NameRole).toString() == name)
+		{
+			UserScript *script(AddonsManager::getUserScript(name));
+
+			if (script)
+			{
+				m_ui->addonsViewWidget->setData(index, getAddonIcon(script), Qt::DecorationRole);
+				m_ui->addonsViewWidget->setData(index, (script->getVersion().isEmpty() ? script->getTitle() : QStringLiteral("%1 %2").arg(script->getTitle()).arg(script->getVersion())), Qt::DisplayRole);
+			}
+
+			break;
+		}
+	}
+}
+
 void AddonsContentsWidget::openAddon()
 {
-	const QModelIndexList indexes(m_ui->addonsViewWidget->selectionModel()->selectedIndexes());
+	const QVector<Addon*> addons(getSelectedAddons());
 
-	for (int i = 0; i < indexes.count(); ++i)
+	for (int i = 0; i < addons.count(); ++i)
 	{
-		if (indexes.at(i).isValid() && indexes.at(i).parent() != m_model->invisibleRootItem()->index())
+		if (addons.at(i)->getType() == Addon::UserScriptType)
 		{
-			Addon::AddonType type(static_cast<Addon::AddonType>(indexes.at(i).parent().data(TypeRole).toInt()));
+			const UserScript *script(static_cast<UserScript*>(addons.at(i)));
 
-			if (type == Addon::UserScriptType)
+			if (script)
 			{
-				const UserScript *script(AddonsManager::getUserScript(indexes.at(i).data(NameRole).toString()));
-
-				if (script)
-				{
-					Utils::runApplication(QString(), QUrl(script->getPath()));
-				}
+				Utils::runApplication({}, QUrl(script->getPath()));
 			}
 		}
 	}
@@ -294,7 +347,7 @@ void AddonsContentsWidget::reloadAddon()
 				{
 					script->reload();
 
-					m_ui->addonsViewWidget->setData(indexes.at(i), script->getIcon(), Qt::DecorationRole);
+					m_ui->addonsViewWidget->setData(indexes.at(i), getAddonIcon(script), Qt::DecorationRole);
 					m_ui->addonsViewWidget->setData(indexes.at(i), (script->getVersion().isEmpty() ? script->getTitle() : QStringLiteral("%1 %2").arg(script->getTitle()).arg(script->getVersion())), Qt::DisplayRole);
 				}
 			}
@@ -304,63 +357,93 @@ void AddonsContentsWidget::reloadAddon()
 
 void AddonsContentsWidget::removeAddons()
 {
-	const QModelIndexList indexes(m_ui->addonsViewWidget->selectionModel()->selectedIndexes());
+	const QVector<Addon*> addons(getSelectedAddons());
 
-	if (indexes.isEmpty())
+	if (addons.isEmpty())
 	{
 		return;
 	}
 
-//TODO
+	QMessageBox messageBox;
+	messageBox.setWindowTitle(tr("Question"));
+	messageBox.setText(tr("You are about to irreversibly remove %n addon(s).", "", addons.count()));
+	messageBox.setInformativeText(tr("Do you want to continue?"));
+	messageBox.setIcon(QMessageBox::Question);
+	messageBox.setStandardButtons(QMessageBox::Yes | QMessageBox::Cancel);
+	messageBox.setDefaultButton(QMessageBox::Yes);
+
+	if (messageBox.exec() == QMessageBox::Yes)
+	{
+		for (int i = 0; i < addons.count(); ++i)
+		{
+			if (addons.at(i)->canRemove())
+			{
+				addons.at(i)->remove();
+			}
+		}
+	}
+
+	AddonsManager::loadUserScripts();
+
+	save();
 }
 
 void AddonsContentsWidget::save()
 {
-	QStandardItem *userScriptsItem(nullptr);
-
-	if (m_types.contains(Addon::UserScriptType))
-	{
-		userScriptsItem = m_model->item(m_types[Addon::UserScriptType]);
-	}
+	const QStandardItem *userScriptsItem(m_model->item(m_types.value(Addon::UserScriptType)));
 
 	if (!userScriptsItem)
 	{
 		return;
 	}
 
+	QModelIndexList indexesToRemove;
 	QJsonObject settingsObject;
 
 	for (int i = 0; i < userScriptsItem->rowCount(); ++i)
 	{
-		const QStandardItem *item(userScriptsItem->child(i));
+		const QModelIndex index(userScriptsItem->child(i)->index());
+		const QString name(index.data(NameRole).toString());
 
-		if (item && !item->data(NameRole).toString().isEmpty())
+		if (index.isValid())
 		{
-			QJsonObject scriptObject;
-			scriptObject.insert(QLatin1String("isEnabled"), QJsonValue(item->checkState() == Qt::Checked));
+			if (!name.isEmpty() && AddonsManager::getUserScript(name))
+			{
+				QJsonObject scriptObject;
+				scriptObject.insert(QLatin1String("isEnabled"), QJsonValue(index.data(Qt::CheckStateRole).toInt() == Qt::Checked));
 
-			settingsObject.insert(item->data(NameRole).toString(), scriptObject);
+				settingsObject.insert(name, scriptObject);
+			}
+			else
+			{
+				indexesToRemove.append(index);
+			}
 		}
 	}
 
 	JsonSettings settings;
 	settings.setObject(settingsObject);
 	settings.save(SessionsManager::getWritableDataPath(QLatin1String("scripts/scripts.json")));
+
+	for (int i = (indexesToRemove.count() - 1); i >= 0; --i)
+	{
+		m_ui->addonsViewWidget->model()->removeRow(indexesToRemove.at(i).row(), indexesToRemove.at(i).parent());
+	}
 }
 
 void AddonsContentsWidget::showContextMenu(const QPoint &position)
 {
-	const QModelIndex index(m_ui->addonsViewWidget->indexAt(position));
+	const QVector<Addon*> addons(getSelectedAddons());
 	QMenu menu(this);
 	menu.addAction(tr("Add Addon…"), this, SLOT(addAddon()));
 
-	if (index.isValid() && index.parent() != m_model->invisibleRootItem()->index())
+	if (!addons.isEmpty())
 	{
 		menu.addSeparator();
 		menu.addAction(tr("Open Addon File"), this, SLOT(openAddon()));
 		menu.addAction(tr("Reload Addon"), this, SLOT(reloadAddon()));
 		menu.addSeparator();
-		menu.addAction(tr("Remove Addon…"), this, SLOT(removeAddons()))->setEnabled(false);
+		menu.addAction(tr("Remove Addon…"), this, SLOT(removeAddons()));
 	}
 
 	menu.exec(m_ui->addonsViewWidget->mapToGlobal(position));
@@ -385,7 +468,7 @@ void AddonsContentsWidget::triggerAction(int identifier, const QVariantMap &para
 			break;
 		case ActionsManager::FindAction:
 		case ActionsManager::QuickFindAction:
-			m_ui->filterLineEdit->setFocus();
+			m_ui->filterLineEditWidget->setFocus();
 
 			break;
 		case ActionsManager::ActivateContentAction:
@@ -417,6 +500,11 @@ QUrl AddonsContentsWidget::getUrl() const
 QIcon AddonsContentsWidget::getIcon() const
 {
 	return ThemesManager::createIcon(QLatin1String("preferences-plugin"), false);
+}
+
+QIcon AddonsContentsWidget::getAddonIcon(Addon *addon) const
+{
+	return ((!addon || addon->getIcon().isNull()) ? ThemesManager::createIcon(QLatin1String("addon-user-script"), false) : addon->getIcon());
 }
 
 ActionsManager::ActionDefinition::State AddonsContentsWidget::getActionState(int identifier, const QVariantMap &parameters) const
@@ -456,15 +544,6 @@ bool AddonsContentsWidget::eventFilter(QObject *object, QEvent *event)
 			removeAddons();
 
 			return true;
-		}
-	}
-	else if (object == m_ui->filterLineEdit && event->type() == QEvent::KeyPress)
-	{
-		const QKeyEvent *keyEvent(static_cast<QKeyEvent*>(event));
-
-		if (keyEvent->key() == Qt::Key_Escape)
-		{
-			m_ui->filterLineEdit->clear();
 		}
 	}
 

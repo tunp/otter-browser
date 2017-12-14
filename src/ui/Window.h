@@ -84,7 +84,7 @@ public:
 	int getZoom() const;
 	bool canClone() const;
 	bool canZoom() const;
-	bool isAboutToClose() const;
+	bool isAboutToClose() const override;
 	bool isActive() const;
 	bool isPinned() const;
 	bool isPrivate() const;
@@ -108,16 +108,16 @@ protected:
 
 protected slots:
 	void handleIconChanged(const QIcon &icon);
-	void handleOpenUrlRequest(const QUrl &url, SessionsManager::OpenHints hints);
 	void handleSearchRequest(const QString &query, const QString &searchEngine, SessionsManager::OpenHints hints = SessionsManager::DefaultOpen);
 	void handleGeometryChangeRequest(const QRect &geometry);
+	void handleToolBarStateChanged(int identifier, const ToolBarState &state);
 	void notifyRequestedCloseWindow();
 	void updateNavigationBar();
 
 private:
 	MainWindow *m_mainWindow;
 	WindowToolBarWidget *m_addressBar;
-	ContentsWidget *m_contentsWidget;
+	QPointer<ContentsWidget> m_contentsWidget;
 	QDateTime m_lastActivity;
 	SessionWindow m_session;
 	QVector<QPointer<AddressWidget> > m_addressWidgets;
@@ -135,19 +135,17 @@ signals:
 	void aboutToClose();
 	void aboutToNavigate();
 	void needsAttention();
-	void requestedOpenBookmark(BookmarksItem *bookmark, SessionsManager::OpenHints hints);
-	void requestedOpenUrl(const QUrl &url, SessionsManager::OpenHints hints);
 	void requestedSearch(const QString &query, const QString &searchEngine, SessionsManager::OpenHints hints = SessionsManager::DefaultOpen);
 	void requestedNewWindow(ContentsWidget *widget, SessionsManager::OpenHints hints);
 	void requestedCloseWindow(Window *window);
 	void statusMessageChanged(const QString &message);
 	void titleChanged(const QString &title);
-	void urlChanged(const QUrl &url, bool force = false);
+	void urlChanged(const QUrl &url, bool force);
 	void iconChanged(const QIcon &icon);
 	void requestBlocked(const NetworkManager::ResourceInformation &request);
 	void actionsStateChanged();
-	void actionsStateChanged(const QVector<int> &identifiers);
-	void actionsStateChanged(ActionsManager::ActionDefinition::ActionCategories categories);
+	void arbitraryActionsStateChanged(const QVector<int> &identifiers);
+	void categorizedActionsStateChanged(const QVector<int> &categories);
 	void contentStateChanged(WebWidget::ContentStates state);
 	void loadingStateChanged(WebWidget::LoadingState state);
 	void pageInformationChanged(WebWidget::PageInformation, const QVariant &value);

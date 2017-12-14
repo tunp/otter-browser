@@ -57,10 +57,11 @@ public:
 	{
 		IdentifierRole = Qt::UserRole,
 		NameRole,
-		IsModifiedRole
+		IsModifiedRole,
+		RequiresRestartRole
 	};
 
-	explicit ConfigurationContentsWidget(const QVariantMap &parameters, Window *window);
+	explicit ConfigurationContentsWidget(const QVariantMap &parameters, Window *window, QWidget *parent);
 	~ConfigurationContentsWidget();
 
 	void print(QPrinter *printer) override;
@@ -79,12 +80,13 @@ protected:
 	void saveAll(bool reset);
 
 protected slots:
-	void currentChanged(const QModelIndex &currentIndex, const QModelIndex &previousIndex);
 	void copyOptionName();
 	void copyOptionValue();
 	void resetOption();
 	void saveOption();
 	void handleOptionChanged(int identifier, const QVariant &value);
+	void handleCurrentIndexChanged(const QModelIndex &currentIndex, const QModelIndex &previousIndex);
+	void handleIndexClicked(const QModelIndex &index);
 	void showContextMenu(const QPoint &position);
 	void updateActions();
 

@@ -69,6 +69,7 @@ void SearchSuggester::handleReplyFinished()
 		const QJsonArray descriptionsArray(document.array().at(2).toArray());
 		const QJsonArray urlsArray(document.array().at(3).toArray());
 		QVector<SearchSuggestion> suggestions;
+		suggestions.reserve(completionsArray.count());
 
 		for (int i = 0; i < completionsArray.count(); ++i)
 		{
@@ -96,7 +97,7 @@ void SearchSuggester::setSearchEngine(const QString &searchEngine)
 	const QString query(m_query);
 
 	m_searchEngine = searchEngine;
-	m_query = QString();
+	m_query.clear();
 
 	setQuery(query);
 }
@@ -138,7 +139,7 @@ void SearchSuggester::setQuery(const QString &query)
 			m_networkReply = NetworkManagerFactory::getNetworkManager()->get(request);
 		}
 
-		connect(m_networkReply, SIGNAL(finished()), this, SLOT(handleReplyFinished()));
+		connect(m_networkReply, &QNetworkReply::finished, this, &SearchSuggester::handleReplyFinished);
 	}
 }
 

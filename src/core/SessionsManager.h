@@ -22,6 +22,7 @@
 #define OTTER_SESSIONSMANAGER_H
 
 #include "SettingsManager.h"
+#include "ToolBarsManager.h"
 #include "Utils.h"
 
 #include <QtCore/QCoreApplication>
@@ -30,13 +31,66 @@
 namespace Otter
 {
 
-struct WindowState
+struct ToolBarState final
+{
+	enum ToolBarVisibility
+	{
+		UnspecifiedVisibilityToolBar = 0,
+		AlwaysVisibleToolBar,
+		AlwaysHiddenToolBar
+	};
+
+	Qt::ToolBarArea location = Qt::NoToolBarArea;
+	int identifier = -1;
+	int row = -1;
+	ToolBarVisibility normalVisibility = UnspecifiedVisibilityToolBar;
+	ToolBarVisibility fullScreenVisibility = UnspecifiedVisibilityToolBar;
+
+	explicit ToolBarState()
+	{
+	}
+
+	explicit ToolBarState(int identifierValue, const ToolBarsManager::ToolBarDefinition &definition) : identifier(identifierValue)
+	{
+		normalVisibility = ((definition.normalVisibility != ToolBarsManager::AlwaysHiddenToolBar) ? AlwaysVisibleToolBar : AlwaysHiddenToolBar);
+		fullScreenVisibility = ((definition.fullScreenVisibility != ToolBarsManager::AlwaysHiddenToolBar) ? AlwaysVisibleToolBar : AlwaysHiddenToolBar);
+	}
+
+	void setVisibility(ToolBarsManager::ToolBarsMode mode, ToolBarVisibility visibility)
+	{
+		switch (mode)
+		{
+			case ToolBarsManager::NormalMode:
+				normalVisibility = visibility;
+
+				break;
+			case ToolBarsManager::FullScreenMode:
+				fullScreenVisibility = visibility;
+
+				break;
+			default:
+				break;
+		}
+	}
+
+	ToolBarVisibility getVisibility(ToolBarsManager::ToolBarsMode mode) const
+	{
+		return ((mode == ToolBarsManager::FullScreenMode) ? fullScreenVisibility : normalVisibility);
+	}
+
+	bool isValid() const
+	{
+		return (identifier >= 0);
+	}
+};
+
+struct WindowState final
 {
 	QRect geometry;
 	Qt::WindowState state = ((SettingsManager::getOption(SettingsManager::Interface_NewTabOpeningActionOption).toString() == QLatin1String("maximizeTab")) ? Qt::WindowMaximized : Qt::WindowNoState);
 };
 
-struct WindowHistoryEntry
+struct WindowHistoryEntry final
 {
 	QString url;
 	QString title;
@@ -44,7 +98,7 @@ struct WindowHistoryEntry
 	int zoom = SettingsManager::getOption(SettingsManager::Content_DefaultZoomOption).toInt();
 };
 
-struct WindowHistoryInformation
+struct WindowHistoryInformation final
 {
 	QVector<WindowHistoryEntry> entries;
 	int index = -1;
@@ -55,7 +109,7 @@ struct WindowHistoryInformation
 	}
 };
 
-struct SessionWindow
+struct SessionWindow final
 {
 	WindowState state;
 	QHash<int, QVariant> options;
@@ -72,7 +126,7 @@ struct SessionWindow
 			return history.at(historyIndex).url;
 		}
 
-		return QString();
+		return {};
 	}
 
 	QString getTitle() const
@@ -104,23 +158,16 @@ struct SessionWindow
 	}
 };
 
-struct SessionMainWindow
+struct SessionMainWindow final
 {
-	struct ToolBarState
-	{
-		Qt::ToolBarArea location = Qt::NoToolBarArea;
-		int identifier = -1;
-		int row = -1;
-		bool isVisible = false;
-	};
-
 	QVector<SessionWindow> windows;
 	QVector<ToolBarState> toolBars;
 	QByteArray geometry;
 	int index = -1;
+	bool hasToolBarsState = false;
 };
 
-struct SessionInformation
+struct SessionInformation final
 {
 	QString path;
 	QString title;
@@ -129,7 +176,7 @@ struct SessionInformation
 	bool isClean = true;
 };
 
-struct ClosedWindow
+struct ClosedWindow final
 {
 	SessionWindow window;
 	QIcon icon;
@@ -161,8 +208,8 @@ public:
 
 	static void createInstance(const QString &profilePath, const QString &cachePath, bool isPrivate = false, bool isReadOnly = false);
 	static void clearClosedWindows();
-	static void storeClosedWindow(MainWindow *window);
-	static void markSessionModified();
+	static void storeClosedWindow(MainWindow *mainWindow);
+	static void markSessionAsModified();
 	static void removeStoredUrl(const QString &url);
 	static SessionsManager* getInstance();
 	static SessionModel* getModel();
@@ -175,11 +222,12 @@ public:
 	static SessionInformation getSession(const QString &path);
 	static QStringList getClosedWindows();
 	static QStringList getSessions();
-	static SessionsManager::OpenHints calculateOpenHints(OpenHints hints = DefaultOpen, Qt::MouseButton button = Qt::LeftButton, int modifiers = -1);
+	static SessionsManager::OpenHints calculateOpenHints(OpenHints hints, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
+	static SessionsManager::OpenHints calculateOpenHints(OpenHints hints = DefaultOpen, Qt::MouseButton button = Qt::LeftButton);
 	static SessionsManager::OpenHints calculateOpenHints(const QVariantMap &parameters);
 	static bool restoreClosedWindow(int index = 0);
-	static bool restoreSession(const SessionInformation &session, MainWindow *window = nullptr, bool isPrivate = false);
-	static bool saveSession(const QString &path = {}, const QString &title = {}, MainWindow *window = nullptr, bool isClean = true);
+	static bool restoreSession(const SessionInformation &session, MainWindow *mainWindow = nullptr, bool isPrivate = false);
+	static bool saveSession(const QString &path = {}, const QString &title = {}, MainWindow *mainWindow = nullptr, bool isClean = true);
 	static bool saveSession(const SessionInformation &session);
 	static bool deleteSession(const QString &path = {});
 	static bool isPrivate();

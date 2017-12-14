@@ -18,6 +18,7 @@
 **************************************************************************/
 
 #include "WindowsPlatformStyle.h"
+#include "../../../core/Application.h"
 #include "../../../core/ThemesManager.h"
 #include "../../../ui/MainWindow.h"
 #include "../../../ui/ToolBarWidget.h"
@@ -37,8 +38,8 @@ WindowsPlatformStyle::WindowsPlatformStyle(const QString &name) : Style(name),
 {
 	checkForModernStyle();
 
-	connect(QApplication::instance(), SIGNAL(paletteChanged(QPalette)), this, SLOT(checkForModernStyle()));
-	connect(ThemesManager::getInstance(), SIGNAL(widgetStyleChanged()), this, SLOT(checkForModernStyle()));
+	connect(Application::getInstance(), &Application::paletteChanged, this, &WindowsPlatformStyle::checkForModernStyle);
+	connect(ThemesManager::getInstance(), &ThemesManager::widgetStyleChanged, this, &WindowsPlatformStyle::checkForModernStyle);
 }
 
 void WindowsPlatformStyle::drawControl(ControlElement element, const QStyleOption *option, QPainter *painter, const QWidget *widget) const
@@ -216,6 +217,16 @@ int WindowsPlatformStyle::pixelMetric(PixelMetric metric, const QStyleOption *op
 	}
 
 	return Style::pixelMetric(metric, option, widget);
+}
+
+int WindowsPlatformStyle::getExtraStyleHint(Style::ExtraStyleHint hint) const
+{
+	if (hint == CanAlignTabBarLabelHint)
+	{
+		return true;
+	}
+
+	return Style::getExtraStyleHint(hint);
 }
 
 }

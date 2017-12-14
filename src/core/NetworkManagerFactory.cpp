@@ -214,7 +214,7 @@ NetworkManagerFactory::NetworkManagerFactory(QObject *parent) : QObject(parent)
 
 	}
 
-	connect(networkConfigurationManager, SIGNAL(onlineStateChanged(bool)), this, SIGNAL(onlineStateChanged(bool)));
+	connect(networkConfigurationManager, &QNetworkConfigurationManager::onlineStateChanged, this, &NetworkManagerFactory::onlineStateChanged);
 }
 
 void NetworkManagerFactory::createInstance()
@@ -258,7 +258,7 @@ void NetworkManagerFactory::initialize()
 	m_instance->handleOptionChanged(SettingsManager::Network_WorkOfflineOption, SettingsManager::getOption(SettingsManager::Network_WorkOfflineOption));
 	m_instance->handleOptionChanged(SettingsManager::Security_CiphersOption, SettingsManager::getOption(SettingsManager::Security_CiphersOption));
 
-	connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), m_instance, SLOT(handleOptionChanged(int,QVariant)));
+	connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, m_instance, &NetworkManagerFactory::handleOptionChanged);
 }
 
 void NetworkManagerFactory::clearCookies(int period)
@@ -394,7 +394,7 @@ void NetworkManagerFactory::readProxy(const QJsonValue &value, ProxyDefinition *
 					const QString protocol(serverObject.value(QLatin1String("protocol")).toString());
 					ProxyDefinition::ProxyServer server;
 					server.hostName = serverObject.value(QLatin1String("hostName")).toString();
-					server.port = serverObject.value(QLatin1String("port")).toInt();
+					server.port = static_cast<quint16>(serverObject.value(QLatin1String("port")).toInt());
 
 					if (protocol == QLatin1String("http"))
 					{
@@ -563,7 +563,7 @@ void NetworkManagerFactory::updateProxiesOption()
 	{
 		if (!iterator.value().isFolder && !iterator.value().identifier.isEmpty())
 		{
-			proxiesOption.choices.append({iterator.value().getTitle(), iterator.value().identifier, QIcon()});
+			proxiesOption.choices.append({iterator.value().getTitle(), iterator.value().identifier, {}});
 		}
 	}
 
@@ -575,7 +575,7 @@ void NetworkManagerFactory::updateUserAgentsOption()
 	SettingsManager::OptionDefinition userAgentsOption(SettingsManager::getOptionDefinition(SettingsManager::Network_UserAgentOption));
 	userAgentsOption.choices.clear();
 	userAgentsOption.choices.reserve(m_userAgents.count() * 0.75);
-	userAgentsOption.choices.append({QCoreApplication::translate("userAgents", "Default User Agent"), QLatin1String("default"), QIcon()});
+	userAgentsOption.choices.append({QCoreApplication::translate("userAgents", "Default User Agent"), QLatin1String("default"), {}});
 
 	QMap<QString, UserAgentDefinition>::iterator iterator;
 
@@ -583,7 +583,7 @@ void NetworkManagerFactory::updateUserAgentsOption()
 	{
 		if (!iterator.value().isFolder && !iterator.value().identifier.isEmpty() && iterator.value().identifier != QLatin1String("default"))
 		{
-			userAgentsOption.choices.append({iterator.value().getTitle(), iterator.value().identifier, QIcon()});
+			userAgentsOption.choices.append({iterator.value().getTitle(), iterator.value().identifier, {}});
 		}
 	}
 

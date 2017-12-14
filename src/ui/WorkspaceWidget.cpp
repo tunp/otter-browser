@@ -59,7 +59,7 @@ MdiWindow::MdiWindow(Window *window, MdiWidget *parent) : QMdiSubWindow(parent, 
 
 	parent->addSubWindow(this);
 
-	connect(window, SIGNAL(destroyed()), this, SLOT(deleteLater()));
+	connect(window, &Window::destroyed, this, &MdiWindow::deleteLater);
 }
 
 void MdiWindow::storeState()
@@ -79,7 +79,7 @@ void MdiWindow::restoreState()
 		showNormal();
 	}
 
-	SessionsManager::markSessionModified();
+	SessionsManager::markSessionAsModified();
 }
 
 void MdiWindow::changeEvent(QEvent *event)
@@ -88,7 +88,7 @@ void MdiWindow::changeEvent(QEvent *event)
 
 	if (event->type() == QEvent::WindowStateChange)
 	{
-		SessionsManager::markSessionModified();
+		SessionsManager::markSessionAsModified();
 	}
 }
 
@@ -103,14 +103,14 @@ void MdiWindow::moveEvent(QMoveEvent *event)
 {
 	QMdiSubWindow::moveEvent(event);
 
-	SessionsManager::markSessionModified();
+	SessionsManager::markSessionAsModified();
 }
 
 void MdiWindow::resizeEvent(QResizeEvent *event)
 {
 	QMdiSubWindow::resizeEvent(event);
 
-	SessionsManager::markSessionModified();
+	SessionsManager::markSessionAsModified();
 }
 
 void MdiWindow::focusInEvent(QFocusEvent *event)
@@ -125,7 +125,7 @@ void MdiWindow::mouseReleaseEvent(QMouseEvent *event)
 	QStyleOptionTitleBar option;
 	option.initFrom(this);
 	option.titleBarFlags = windowFlags();
-	option.titleBarState = windowState();
+	option.titleBarState = static_cast<int>(windowState());
 	option.subControls = QStyle::SC_All;
 	option.activeSubControls = QStyle::SC_None;
 
@@ -139,7 +139,7 @@ void MdiWindow::mouseReleaseEvent(QMouseEvent *event)
 		setWindowFlags(Qt::SubWindow | Qt::CustomizeWindowHint | Qt::FramelessWindowHint);
 		showMaximized();
 
-		SessionsManager::markSessionModified();
+		SessionsManager::markSessionAsModified();
 	}
 	else if (!isMinimized() && style()->subControlRect(QStyle::CC_TitleBar, &option, QStyle::SC_TitleBarMinButton, this).contains(event->pos()))
 	{
@@ -176,7 +176,7 @@ void MdiWindow::mouseReleaseEvent(QMouseEvent *event)
 			Application::triggerAction(ActionsManager::ActivatePreviouslyUsedTabAction, {}, mdiArea());
 		}
 
-		SessionsManager::markSessionModified();
+		SessionsManager::markSessionAsModified();
 	}
 	else if (isMinimized())
 	{
@@ -191,7 +191,7 @@ void MdiWindow::mouseDoubleClickEvent(QMouseEvent *event)
 	QStyleOptionTitleBar option;
 	option.initFrom(this);
 	option.titleBarFlags = windowFlags();
-	option.titleBarState = windowState();
+	option.titleBarState = static_cast<int>(windowState());
 	option.subControls = QStyle::SC_All;
 	option.activeSubControls = QStyle::SC_None;
 
@@ -207,10 +207,16 @@ void MdiWindow::mouseDoubleClickEvent(QMouseEvent *event)
 	}
 }
 
+Window* MdiWindow::getWindow() const
+{
+	return m_window;
+}
+
 WorkspaceWidget::WorkspaceWidget(MainWindow *parent) : QWidget(parent),
 	m_mainWindow(parent),
 	m_mdi(nullptr),
 	m_activeWindow(nullptr),
+	m_peekedWindow(nullptr),
 	m_restoreTimer(0),
 	m_isRestored(false)
 {
@@ -222,7 +228,7 @@ WorkspaceWidget::WorkspaceWidget(MainWindow *parent) : QWidget(parent),
 
 	if (!m_mdi)
 	{
-		connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int,QVariant)));
+		connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &WorkspaceWidget::handleOptionChanged);
 	}
 }
 
@@ -234,7 +240,7 @@ void WorkspaceWidget::timerEvent(QTimerEvent *event)
 
 		m_restoreTimer = 0;
 
-		connect(m_mdi, SIGNAL(subWindowActivated(QMdiSubWindow*)), this, SLOT(handleActiveSubWindowChanged(QMdiSubWindow*)));
+		connect(m_mdi, &MdiWidget::subWindowActivated, this, &WorkspaceWidget::handleActiveSubWindowChanged);
 	}
 }
 
@@ -278,7 +284,7 @@ void WorkspaceWidget::createMdi()
 		return;
 	}
 
-	disconnect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int,QVariant)));
+	disconnect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &WorkspaceWidget::handleOptionChanged);
 
 	Window *activeWindow(m_activeWindow);
 
@@ -308,11 +314,32 @@ void WorkspaceWidget::createMdi()
 		markAsRestored();
 	}
 
-	connect(m_mdi, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(showContextMenu(QPoint)));
+	connect(m_mdi, &MdiWidget::customContextMenuRequested, this, &WorkspaceWidget::showContextMenu);
 }
 
 void WorkspaceWidget::triggerAction(int identifier, const QVariantMap &parameters)
 {
+	const bool hasSpecifiedWindow(parameters.contains(QLatin1String("tab")));
+	Window *window(hasSpecifiedWindow ? m_mainWindow->getWindowByIdentifier(parameters[QLatin1String("tab")].toULongLong()) : nullptr);
+
+	if (identifier == ActionsManager::PeekTabAction)
+	{
+		if (m_peekedWindow == window)
+		{
+			m_peekedWindow = nullptr;
+
+			setActiveWindow(m_activeWindow, true);
+		}
+		else
+		{
+			m_peekedWindow = window;
+
+			setActiveWindow((window ? window : m_activeWindow.data()), true);
+		}
+
+		return;
+	}
+
 	if (!m_mdi)
 	{
 		createMdi();
@@ -320,18 +347,18 @@ void WorkspaceWidget::triggerAction(int identifier, const QVariantMap &parameter
 
 	MdiWindow *subWindow(nullptr);
 
-	if (parameters.contains(QLatin1String("tab")))
-	{
-		Window *window(m_mainWindow->getWindowByIdentifier(parameters[QLatin1String("tab")].toULongLong()));
-
-		if (window)
-		{
-			subWindow = qobject_cast<MdiWindow*>(window->parentWidget());
-		}
-	}
-	else
+	if (!hasSpecifiedWindow)
 	{
 		subWindow = qobject_cast<MdiWindow*>(m_mdi->currentSubWindow());
+
+		if (subWindow)
+		{
+			window = subWindow->getWindow();
+		}
+	}
+	else if (window)
+	{
+		subWindow = qobject_cast<MdiWindow*>(window->parentWidget());
 	}
 
 	switch (identifier)
@@ -404,7 +431,7 @@ void WorkspaceWidget::triggerAction(int identifier, const QVariantMap &parameter
 			break;
 		case ActionsManager::MaximizeAllAction:
 			{
-				disconnect(m_mdi, SIGNAL(subWindowActivated(QMdiSubWindow*)), this, SLOT(handleActiveSubWindowChanged(QMdiSubWindow*)));
+				disconnect(m_mdi, &MdiWidget::subWindowActivated, this, &WorkspaceWidget::handleActiveSubWindowChanged);
 
 				const QList<QMdiSubWindow*> subWindows(m_mdi->subWindowList());
 
@@ -420,7 +447,7 @@ void WorkspaceWidget::triggerAction(int identifier, const QVariantMap &parameter
 					}
 				}
 
-				connect(m_mdi, SIGNAL(subWindowActivated(QMdiSubWindow*)), this, SLOT(handleActiveSubWindowChanged(QMdiSubWindow*)));
+				connect(m_mdi, &MdiWidget::subWindowActivated, this, &WorkspaceWidget::handleActiveSubWindowChanged);
 
 				setActiveWindow(m_activeWindow, true);
 			}
@@ -428,7 +455,7 @@ void WorkspaceWidget::triggerAction(int identifier, const QVariantMap &parameter
 			break;
 		case ActionsManager::MinimizeAllAction:
 			{
-				disconnect(m_mdi, SIGNAL(subWindowActivated(QMdiSubWindow*)), this, SLOT(handleActiveSubWindowChanged(QMdiSubWindow*)));
+				disconnect(m_mdi, &MdiWidget::subWindowActivated, this, &WorkspaceWidget::handleActiveSubWindowChanged);
 
 				const QList<QMdiSubWindow*> subWindows(m_mdi->subWindowList());
 
@@ -444,7 +471,7 @@ void WorkspaceWidget::triggerAction(int identifier, const QVariantMap &parameter
 					}
 				}
 
-				connect(m_mdi, SIGNAL(subWindowActivated(QMdiSubWindow*)), this, SLOT(handleActiveSubWindowChanged(QMdiSubWindow*)));
+				connect(m_mdi, &MdiWidget::subWindowActivated, this, &WorkspaceWidget::handleActiveSubWindowChanged);
 
 				m_mainWindow->setActiveWindowByIndex(-1);
 			}
@@ -452,7 +479,7 @@ void WorkspaceWidget::triggerAction(int identifier, const QVariantMap &parameter
 			break;
 		case ActionsManager::RestoreAllAction:
 			{
-				disconnect(m_mdi, SIGNAL(subWindowActivated(QMdiSubWindow*)), this, SLOT(handleActiveSubWindowChanged(QMdiSubWindow*)));
+				disconnect(m_mdi, &MdiWidget::subWindowActivated, this, &WorkspaceWidget::handleActiveSubWindowChanged);
 
 				const QList<QMdiSubWindow*> subWindows(m_mdi->subWindowList());
 
@@ -468,7 +495,7 @@ void WorkspaceWidget::triggerAction(int identifier, const QVariantMap &parameter
 					}
 				}
 
-				connect(m_mdi, SIGNAL(subWindowActivated(QMdiSubWindow*)), this, SLOT(handleActiveSubWindowChanged(QMdiSubWindow*)));
+				connect(m_mdi, &MdiWidget::subWindowActivated, this, &WorkspaceWidget::handleActiveSubWindowChanged);
 
 				setActiveWindow(m_activeWindow, true);
 			}
@@ -490,7 +517,7 @@ void WorkspaceWidget::triggerAction(int identifier, const QVariantMap &parameter
 			break;
 	}
 
-	SessionsManager::markSessionModified();
+	SessionsManager::markSessionAsModified();
 }
 
 void WorkspaceWidget::markAsRestored()
@@ -517,19 +544,14 @@ void WorkspaceWidget::addWindow(Window *window, const WindowState &state, bool i
 
 	if (m_mdi)
 	{
-		disconnect(m_mdi, SIGNAL(subWindowActivated(QMdiSubWindow*)), this, SLOT(handleActiveSubWindowChanged(QMdiSubWindow*)));
+		disconnect(m_mdi, &MdiWidget::subWindowActivated, this, &WorkspaceWidget::handleActiveSubWindowChanged);
 
 		ActionExecutor::Object mainWindowExecutor(m_mainWindow, m_mainWindow);
 		ActionExecutor::Object windowExecutor(window, window);
 		QMdiSubWindow *activeWindow(m_mdi->currentSubWindow());
 		MdiWindow *mdiWindow(new MdiWindow(window, m_mdi));
 		QMenu *menu(new QMenu(mdiWindow));
-		Action *closeAction(new Action(ActionsManager::CloseTabAction, {}, menu));
-		closeAction->setEnabled(true);
-		closeAction->setOverrideText(QT_TRANSLATE_NOOP("actions", "Close"));
-		closeAction->setOverrideIcon(QIcon());
-
-		menu->addAction(closeAction);
+		menu->addAction(new Action(ActionsManager::CloseTabAction, {}, {{QLatin1String("icon"), {}}, {QLatin1String("text"), QT_TRANSLATE_NOOP("actions", "Close")}}, windowExecutor, menu));
 		menu->addAction(new Action(ActionsManager::RestoreTabAction, {}, windowExecutor, menu));
 		menu->addAction(new Action(ActionsManager::MinimizeTabAction, {}, windowExecutor, menu));
 		menu->addAction(new Action(ActionsManager::MaximizeTabAction, {}, windowExecutor, menu));
@@ -582,12 +604,11 @@ void WorkspaceWidget::addWindow(Window *window, const WindowState &state, bool i
 
 		if (m_isRestored)
 		{
-			connect(m_mdi, SIGNAL(subWindowActivated(QMdiSubWindow*)), this, SLOT(handleActiveSubWindowChanged(QMdiSubWindow*)));
+			connect(m_mdi, &MdiWidget::subWindowActivated, this, &WorkspaceWidget::handleActiveSubWindowChanged);
 		}
 
-		connect(closeAction, SIGNAL(triggered()), window, SLOT(close()));
-		connect(mdiWindow, SIGNAL(windowStateChanged(Qt::WindowStates,Qt::WindowStates)), this, SLOT(notifyActionsStateChanged()));
-		connect(window, SIGNAL(destroyed()), this, SLOT(notifyActionsStateChanged()));
+		connect(mdiWindow, &MdiWindow::windowStateChanged, this, &WorkspaceWidget::notifyActionsStateChanged);
+		connect(window, &Window::destroyed, this, &WorkspaceWidget::notifyActionsStateChanged);
 	}
 	else
 	{
@@ -625,7 +646,7 @@ void WorkspaceWidget::handleOptionChanged(int identifier, const QVariant &value)
 
 void WorkspaceWidget::notifyActionsStateChanged()
 {
-	emit actionsStateChanged(QVector<int>({ActionsManager::MaximizeAllAction, ActionsManager::MinimizeAllAction, ActionsManager::RestoreAllAction, ActionsManager::CascadeAllAction, ActionsManager::TileAllAction}));
+	emit arbitraryActionsStateChanged({ActionsManager::MaximizeAllAction, ActionsManager::MinimizeAllAction, ActionsManager::RestoreAllAction, ActionsManager::CascadeAllAction, ActionsManager::TileAllAction});
 }
 
 void WorkspaceWidget::showContextMenu(const QPoint &position)
@@ -675,7 +696,7 @@ void WorkspaceWidget::setActiveWindow(Window *window, bool force)
 						subWindow->raise();
 					}
 
-					QTimer::singleShot(0, subWindow, SLOT(setFocus()));
+					QTimer::singleShot(0, subWindow, static_cast<void(MdiWindow::*)()>(&MdiWindow::setFocus));
 				}
 			}
 
@@ -695,7 +716,10 @@ void WorkspaceWidget::setActiveWindow(Window *window, bool force)
 			}
 		}
 
-		m_activeWindow = window;
+		if (window != m_peekedWindow)
+		{
+			m_activeWindow = window;
+		}
 	}
 }
 

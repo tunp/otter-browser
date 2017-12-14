@@ -1,7 +1,7 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
 * Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
-* Copyright (C) 2016 Jan Bajer aka bajasoft <jbajer@gmail.com>
+* Copyright (C) 2016 - 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -46,6 +46,7 @@ protected:
 	void javaScriptAlert(const QUrl &url, const QString &message) override;
 	void javaScriptConsoleMessage(JavaScriptConsoleMessageLevel level, const QString &note, int line, const QString &source) override;
 	QWebEnginePage* createWindow(WebWindowType type) override;
+	QtWebEngineWebWidget* createWidget(SessionsManager::OpenHints hints);
 	QString createJavaScriptList(QStringList rules) const;
 	QStringList chooseFiles(FileSelectionMode mode, const QStringList &oldFiles, const QStringList &acceptedMimeTypes) override;
 	bool acceptNavigationRequest(const QUrl &url, QWebEnginePage::NavigationType type, bool isMainFrame) override;
@@ -53,8 +54,8 @@ protected:
 	bool javaScriptPrompt(const QUrl &url, const QString &message, const QString &defaultValue, QString *result) override;
 
 protected slots:
-	void pageLoadFinished();
-	void removePopup(const QUrl &url);
+	void validatePopup(const QUrl &url);
+	void handleLoadFinished();
 
 private:
 	QtWebEngineWebWidget *m_widget;

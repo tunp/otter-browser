@@ -34,12 +34,13 @@
 namespace Otter
 {
 
-HistoryContentsWidget::HistoryContentsWidget(const QVariantMap &parameters, Window *window) : ContentsWidget(parameters, window),
+HistoryContentsWidget::HistoryContentsWidget(const QVariantMap &parameters, Window *window, QWidget *parent) : ContentsWidget(parameters, window, parent),
 	m_model(new QStandardItemModel(this)),
 	m_isLoading(true),
 	m_ui(new Ui::HistoryContentsWidget)
 {
 	m_ui->setupUi(this);
+	m_ui->filterLineEditWidget->setClearOnEscape(true);
 
 	const QStringList groups({tr("Today"), tr("Yesterday"), tr("Earlier This Week"), tr("Previous Week"), tr("Earlier This Month"), tr("Earlier This Year"), tr("Older")});
 
@@ -48,30 +49,32 @@ HistoryContentsWidget::HistoryContentsWidget(const QVariantMap &parameters, Wind
 		m_model->appendRow(new QStandardItem(ThemesManager::createIcon(QLatin1String("inode-directory")), groups.at(i)));
 	}
 
-	m_model->setHorizontalHeaderLabels(QStringList({tr("Address"), tr("Title"), tr("Date")}));
+	m_model->setHorizontalHeaderLabels({tr("Address"), tr("Title"), tr("Date")});
+	m_model->setHeaderData(0, Qt::Horizontal, QSize(300, 0), Qt::SizeHintRole);
+	m_model->setHeaderData(1, Qt::Horizontal, QSize(300, 0), Qt::SizeHintRole);
 	m_model->setSortRole(Qt::DisplayRole);
 
 	m_ui->historyViewWidget->setViewMode(ItemViewWidget::TreeViewMode);
 	m_ui->historyViewWidget->setModel(m_model, true);
+	m_ui->historyViewWidget->setSortRoleMapping({{2, TimeVisitedRole}});
 	m_ui->historyViewWidget->installEventFilter(this);
 	m_ui->historyViewWidget->viewport()->installEventFilter(this);
-	m_ui->filterLineEdit->installEventFilter(this);
 
 	for (int i = 0; i < m_model->rowCount(); ++i)
 	{
 		m_ui->historyViewWidget->setRowHidden(i, m_model->invisibleRootItem()->index(), true);
 	}
 
-	QTimer::singleShot(100, this, SLOT(populateEntries()));
+	QTimer::singleShot(100, this, &HistoryContentsWidget::populateEntries);
 
-	connect(HistoryManager::getBrowsingHistoryModel(), SIGNAL(cleared()), this, SLOT(populateEntries()));
-	connect(HistoryManager::getBrowsingHistoryModel(), SIGNAL(entryAdded(HistoryEntryItem*)), this, SLOT(addEntry(HistoryEntryItem*)));
-	connect(HistoryManager::getBrowsingHistoryModel(), SIGNAL(entryModified(HistoryEntryItem*)), this, SLOT(modifyEntry(HistoryEntryItem*)));
-	connect(HistoryManager::getBrowsingHistoryModel(), SIGNAL(entryRemoved(HistoryEntryItem*)), this, SLOT(removeEntry(HistoryEntryItem*)));
-	connect(HistoryManager::getInstance(), SIGNAL(dayChanged()), this, SLOT(populateEntries()));
-	connect(m_ui->filterLineEdit, SIGNAL(textChanged(QString)), m_ui->historyViewWidget, SLOT(setFilterString(QString)));
-	connect(m_ui->historyViewWidget, SIGNAL(doubleClicked(QModelIndex)), this, SLOT(openEntry(QModelIndex)));
-	connect(m_ui->historyViewWidget, SIGNAL(customContextMenuRequested(QPoint)), this, SLOT(showContextMenu(QPoint)));
+	connect(HistoryManager::getBrowsingHistoryModel(), &HistoryModel::cleared, this, &HistoryContentsWidget::populateEntries);
+	connect(HistoryManager::getBrowsingHistoryModel(), &HistoryModel::entryAdded, this, &HistoryContentsWidget::handleEntryAdded);
+	connect(HistoryManager::getBrowsingHistoryModel(), &HistoryModel::entryModified, this, &HistoryContentsWidget::handleEntryModified);
+	connect(HistoryManager::getBrowsingHistoryModel(), &HistoryModel::entryRemoved, this, &HistoryContentsWidget::handleEntryRemoved);
+	connect(HistoryManager::getInstance(), &HistoryManager::dayChanged, this, &HistoryContentsWidget::populateEntries);
+	connect(m_ui->filterLineEditWidget, &LineEditWidget::textChanged, m_ui->historyViewWidget, &ItemViewWidget::setFilterString);
+	connect(m_ui->historyViewWidget, &ItemViewWidget::doubleClicked, this, &HistoryContentsWidget::openEntry);
+	connect(m_ui->historyViewWidget, &ItemViewWidget::customContextMenuRequested, this, &HistoryContentsWidget::showContextMenu);
 }
 
 HistoryContentsWidget::~HistoryContentsWidget()
@@ -95,7 +98,7 @@ void HistoryContentsWidget::triggerAction(int identifier, const QVariantMap &par
 	{
 		case ActionsManager::FindAction:
 		case ActionsManager::QuickFindAction:
-			m_ui->filterLineEdit->setFocus();
+			m_ui->filterLineEditWidget->setFocus();
 
 			break;
 		case ActionsManager::ActivateContentAction:
@@ -134,7 +137,7 @@ void HistoryContentsWidget::populateEntries()
 
 	for (int i = 0; i < model->rowCount(); ++i)
 	{
-		addEntry(static_cast<HistoryEntryItem*>(model->item(i, 0)));
+		handleEntryAdded(static_cast<HistoryEntryItem*>(model->item(i, 0)));
 	}
 
 	const QString expandBranches(SettingsManager::getOption(SettingsManager::History_ExpandBranchesOption).toString());
@@ -161,105 +164,6 @@ void HistoryContentsWidget::populateEntries()
 	m_isLoading = false;
 
 	emit loadingStateChanged(WebWidget::FinishedLoadingState);
-}
-
-void HistoryContentsWidget::addEntry(HistoryEntryItem *entry)
-{
-	if (!entry || entry->data(HistoryModel::IdentifierRole).toULongLong() == 0 || findEntry(entry->data(HistoryModel::IdentifierRole).toULongLong()))
-	{
-		return;
-	}
-
-	QStandardItem *groupItem(nullptr);
-
-	for (int i = 0; i < m_model->rowCount(); ++i)
-	{
-		groupItem = m_model->item(i, 0);
-
-		if (groupItem && (entry->data(HistoryModel::TimeVisitedRole).toDateTime().date() >= groupItem->data(Qt::UserRole).toDate() || !groupItem->data(Qt::UserRole).toDate().isValid()))
-		{
-			break;
-		}
-
-		groupItem = nullptr;
-	}
-
-	if (!groupItem)
-	{
-		return;
-	}
-
-	QList<QStandardItem*> entryItems({new QStandardItem((entry->icon().isNull() ? ThemesManager::createIcon(QLatin1String("text-html")) : entry->icon()), entry->data(HistoryModel::UrlRole).toUrl().toDisplayString().replace(QLatin1String("%23"), QString(QLatin1Char('#')))), new QStandardItem(entry->data(HistoryModel::TitleRole).isNull() ? tr("(Untitled)") : entry->data(HistoryModel::TitleRole).toString()), new QStandardItem(Utils::formatDateTime(entry->data(HistoryModel::TimeVisitedRole).toDateTime()))});
-	entryItems[0]->setData(entry->data(HistoryModel::IdentifierRole).toULongLong(), Qt::UserRole);
-	entryItems[0]->setFlags(entryItems[0]->flags() | Qt::ItemNeverHasChildren);
-	entryItems[1]->setFlags(entryItems[1]->flags() | Qt::ItemNeverHasChildren);
-	entryItems[2]->setFlags(entryItems[2]->flags() | Qt::ItemNeverHasChildren);
-
-	groupItem->appendRow(entryItems);
-
-	m_ui->historyViewWidget->setRowHidden(groupItem->row(), groupItem->index().parent(), false);
-
-	if (sender() && groupItem->rowCount() == 1 && SettingsManager::getOption(SettingsManager::History_ExpandBranchesOption).toString() == QLatin1String("first"))
-	{
-		for (int i = 0; i < m_model->rowCount(); ++i)
-		{
-			const QModelIndex index(m_model->index(i, 0));
-
-			if (m_model->rowCount(index) > 0)
-			{
-				m_ui->historyViewWidget->expand(m_ui->historyViewWidget->getProxyModel()->mapFromSource(index));
-
-				break;
-			}
-		}
-	}
-}
-
-void HistoryContentsWidget::modifyEntry(HistoryEntryItem *entry)
-{
-	if (!entry || entry->data(HistoryModel::IdentifierRole).toULongLong() == 0)
-	{
-		return;
-	}
-
-	QStandardItem *entryItem(findEntry(entry->data(HistoryModel::IdentifierRole).toULongLong()));
-
-	if (!entryItem)
-	{
-		addEntry(entry);
-
-		return;
-	}
-
-	entryItem->setIcon(entry->icon().isNull() ? ThemesManager::createIcon(QLatin1String("text-html")) : entry->icon());
-	entryItem->setText(entry->data(HistoryModel::UrlRole).toUrl().toDisplayString());
-	entryItem->parent()->child(entryItem->row(), 1)->setText(entry->data(HistoryModel::TitleRole).isNull() ? tr("(Untitled)") : entry->data(HistoryModel::TitleRole).toString());
-	entryItem->parent()->child(entryItem->row(), 2)->setText(Utils::formatDateTime(entry->data(HistoryModel::TimeVisitedRole).toDateTime()));
-}
-
-void HistoryContentsWidget::removeEntry(HistoryEntryItem *entry)
-{
-	if (!entry || entry->data(HistoryModel::IdentifierRole).toULongLong() == 0)
-	{
-		return;
-	}
-
-	QStandardItem *entryItem(findEntry(entry->data(HistoryModel::IdentifierRole).toULongLong()));
-
-	if (entryItem)
-	{
-		QStandardItem *groupItem(entryItem->parent());
-
-		if (groupItem)
-		{
-			m_model->removeRow(entryItem->row(), groupItem->index());
-
-			if (groupItem->rowCount() == 0)
-			{
-				m_ui->historyViewWidget->setRowHidden(groupItem->row(), m_model->invisibleRootItem()->index(), true);
-			}
-		}
-	}
 }
 
 void HistoryContentsWidget::removeEntry()
@@ -299,7 +203,7 @@ void HistoryContentsWidget::removeDomainEntries()
 
 			if (entryItem && host == QUrl(entryItem->text()).host())
 			{
-				entries.append(entryItem->data(Qt::UserRole).toULongLong());
+				entries.append(entryItem->data(IdentifierRole).toULongLong());
 			}
 		}
 	}
@@ -321,8 +225,12 @@ void HistoryContentsWidget::openEntry(const QModelIndex &index)
 	if (url.isValid())
 	{
 		const QAction *action(qobject_cast<QAction*>(sender()));
+		MainWindow *mainWindow(MainWindow::findMainWindow(this));
 
-		emit requestedOpenUrl(url, (action ? static_cast<SessionsManager::OpenHints>(action->data().toInt()) : SessionsManager::DefaultOpen));
+		if (mainWindow)
+		{
+			mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}, {QLatin1String("hints"), QVariant(action ? static_cast<SessionsManager::OpenHints>(action->data().toInt()) : SessionsManager::DefaultOpen)}});
+		}
 	}
 }
 
@@ -343,6 +251,107 @@ void HistoryContentsWidget::copyEntryLink()
 	if (entryItem)
 	{
 		QApplication::clipboard()->setText(entryItem->text());
+	}
+}
+
+void HistoryContentsWidget::handleEntryAdded(HistoryEntryItem *entry)
+{
+	if (!entry || entry->getIdentifier() == 0 || findEntry(entry->getIdentifier()))
+	{
+		return;
+	}
+
+	QStandardItem *groupItem(nullptr);
+
+	for (int i = 0; i < m_model->rowCount(); ++i)
+	{
+		groupItem = m_model->item(i, 0);
+
+		if (groupItem && (entry->getTimeVisited().date() >= groupItem->data(Qt::UserRole).toDate() || !groupItem->data(Qt::UserRole).toDate().isValid()))
+		{
+			break;
+		}
+
+		groupItem = nullptr;
+	}
+
+	if (!groupItem)
+	{
+		return;
+	}
+
+	QList<QStandardItem*> entryItems({new QStandardItem(entry->getIcon(), entry->getUrl().toDisplayString().replace(QLatin1String("%23"), QString(QLatin1Char('#')))), new QStandardItem(entry->getTitle()), new QStandardItem(Utils::formatDateTime(entry->getTimeVisited()))});
+	entryItems[0]->setData(entry->getIdentifier(), IdentifierRole);
+	entryItems[0]->setFlags(entryItems[0]->flags() | Qt::ItemNeverHasChildren);
+	entryItems[1]->setFlags(entryItems[1]->flags() | Qt::ItemNeverHasChildren);
+	entryItems[2]->setData(entry->getTimeVisited(), TimeVisitedRole);
+	entryItems[2]->setFlags(entryItems[2]->flags() | Qt::ItemNeverHasChildren);
+	entryItems[2]->setToolTip(Utils::formatDateTime(entry->getTimeVisited(), {}, false));
+
+	groupItem->appendRow(entryItems);
+
+	m_ui->historyViewWidget->setRowHidden(groupItem->row(), groupItem->index().parent(), false);
+
+	if (sender() && groupItem->rowCount() == 1 && SettingsManager::getOption(SettingsManager::History_ExpandBranchesOption).toString() == QLatin1String("first"))
+	{
+		for (int i = 0; i < m_model->rowCount(); ++i)
+		{
+			const QModelIndex index(m_model->index(i, 0));
+
+			if (m_model->rowCount(index) > 0)
+			{
+				m_ui->historyViewWidget->expand(m_ui->historyViewWidget->getProxyModel()->mapFromSource(index));
+
+				break;
+			}
+		}
+	}
+}
+
+void HistoryContentsWidget::handleEntryModified(HistoryEntryItem *entry)
+{
+	if (!entry || entry->getIdentifier() == 0)
+	{
+		return;
+	}
+
+	QStandardItem *entryItem(findEntry(entry->getIdentifier()));
+
+	if (!entryItem)
+	{
+		handleEntryAdded(entry);
+
+		return;
+	}
+
+	entryItem->setIcon(entry->getIcon());
+	entryItem->setText(entry->getUrl().toDisplayString());
+	entryItem->parent()->child(entryItem->row(), 1)->setText(entry->getTitle());
+	entryItem->parent()->child(entryItem->row(), 2)->setText(Utils::formatDateTime(entry->getTimeVisited()));
+}
+
+void HistoryContentsWidget::handleEntryRemoved(HistoryEntryItem *entry)
+{
+	if (!entry || entry->getIdentifier() == 0)
+	{
+		return;
+	}
+
+	QStandardItem *entryItem(findEntry(entry->getIdentifier()));
+
+	if (entryItem)
+	{
+		QStandardItem *groupItem(entryItem->parent());
+
+		if (groupItem)
+		{
+			m_model->removeRow(entryItem->row(), groupItem->index());
+
+			if (groupItem->rowCount() == 0)
+			{
+				m_ui->historyViewWidget->setRowHidden(groupItem->row(), m_model->invisibleRootItem()->index(), true);
+			}
+		}
 	}
 }
 
@@ -385,7 +394,7 @@ QStandardItem* HistoryContentsWidget::findEntry(quint64 identifier)
 			{
 				QStandardItem *entryItem(groupItem->child(j, 0));
 
-				if (entryItem && entryItem->data(Qt::UserRole).toULongLong() == identifier)
+				if (entryItem && entryItem->data(IdentifierRole).toULongLong() == identifier)
 				{
 					return entryItem;
 				}
@@ -423,7 +432,7 @@ WebWidget::LoadingState HistoryContentsWidget::getLoadingState() const
 
 quint64 HistoryContentsWidget::getEntry(const QModelIndex &index) const
 {
-	return ((index.isValid() && index.parent().isValid() && index.parent().parent() == m_model->invisibleRootItem()->index()) ? index.sibling(index.row(), 0).data(Qt::UserRole).toULongLong() : -1);
+	return ((index.isValid() && index.parent().isValid() && index.parent().parent() == m_model->invisibleRootItem()->index()) ? index.sibling(index.row(), 0).data(IdentifierRole).toULongLong() : 0);
 }
 
 bool HistoryContentsWidget::eventFilter(QObject *object, QEvent *event)
@@ -459,23 +468,15 @@ bool HistoryContentsWidget::eventFilter(QObject *object, QEvent *event)
 				return ContentsWidget::eventFilter(object, event);
 			}
 
+			MainWindow *mainWindow(MainWindow::findMainWindow(this));
 			const QUrl url(entryIndex.sibling(entryIndex.row(), 0).data(Qt::DisplayRole).toString());
 
-			if (url.isValid())
+			if (mainWindow && url.isValid())
 			{
-				emit requestedOpenUrl(url, SessionsManager::calculateOpenHints(SessionsManager::NewTabOpen, mouseEvent->button(), mouseEvent->modifiers()));
+				mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}, {QLatin1String("hints"), QVariant(SessionsManager::calculateOpenHints(SessionsManager::NewTabOpen, mouseEvent->button(), mouseEvent->modifiers()))}});
 
 				return true;
 			}
-		}
-	}
-	else if (object == m_ui->filterLineEdit && event->type() == QEvent::KeyPress)
-	{
-		const QKeyEvent *keyEvent(static_cast<QKeyEvent*>(event));
-
-		if (keyEvent->key() == Qt::Key_Escape)
-		{
-			m_ui->filterLineEdit->clear();
 		}
 	}
 

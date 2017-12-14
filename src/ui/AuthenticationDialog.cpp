@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2016 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -37,7 +37,7 @@ AuthenticationDialog::AuthenticationDialog(const QUrl &url, QAuthenticator *auth
 	m_ui->serverValueLabel->setText(url.host());
 	m_ui->messageValueLabel->setText(authenticator->realm());
 	m_ui->userComboBox->setCurrentText(authenticator->user());
-	m_ui->passwordLineEdit->setText(authenticator->password());
+	m_ui->passwordLineEditWidget->setText(authenticator->password());
 
 	if (type == HttpAuthentication)
 	{
@@ -48,7 +48,8 @@ AuthenticationDialog::AuthenticationDialog(const QUrl &url, QAuthenticator *auth
 		m_ui->rememberPasswordCheckBox->hide();
 	}
 
-	connect(this, SIGNAL(accepted()), this, SLOT(setup()));
+	connect(NetworkManagerFactory::getInstance(), &NetworkManagerFactory::authenticated, this, &AuthenticationDialog::handleAuthenticated);
+	connect(this, &AuthenticationDialog::accepted, this, &AuthenticationDialog::setup);
 }
 
 AuthenticationDialog::~AuthenticationDialog()
@@ -69,15 +70,15 @@ void AuthenticationDialog::changeEvent(QEvent *event)
 void AuthenticationDialog::setup()
 {
 	m_authenticator->setUser(m_ui->userComboBox->currentText());
-	m_authenticator->setPassword(m_ui->passwordLineEdit->text());
+	m_authenticator->setPassword(m_ui->passwordLineEditWidget->text());
 
 	if (m_ui->rememberPasswordCheckBox->isChecked() && !m_authenticator->user().isEmpty() && !m_authenticator->password().isEmpty())
 	{
-		PasswordsManager::FieldInformation userField;
+		PasswordsManager::PasswordInformation::Field userField;
 		userField.value = m_authenticator->user();
 		userField.type = PasswordsManager::TextField;
 
-		PasswordsManager::FieldInformation passwordField;
+		PasswordsManager::PasswordInformation::Field passwordField;
 		passwordField.value = m_authenticator->password();
 		passwordField.type = PasswordsManager::PasswordField;
 
@@ -92,12 +93,12 @@ void AuthenticationDialog::setup()
 	}
 }
 
-void AuthenticationDialog::authenticated(QAuthenticator *authenticator, bool wasAccepted)
+void AuthenticationDialog::handleAuthenticated(QAuthenticator *authenticator, bool wasAccepted)
 {
 	if (*authenticator == *m_authenticator)
 	{
-		disconnect(NetworkManagerFactory::getInstance(), SIGNAL(authenticated(QAuthenticator*,bool)), this, SLOT(authenticated(QAuthenticator*,bool)));
-		disconnect(this, SIGNAL(accepted()), this, SLOT(setup()));
+		disconnect(NetworkManagerFactory::getInstance(), &NetworkManagerFactory::authenticated, this, &AuthenticationDialog::handleAuthenticated);
+		disconnect(this, &AuthenticationDialog::accepted, this, &AuthenticationDialog::setup);
 
 		if (wasAccepted)
 		{

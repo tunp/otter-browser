@@ -66,7 +66,7 @@ protected:
 	int findRow(quint64 identifier) const;
 
 protected slots:
-	void selectTab(const QModelIndex &index);
+	void handleIndexClicked(const QModelIndex &index);
 	void handleCurrentTabChanged(const QModelIndex &index);
 	void handleWindowAdded(quint64 identifier);
 	void handleWindowRemoved(quint64 identifier);
@@ -79,7 +79,7 @@ private:
 	QStandardItemModel *m_model;
 	ItemViewWidget *m_tabsView;
 	QLabel *m_previewLabel;
-	Animation *m_loadingAnimation;
+	Animation *m_spinnerAnimation;
 	SwitcherReason m_reason;
 	bool m_isIgnoringMinimizedTabs;
 };

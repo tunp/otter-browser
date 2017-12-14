@@ -36,7 +36,7 @@ namespace Ui
 
 class Window;
 
-class ProgressBarDelegate : public ItemDelegate
+class ProgressBarDelegate final : public ItemDelegate
 {
 public:
 	explicit ProgressBarDelegate(QObject *parent);
@@ -54,10 +54,13 @@ public:
 	{
 		BytesReceivedRole = Qt::UserRole,
 		BytesTotalRole,
-		StateRole
+		ProgressRole,
+		StateRole,
+		TimeFinishedRole,
+		TimeStartedRole
 	};
 
-	explicit TransfersContentsWidget(const QVariantMap &parameters, Window *window);
+	explicit TransfersContentsWidget(const QVariantMap &parameters, Window *window, QWidget *parent);
 	~TransfersContentsWidget();
 
 	void print(QPrinter *printer) override;
@@ -78,10 +81,7 @@ protected:
 	int findTransfer(Transfer *transfer) const;
 
 protected slots:
-	void addTransfer(Transfer *transfer);
-	void removeTransfer(Transfer *transfer);
 	void removeTransfer();
-	void updateTransfer(Transfer *transfer);
 	void openTransfer(const QModelIndex &index = {});
 	void openTransferFolder(const QModelIndex &index = {});
 	void copyTransferInformation();
@@ -89,6 +89,9 @@ protected slots:
 	void redownloadTransfer();
 	void startQuickTransfer();
 	void clearFinishedTransfers();
+	void handleTransferAdded(Transfer *transfer);
+	void handleTransferChanged(Transfer *transfer);
+	void handleTransferRemoved(Transfer *transfer);
 	void showContextMenu(const QPoint &position);
 	void updateActions();
 

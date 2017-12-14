@@ -30,11 +30,12 @@ namespace Otter
 {
 
 FreeDesktopOrgPlatformStyle::FreeDesktopOrgPlatformStyle(const QString &name) : Style(name),
+	m_isGtkStyle(false),
 	m_isGtkAmbianceTheme(false)
 {
 	checkForAmbianceTheme();
 
-	connect(ThemesManager::getInstance(), SIGNAL(widgetStyleChanged()), this, SLOT(checkForAmbianceTheme()));
+	connect(ThemesManager::getInstance(), &ThemesManager::widgetStyleChanged, this, &FreeDesktopOrgPlatformStyle::checkForAmbianceTheme);
 }
 
 void FreeDesktopOrgPlatformStyle::drawControl(ControlElement element, const QStyleOption *option, QPainter *painter, const QWidget *widget) const
@@ -110,9 +111,16 @@ void FreeDesktopOrgPlatformStyle::drawControl(ControlElement element, const QSty
 
 void FreeDesktopOrgPlatformStyle::checkForAmbianceTheme()
 {
+	const QString styleName(getName());
+
+	m_isGtkStyle = false;
 	m_isGtkAmbianceTheme = false;
 
-	if (!QStringList({QLatin1String("gtk"), QLatin1String("gtk+"), QLatin1String("gtk2")}).contains(getName()))
+	if (styleName == QLatin1String("gtk") || styleName == QLatin1String("gtk+") || styleName == QLatin1String("gtk2"))
+	{
+		m_isGtkStyle = true;
+	}
+	else
 	{
 		return;
 	}
@@ -124,6 +132,16 @@ void FreeDesktopOrgPlatformStyle::checkForAmbianceTheme()
 	process.waitForFinished();
 
 	m_isGtkAmbianceTheme = (QString(process.readAll()).simplified().remove(QLatin1Char('\'')).remove(QLatin1Char('"')) == QLatin1String("Ambiance"));
+}
+
+int FreeDesktopOrgPlatformStyle::getExtraStyleHint(Style::ExtraStyleHint hint) const
+{
+	if (hint == CanAlignTabBarLabelHint && m_isGtkStyle)
+	{
+		return true;
+	}
+
+	return Style::getExtraStyleHint(hint);
 }
 
 }

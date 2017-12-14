@@ -29,16 +29,27 @@
 namespace Otter
 {
 
-class BookmarksItem : public QStandardItem
+class BookmarksItem final : public QStandardItem
 {
 public:
 	void remove();
 	void setData(const QVariant &value, int role) override;
 	void setItemData(const QVariant &value, int role);
 	QStandardItem* clone() const override;
+	BookmarksItem* getChild(int index) const;
+	QString getTitle() const;
+	QString getDescription() const;
+	QString getKeyword() const;
+	QUrl getUrl() const;
+	QDateTime getTimeAdded() const;
+	QDateTime getTimeModified() const;
+	QDateTime getTimeVisited() const;
+	QIcon getIcon() const;
 	QVariant data(int role) const override;
-	QVariant rawData(int role) const;
+	QVariant getRawData(int role) const;
 	QVector<QUrl> getUrls() const;
+	quint64 getIdentifier() const;
+	int getType() const;
 	bool isAncestorOf(BookmarksItem *child) const;
 	bool operator<(const QStandardItem &other) const override;
 
@@ -85,7 +96,7 @@ public:
 		NotesMode
 	};
 
-	struct BookmarkMatch
+	struct BookmarkMatch final
 	{
 		BookmarksItem *bookmark = nullptr;
 		QString match;

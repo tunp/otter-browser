@@ -99,38 +99,30 @@ MainWindowSessionItem::MainWindowSessionItem(MainWindow *mainWindow) : SessionIt
 		}
 	}
 
-	connect(mainWindow, SIGNAL(titleChanged(QString)), this, SLOT(notifyMainWindowModified()));
-	connect(mainWindow, SIGNAL(currentWindowChanged(quint64)), this, SLOT(notifyMainWindowModified()));
-	connect(mainWindow, SIGNAL(windowAdded(quint64)), this, SLOT(handleWindowAdded(quint64)));
-	connect(mainWindow, SIGNAL(windowRemoved(quint64)), this, SLOT(handleWindowRemoved(quint64)));
+	connect(mainWindow, &MainWindow::titleChanged, this, &MainWindowSessionItem::notifyMainWindowModified);
+	connect(mainWindow, &MainWindow::currentWindowChanged, this, &MainWindowSessionItem::notifyMainWindowModified);
+	connect(mainWindow, &MainWindow::windowAdded, this, &MainWindowSessionItem::handleWindowAdded);
+	connect(mainWindow, &MainWindow::windowRemoved, this, &MainWindowSessionItem::handleWindowRemoved);
 }
 
 void MainWindowSessionItem::handleWindowAdded(quint64 identifier)
 {
-	Window *window(m_mainWindow->getWindowByIdentifier(identifier));
-
 	for (int i = 0; i < rowCount(); ++i)
 	{
-		const WindowSessionItem *item(static_cast<WindowSessionItem*>(child(i)));
-
-		if (item && item->getActiveWindow() == window)
+		if (index().child(i, 0).data(SessionModel::IdentifierRole).toULongLong() == identifier)
 		{
 			return;
 		}
 	}
 
-	insertRow(m_mainWindow->getWindowIndex(identifier), new WindowSessionItem(window));
+	insertRow(m_mainWindow->getWindowIndex(identifier), new WindowSessionItem(m_mainWindow->getWindowByIdentifier(identifier)));
 }
 
 void MainWindowSessionItem::handleWindowRemoved(quint64 identifier)
 {
-	const Window *window(m_mainWindow->getWindowByIdentifier(identifier));
-
 	for (int i = 0; i < rowCount(); ++i)
 	{
-		const WindowSessionItem *item(static_cast<WindowSessionItem*>(child(i)));
-
-		if (item && item->getActiveWindow() == window)
+		if (index().child(i, 0).data(SessionModel::IdentifierRole).toULongLong() == identifier)
 		{
 			removeRow(i);
 
@@ -156,6 +148,11 @@ MainWindow* MainWindowSessionItem::getMainWindow() const
 
 QVariant MainWindowSessionItem::data(int role) const
 {
+	if (!m_mainWindow)
+	{
+		return {};
+	}
+
 	switch (role)
 	{
 		case SessionModel::TitleRole:
@@ -192,6 +189,11 @@ Window* WindowSessionItem::getActiveWindow() const
 
 QVariant WindowSessionItem::data(int role) const
 {
+	if (!m_window)
+	{
+		return {};
+	}
+
 	switch (role)
 	{
 		case SessionModel::TitleRole:
@@ -249,17 +251,20 @@ SessionModel::SessionModel(QObject *parent) : QStandardItemModel(parent),
 		handleMainWindowAdded(mainWindows.at(i));
 	}
 
-	connect(Application::getInstance(), SIGNAL(windowAdded(MainWindow*)), this, SLOT(handleMainWindowAdded(MainWindow*)));
-	connect(Application::getInstance(), SIGNAL(windowRemoved(MainWindow*)), this, SLOT(handleMainWindowRemoved(MainWindow*)));
+	connect(Application::getInstance(), &Application::windowAdded, this, &SessionModel::handleMainWindowAdded);
+	connect(Application::getInstance(), &Application::windowRemoved, this, &SessionModel::handleMainWindowRemoved);
 }
 
 void SessionModel::handleMainWindowAdded(MainWindow *mainWindow)
 {
+	if (!mainWindow)
+	{
+		return;
+	}
+
 	for (int i = 0; i < m_rootItem->rowCount(); ++i)
 	{
-		const MainWindowSessionItem *item(static_cast<MainWindowSessionItem*>(m_rootItem->child(i)));
-
-		if (item && item->getMainWindow() == mainWindow)
+		if (index(i, 0, m_rootItem->index()).data(IdentifierRole).toULongLong() == mainWindow->getIdentifier())
 		{
 			return;
 		}
@@ -274,11 +279,14 @@ void SessionModel::handleMainWindowAdded(MainWindow *mainWindow)
 
 void SessionModel::handleMainWindowRemoved(MainWindow *mainWindow)
 {
+	if (!mainWindow)
+	{
+		return;
+	}
+
 	for (int i = 0; i < m_rootItem->rowCount(); ++i)
 	{
-		const MainWindowSessionItem *item(static_cast<MainWindowSessionItem*>(m_rootItem->child(i)));
-
-		if (item && item->getMainWindow() == mainWindow)
+		if (index(i, 0, m_rootItem->index()).data(IdentifierRole).toULongLong() == mainWindow->getIdentifier())
 		{
 			m_rootItem->removeRow(i);
 

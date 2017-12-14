@@ -62,16 +62,16 @@ ContentBlockingInformationWidget::ContentBlockingInformationWidget(Window *windo
 
 	if (toolBar && toolBar->getIdentifier() != ToolBarsManager::AddressBar)
 	{
-		connect(toolBar, SIGNAL(windowChanged(Window*)), this, SLOT(setWindow(Window*)));
+		connect(toolBar, &ToolBarWidget::windowChanged, this, &ContentBlockingInformationWidget::setWindow);
 	}
 
-	connect(m_elementsMenu, SIGNAL(aboutToShow()), this, SLOT(populateElementsMenu()));
-	connect(m_elementsMenu, SIGNAL(triggered(QAction*)), this, SLOT(openElement(QAction*)));
-	connect(m_profilesMenu, SIGNAL(aboutToShow()), this, SLOT(populateProfilesMenu()));
-	connect(m_profilesMenu, SIGNAL(triggered(QAction*)), this, SLOT(toggleOption(QAction*)));
-	connect(menu, SIGNAL(aboutToShow()), this, SLOT(populateHostsMenu()));
-	connect(menu, SIGNAL(aboutToHide()), this, SLOT(saveHosts()));
-	connect(defaultAction(), SIGNAL(triggered()), this, SLOT(toggleContentBlocking()));
+	connect(m_elementsMenu, &QMenu::aboutToShow, this, &ContentBlockingInformationWidget::populateElementsMenu);
+	connect(m_elementsMenu, &QMenu::triggered, this, &ContentBlockingInformationWidget::openElement);
+	connect(m_profilesMenu, &QMenu::aboutToShow, this, &ContentBlockingInformationWidget::populateProfilesMenu);
+	connect(m_profilesMenu, &QMenu::triggered, this, &ContentBlockingInformationWidget::toggleOption);
+	connect(menu, &QMenu::aboutToShow, this, &ContentBlockingInformationWidget::populateHostsMenu);
+	connect(menu, &QMenu::aboutToHide, this, &ContentBlockingInformationWidget::saveHosts);
+	connect(defaultAction(), &QAction::triggered, this, &ContentBlockingInformationWidget::toggleContentBlocking);
 }
 
 void ContentBlockingInformationWidget::resizeEvent(QResizeEvent *event)
@@ -132,12 +132,12 @@ void ContentBlockingInformationWidget::populateElementsMenu()
 {
 	m_elementsMenu->clear();
 
-	if (!m_window || !m_window->getContentsWidget()->getWebWidget())
+	if (!m_window || !m_window->getWebWidget())
 	{
 		return;
 	}
 
-	const QVector<NetworkManager::ResourceInformation> requests(m_window->getContentsWidget()->getWebWidget()->getBlockedRequests().mid(m_amount - 50));
+	const QVector<NetworkManager::ResourceInformation> requests(m_window->getWebWidget()->getBlockedRequests().mid(m_amount - 50));
 
 	for (int i = 0; i < requests.count(); ++i)
 	{
@@ -200,18 +200,18 @@ void ContentBlockingInformationWidget::populateProfilesMenu()
 {
 	m_profilesMenu->clear();
 
-	if (!m_window || !m_window->getContentsWidget()->getWebWidget())
+	if (!m_window || !m_window->getWebWidget())
 	{
 		return;
 	}
 
-	QAction *enableContentBlockingAction(m_profilesMenu->addAction(tr("Enable Content Blocking"), this, SLOT(toggleContentBlocking())));
+	QAction *enableContentBlockingAction(m_profilesMenu->addAction(tr("Enable Content Blocking")));
 	enableContentBlockingAction->setCheckable(true);
 	enableContentBlockingAction->setChecked(m_window->getOption(SettingsManager::ContentBlocking_EnableContentBlockingOption).toBool());
 
 	m_profilesMenu->addSeparator();
 
-	const QVector<NetworkManager::ResourceInformation> requests(m_window->getContentsWidget()->getWebWidget()->getBlockedRequests());
+	const QVector<NetworkManager::ResourceInformation> requests(m_window->getWebWidget()->getBlockedRequests());
 	QHash<QString, int> amounts;
 
 	for (int i = 0; i < requests.count(); ++i)
@@ -243,6 +243,8 @@ void ContentBlockingInformationWidget::populateProfilesMenu()
 			profileAction->setChecked(enabledProfiles.contains(profiles.at(i)->getName()));
 		}
 	}
+
+	connect(enableContentBlockingAction, &QAction::triggered, this, &ContentBlockingInformationWidget::toggleContentBlocking);
 }
 
 void ContentBlockingInformationWidget::populateHostsMenu()
@@ -532,7 +534,7 @@ void ContentBlockingInformationWidget::updateState()
 
 	font.setPixelSize(fontSize * 0.8);
 
-	QRectF rectangle((iconSize - labelWidth), (iconSize - fontSize), labelWidth, fontSize);
+	const QRectF rectangle((iconSize - labelWidth), (iconSize - fontSize), labelWidth, fontSize);
 	QPixmap pixmap(m_icon.pixmap(iconSize, iconSize, (m_isContentBlockingEnabled ? QIcon::Normal : QIcon::Disabled)));
 	QPainter iconPainter(&pixmap);
 	iconPainter.fillRect(rectangle, (m_isContentBlockingEnabled ? Qt::darkRed : Qt::darkGray));
@@ -553,20 +555,20 @@ void ContentBlockingInformationWidget::setWindow(Window *window)
 {
 	if (m_window && !m_window->isAboutToClose())
 	{
-		disconnect(m_window, SIGNAL(aboutToNavigate()), this, SLOT(clear()));
-		disconnect(m_window, SIGNAL(requestBlocked(NetworkManager::ResourceInformation)), this, SLOT(handleRequest(NetworkManager::ResourceInformation)));
+		disconnect(m_window, &Window::aboutToNavigate, this, &ContentBlockingInformationWidget::clear);
+		disconnect(m_window, &Window::requestBlocked, this, &ContentBlockingInformationWidget::handleRequest);
 	}
 
 	m_window = window;
 	m_amount = 0;
 
-	if (window && window->getContentsWidget()->getWebWidget())
+	if (window && window->getWebWidget())
 	{
-		m_amount = window->getContentsWidget()->getWebWidget()->getBlockedRequests().count();
+		m_amount = window->getWebWidget()->getBlockedRequests().count();
 		m_isContentBlockingEnabled = (m_window->getOption(SettingsManager::ContentBlocking_EnableContentBlockingOption).toBool());
 
-		connect(m_window, SIGNAL(aboutToNavigate()), this, SLOT(clear()));
-		connect(m_window, SIGNAL(requestBlocked(NetworkManager::ResourceInformation)), this, SLOT(handleRequest(NetworkManager::ResourceInformation)));
+		connect(m_window, &Window::aboutToNavigate, this, &ContentBlockingInformationWidget::clear);
+		connect(m_window, &Window::requestBlocked, this, &ContentBlockingInformationWidget::handleRequest);
 	}
 	else
 	{
@@ -579,17 +581,19 @@ void ContentBlockingInformationWidget::setWindow(Window *window)
 
 QString ContentBlockingInformationWidget::getText() const
 {
+	QString text(tr("Blocked Elements: {amount}"));
+
 	if (isCustomized())
 	{
 		const QVariantMap options(getOptions());
 
 		if (options.contains(QLatin1String("text")))
 		{
-			return options[QLatin1String("text")].toString().arg(m_amount);
+			text = options[QLatin1String("text")].toString();
 		}
 	}
 
-	return tr("Blocked Elements: {amount}").replace(QLatin1String("{amount}"), QString::number(m_amount));
+	return text.replace(QLatin1String("{amount}"), QString::number(m_amount));
 }
 
 QIcon ContentBlockingInformationWidget::getIcon() const

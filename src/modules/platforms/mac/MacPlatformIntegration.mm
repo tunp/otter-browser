@@ -191,42 +191,39 @@ MacPlatformIntegration::MacPlatformIntegration(Application *parent) : PlatformIn
 		}
 		else
 		{
-			Action *action(new Action(actions.at(i), {}, executor, menu));
-
 			switch (actions.at(i))
 			{
 				case ActionsManager::BookmarksAction:
-					action->setOverrideText(QT_TRANSLATE_NOOP("actions", "Bookmarks"));
+					menu->addAction(new Action(actions.at(i), {}, {{QLatin1String("text"), QT_TRANSLATE_NOOP("actions", "Bookmarks")}}, executor, menu));
 
 					break;
 				case ActionsManager::TransfersAction:
-					action->setOverrideText(QT_TRANSLATE_NOOP("actions", "Transfers"));
+					menu->addAction(new Action(actions.at(i), {}, {{QLatin1String("text"), QT_TRANSLATE_NOOP("actions", "Transfers")}}, executor, menu));
 
 					break;
 				case ActionsManager::HistoryAction:
-					action->setOverrideText(QT_TRANSLATE_NOOP("actions", "History"));
+					menu->addAction(new Action(actions.at(i), {}, {{QLatin1String("text"), QT_TRANSLATE_NOOP("actions", "History")}}, executor, menu));
 
 					break;
 				case ActionsManager::NotesAction:
-					action->setOverrideText(QT_TRANSLATE_NOOP("actions", "Notes"));
+					menu->addAction(new Action(actions.at(i), {}, {{QLatin1String("text"), QT_TRANSLATE_NOOP("actions", "Notes")}}, executor, menu));
 
 					break;
 				default:
+					menu->addAction(new Action(actions.at(i), {}, executor, menu));
+
 					break;
 			}
-
-			menu->addAction(action);
 		}
 	}
 
 	menu->setAsDockMenu();
 
-	connect(TransfersManager::getInstance(), SIGNAL(transferChanged(Transfer*)), this, SLOT(updateTransfersProgress()));
-	connect(TransfersManager::getInstance(), SIGNAL(transferStarted(Transfer*)), this, SLOT(updateTransfersProgress()));
-	connect(TransfersManager::getInstance(), SIGNAL(transferFinished(Transfer*)), this, SLOT(updateTransfersProgress()));
-	connect(TransfersManager::getInstance(), SIGNAL(transferRemoved(Transfer*)), this, SLOT(updateTransfersProgress()));
-	connect(TransfersManager::getInstance(), SIGNAL(transferStopped(Transfer*)), this, SLOT(updateTransfersProgress()));
-	connect(menu, SIGNAL(triggered(QAction*)), this, SLOT(triggerAction(QAction*)));
+	connect(TransfersManager::getInstance(), &TransfersManager::transferChanged, this, &MacPlatformIntegration::updateTransfersProgress);
+	connect(TransfersManager::getInstance(), &TransfersManager::transferStarted, this, &MacPlatformIntegration::updateTransfersProgress);
+	connect(TransfersManager::getInstance(), &TransfersManager::transferFinished, this, &MacPlatformIntegration::updateTransfersProgress);
+	connect(TransfersManager::getInstance(), &TransfersManager::transferRemoved, this, &MacPlatformIntegration::updateTransfersProgress);
+	connect(TransfersManager::getInstance(), &TransfersManager::transferStopped, this, &MacPlatformIntegration::updateTransfersProgress);
 }
 
 void MacPlatformIntegration::timerEvent(QTimerEvent *event)
@@ -247,7 +244,7 @@ void MacPlatformIntegration::timerEvent(QTimerEvent *event)
 		{
 			if (!existingNotifications.contains(allNotifications.at(i)))
 			{
-				m_notifications[allNotifications.at(i)]->markIgnored();
+				m_notifications[allNotifications.at(i)]->markAsIgnored();
 
 				m_notifications.remove(allNotifications.at(i));
 			}
@@ -255,7 +252,7 @@ void MacPlatformIntegration::timerEvent(QTimerEvent *event)
 			{
 				[[NSUserNotificationCenter defaultUserNotificationCenter] removeDeliveredNotification:existingNotifications[allNotifications.at(i)]];
 
-				m_notifications[allNotifications.at(i)]->markIgnored();
+				m_notifications[allNotifications.at(i)]->markAsIgnored();
 
 				m_notifications.remove(allNotifications.at(i));
 			}
@@ -270,22 +267,11 @@ void MacPlatformIntegration::timerEvent(QTimerEvent *event)
 	}
 }
 
-void MacPlatformIntegration::triggerAction(QAction *action)
-{
-	MainWindow *window(Application::getActiveWindow());
-	Action *actionObject(qobject_cast<Action*>(action));
-
-	if (window && actionObject)
-	{
-		window->triggerAction(actionObject->getIdentifier());
-	}
-}
-
 void MacPlatformIntegration::markNotificationClicked(quint64 identifier)
 {
 	if (m_notifications.contains(identifier))
 	{
-		m_notifications[identifier]->markClicked();
+		m_notifications[identifier]->markAsClicked();
 
 		m_notifications.remove(identifier);
 	}
@@ -416,11 +402,9 @@ Style* MacPlatformIntegration::createStyle(const QString &name) const
 
 QVector<ApplicationInformation> MacPlatformIntegration::getApplicationsForMimeType(const QMimeType &mimeType)
 {
-	QVector<ApplicationInformation> applications;
-
 	if (mimeType.preferredSuffix().isEmpty())
 	{
-		return applications;
+		return {};
 	}
 
 	NSRect iconRectangle(NSMakeRect(0, 0, 64, 64));
@@ -431,8 +415,14 @@ QVector<ApplicationInformation> MacPlatformIntegration::getApplicationsForMimeTy
 	url.setScheme(QLatin1String("file"));
 
 	const CFArrayRef urls(LSCopyApplicationURLsForURL(url.toCFURL(), kLSRolesAll));
-	const int count(CFArrayGetCount(urls));
 
+	if (!urls)
+	{
+		return {};
+	}
+
+	const int count(CFArrayGetCount(urls));
+	QVector<ApplicationInformation> applications;
 	applications.reserve(count);
 
 	for (int i = 0; i < count; ++i)

@@ -38,19 +38,11 @@ OperaSearchEnginesImporter::OperaSearchEnginesImporter(QObject *parent) : Import
 {
 }
 
-OperaSearchEnginesImporter::~OperaSearchEnginesImporter()
-{
-	if (m_optionsWidget)
-	{
-		m_optionsWidget->deleteLater();
-	}
-}
-
-QWidget* OperaSearchEnginesImporter::getOptionsWidget()
+QWidget* OperaSearchEnginesImporter::createOptionsWidget(QWidget *parent)
 {
 	if (!m_optionsWidget)
 	{
-		m_optionsWidget = new QCheckBox(tr("Remove existing search engines"));
+		m_optionsWidget = new QCheckBox(tr("Remove existing search engines"), parent);
 		m_optionsWidget->setChecked(true);
 	}
 
@@ -59,12 +51,12 @@ QWidget* OperaSearchEnginesImporter::getOptionsWidget()
 
 QString OperaSearchEnginesImporter::getTitle() const
 {
-	return QString(tr("Opera search engines"));
+	return tr("Opera search engines");
 }
 
 QString OperaSearchEnginesImporter::getDescription() const
 {
-	return QString(tr("Imports search engines from Opera Browser version 12 or earlier"));
+	return tr("Imports search engines from Opera Browser version 12 or earlier");
 }
 
 QString OperaSearchEnginesImporter::getVersion() const
@@ -74,10 +66,18 @@ QString OperaSearchEnginesImporter::getVersion() const
 
 QString OperaSearchEnginesImporter::getSuggestedPath(const QString &path) const
 {
-	if (!path.isEmpty() && QFileInfo(path).isDir())
+	if (!path.isEmpty())
 	{
-		return QDir(path).filePath(QLatin1String("search.ini"));
+		if (QFileInfo(path).isDir())
+		{
+			return QDir(path).filePath(QLatin1String("search.ini"));
+		}
+		else
+		{
+			return path;
+		}
 	}
+
 #if !defined(Q_OS_MAC) && defined(Q_OS_UNIX)
 	const QString homePath(QStandardPaths::standardLocations(QStandardPaths::HomeLocation).value(0));
 
@@ -102,7 +102,7 @@ QUrl OperaSearchEnginesImporter::getHomePage() const
 
 QStringList OperaSearchEnginesImporter::getFileFilters() const
 {
-	return QStringList(tr("Opera search engines files (search.ini)"));
+	return {tr("Opera search engines files (search.ini)")};
 }
 
 Importer::ImportType OperaSearchEnginesImporter::getImportType() const
@@ -113,6 +113,15 @@ Importer::ImportType OperaSearchEnginesImporter::getImportType() const
 bool OperaSearchEnginesImporter::import(const QString &path)
 {
 	IniSettings settings(getSuggestedPath(path), this);
+
+	if (settings.hasError())
+	{
+		emit importFinished(SearchEnginesImport, FailedImport, 0);
+
+		return false;
+	}
+
+	emit importStarted(SearchEnginesImport, -1);
 
 	if (m_optionsWidget->isChecked())
 	{
@@ -126,12 +135,14 @@ bool OperaSearchEnginesImporter::import(const QString &path)
 	settings.beginGroup(QLatin1String("Options"));
 
 	const QVariant defaultEngine(settings.getValue(QLatin1String("Default Search")));
-	const QList<QFileInfo> allSearchEngines(QDir(SessionsManager::getReadableDataPath(QLatin1String("searches"))).entryInfoList());
+	const QList<QFileInfo> allSearchEngines(QDir(SessionsManager::getReadableDataPath(QLatin1String("searchEngines"))).entryInfoList());
 
 	for (int i = 0; i < allSearchEngines.count(); ++i)
 	{
 		identifiers.append(allSearchEngines.at(i).baseName());
 	}
+
+	int totalAmount(0);
 
 	for (int i = 0; i < groups.count(); ++i)
 	{
@@ -182,7 +193,11 @@ bool OperaSearchEnginesImporter::import(const QString &path)
 
 		identifiers.append(searchEngine.identifier);
 		keywords.append(searchEngine.keyword);
+
+		++totalAmount;
 	}
+
+	emit importFinished(SearchEnginesImport, SuccessfullImport, totalAmount);
 
 	return true;
 }

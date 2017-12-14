@@ -32,36 +32,29 @@ namespace Otter
 {
 
 ActionWidget::ActionWidget(int identifier, Window *window, const ToolBarsManager::ToolBarDefinition::Entry &definition, QWidget *parent) : ToolButtonWidget(definition, parent),
-	m_action(new Action(identifier, definition.parameters, this))
+	m_action(new Action(identifier, definition.parameters, definition.options, ActionExecutor::Object(window, window), this))
 {
 	setDefaultAction(m_action);
 	setWindow(window);
 
-	if (isCustomized())
+	switch (identifier)
 	{
-		const QVariantMap options(getOptions());
+		case ActionsManager::NewTabAction:
+		case ActionsManager::NewTabPrivateAction:
+		case ActionsManager::NewWindowAction:
+		case ActionsManager::NewWindowPrivateAction:
+			setAcceptDrops(true);
 
-		if (options.contains(QLatin1String("icon")))
-		{
-			m_action->setOverrideIcon(getIcon());
-		}
-
-		if (options.contains(QLatin1String("text")))
-		{
-			m_action->setOverrideText(getText());
-		}
-	}
-
-	if (identifier == ActionsManager::NewTabAction || identifier == ActionsManager::NewTabPrivateAction)
-	{
-		setAcceptDrops(true);
+			break;
+		default:
+			break;
 	}
 
 	const ToolBarWidget *toolBar(qobject_cast<ToolBarWidget*>(parent));
 
 	if (toolBar && toolBar->getIdentifier() != ToolBarsManager::AddressBar)
 	{
-		connect(toolBar, SIGNAL(windowChanged(Window*)), this, SLOT(setWindow(Window*)));
+		connect(toolBar, &ToolBarWidget::windowChanged, this, &ActionWidget::setWindow);
 	}
 }
 
@@ -77,18 +70,28 @@ void ActionWidget::mouseReleaseEvent(QMouseEvent *event)
 	int identifier(m_action->getIdentifier());
 	QVariantMap parameters(m_action->getParameters());
 
-	if (identifier == ActionsManager::NewTabAction || identifier == ActionsManager::NewTabPrivateAction)
+	switch (identifier)
 	{
-		SessionsManager::OpenHints hints(SessionsManager::calculateOpenHints(SessionsManager::NewTabOpen, event->button(), event->modifiers()));
+		case ActionsManager::NewTabAction:
+		case ActionsManager::NewTabPrivateAction:
+		case ActionsManager::NewWindowAction:
+		case ActionsManager::NewWindowPrivateAction:
+			{
+				SessionsManager::OpenHints hints(SessionsManager::calculateOpenHints(((identifier == ActionsManager::NewWindowAction || identifier == ActionsManager::NewWindowPrivateAction) ? SessionsManager::NewWindowOpen : SessionsManager::NewTabOpen), event->button(), event->modifiers()));
 
-		if (identifier == ActionsManager::NewTabPrivateAction)
-		{
-			hints |= SessionsManager::PrivateOpen;
-		}
+				if (identifier == ActionsManager::NewTabPrivateAction || identifier == ActionsManager::NewWindowPrivateAction)
+				{
+					hints |= SessionsManager::PrivateOpen;
+				}
 
-		parameters[QLatin1String("hints")] = QVariant(hints);
+				parameters[QLatin1String("hints")] = QVariant(hints);
 
-		identifier = ActionsManager::OpenUrlAction;
+				identifier = ActionsManager::OpenUrlAction;
+			}
+
+			break;
+		default:
+			break;
 	}
 
 	if (isCheckable())
@@ -107,7 +110,7 @@ void ActionWidget::mouseReleaseEvent(QMouseEvent *event)
 
 void ActionWidget::dragEnterEvent(QDragEnterEvent *event)
 {
-	if (event->mimeData()->hasUrls() && (m_action->getIdentifier() == ActionsManager::NewTabAction || m_action->getIdentifier() == ActionsManager::NewTabPrivateAction))
+	if (event->mimeData()->hasUrls())
 	{
 		event->accept();
 	}
@@ -119,13 +122,13 @@ void ActionWidget::dragEnterEvent(QDragEnterEvent *event)
 
 void ActionWidget::dropEvent(QDropEvent *event)
 {
-	if (event->mimeData()->hasUrls() && (m_action->getIdentifier() == ActionsManager::NewTabAction || m_action->getIdentifier() == ActionsManager::NewTabPrivateAction))
+	if (event->mimeData()->hasUrls())
 	{
 		QVariantMap parameters(getParameters());
-		QVector<QUrl> urls(Utils::extractUrls(event->mimeData()));
-		SessionsManager::OpenHints hints(SessionsManager::calculateOpenHints(SessionsManager::NewTabOpen, Qt::LeftButton, event->keyboardModifiers()));
+		const QVector<QUrl> urls(Utils::extractUrls(event->mimeData()));
+		SessionsManager::OpenHints hints(SessionsManager::calculateOpenHints(((m_action->getIdentifier() == ActionsManager::NewWindowAction || m_action->getIdentifier() == ActionsManager::NewWindowPrivateAction) ? SessionsManager::NewWindowOpen : SessionsManager::NewTabOpen), Qt::LeftButton, event->keyboardModifiers()));
 
-		if (m_action->getIdentifier() == ActionsManager::NewTabPrivateAction)
+		if (m_action->getIdentifier() == ActionsManager::NewTabPrivateAction || m_action->getIdentifier() == ActionsManager::NewWindowPrivateAction)
 		{
 			hints |= SessionsManager::PrivateOpen;
 		}

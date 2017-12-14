@@ -25,6 +25,8 @@
 #include "../../core/ActionsManager.h"
 
 #include <QtCore/QModelIndex>
+#include <QtWidgets/QKeySequenceEdit>
+#include <QtWidgets/QToolButton>
 
 namespace Otter
 {
@@ -33,6 +35,25 @@ namespace Ui
 {
 	class KeyboardProfileDialog;
 }
+
+class KeyboardProfileDialog;
+
+class ShortcutWidget final : public QKeySequenceEdit
+{
+	Q_OBJECT
+
+public:
+	explicit ShortcutWidget(const QKeySequence &shortcut, QWidget *parent = nullptr);
+
+protected:
+	void changeEvent(QEvent *event) override;
+
+private:
+	QToolButton *m_clearButton;
+
+signals:
+	void commitData(QWidget *editor);
+};
 
 class KeyboardActionDelegate final : public ItemDelegate
 {
@@ -46,13 +67,16 @@ public:
 class KeyboardShortcutDelegate final : public ItemDelegate
 {
 public:
-	explicit KeyboardShortcutDelegate(QObject *parent);
+	explicit KeyboardShortcutDelegate(KeyboardProfileDialog *parent);
 
 	void setModelData(QWidget *editor, QAbstractItemModel *model, const QModelIndex &index) const override;
 	QWidget* createEditor(QWidget *parent, const QStyleOptionViewItem &option, const QModelIndex &index) const override;
 
 protected:
 	void initStyleOption(QStyleOptionViewItem *option, const QModelIndex &index) const override;
+
+private:
+	KeyboardProfileDialog *m_dialog;
 };
 
 class KeyboardProfileDialog final : public Dialog
@@ -63,13 +87,30 @@ public:
 	enum DataRole
 	{
 		IdentifierRole = Qt::UserRole,
-		ParametersRole
+		NameRole,
+		ParametersRole,
+		StatusRole
 	};
 
-	explicit KeyboardProfileDialog(const QString &profile, const QHash<QString, KeyboardProfile> &profiles, QWidget *parent = nullptr);
+	enum ShortcutStatus
+	{
+		ErrorStatus = 0,
+		WarningStatus,
+		NormalStatus
+	};
+
+	struct ValidationResult final
+	{
+		QString text;
+		QIcon icon;
+		bool isError = false;
+	};
+
+	explicit KeyboardProfileDialog(const QString &profile, const QHash<QString, KeyboardProfile> &profiles, bool areSingleKeyShortcutsAllowed, QWidget *parent = nullptr);
 	~KeyboardProfileDialog();
 
 	KeyboardProfile getProfile() const;
+	ValidationResult validateShortcut(const QKeySequence &shortcut, const QModelIndex &index) const;
 	bool isModified() const;
 
 protected:
@@ -82,6 +123,7 @@ protected slots:
 
 private:
 	KeyboardProfile m_profile;
+	bool m_areSingleKeyShortcutsAllowed;
 	Ui::KeyboardProfileDialog *m_ui;
 };
 

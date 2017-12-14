@@ -32,8 +32,8 @@
 namespace Otter
 {
 
-QStringList PacUtils::m_months = QStringList({QLatin1String("jan"), QLatin1String("feb"), QLatin1String("mar"), QLatin1String("apr"), QLatin1String("may"), QLatin1String("jun"), QLatin1String("jul"), QLatin1String("aug"), QLatin1String("sep"), QLatin1String("oct"), QLatin1String("nov"), QLatin1String("dec")});
-QStringList PacUtils::m_days = QStringList({QLatin1String("mon"), QLatin1String("tue"), QLatin1String("wed"), QLatin1String("thu"), QLatin1String("fri"), QLatin1String("sat"), QLatin1String("sun")});
+QStringList PacUtils::m_months = {QLatin1String("jan"), QLatin1String("feb"), QLatin1String("mar"), QLatin1String("apr"), QLatin1String("may"), QLatin1String("jun"), QLatin1String("jul"), QLatin1String("aug"), QLatin1String("sep"), QLatin1String("oct"), QLatin1String("nov"), QLatin1String("dec")};
+QStringList PacUtils::m_days = {QLatin1String("mon"), QLatin1String("tue"), QLatin1String("wed"), QLatin1String("thu"), QLatin1String("fri"), QLatin1String("sat"), QLatin1String("sun")};
 
 PacUtils::PacUtils(QObject *parent) : QObject(parent)
 {
@@ -53,7 +53,7 @@ QString PacUtils::dnsResolve(const QString &host) const
 		return hostInformation.addresses().first().toString();
 	}
 
-	return QString();
+	return {};
 }
 
 QString PacUtils::myIpAddress() const
@@ -68,7 +68,7 @@ QString PacUtils::myIpAddress() const
 		}
 	}
 
-	return QString();
+	return {};
 }
 
 int PacUtils::dnsDomainLevels(const QString &host) const
@@ -311,6 +311,20 @@ NetworkAutomaticProxy::NetworkAutomaticProxy(const QString &path, QObject *paren
 	setPath(path);
 }
 
+void NetworkAutomaticProxy::handleReplyFinished()
+{
+	if (m_reply->error() == QNetworkReply::NoError && setup(m_reply->readAll()))
+	{
+		m_isValid = true;
+	}
+	else
+	{
+		Console::addMessage(tr("Failed to load proxy auto-config (PAC): %1").arg(m_reply->errorString()), Console::NetworkCategory, Console::ErrorLevel, m_reply->url().url());
+	}
+
+	m_reply->deleteLater();
+}
+
 void NetworkAutomaticProxy::setPath(const QString &path)
 {
 	if (QFile::exists(path))
@@ -339,27 +353,13 @@ void NetworkAutomaticProxy::setPath(const QString &path)
 
 			m_reply = NetworkManagerFactory::getNetworkManager()->get(request);
 
-			connect(m_reply, SIGNAL(finished()), this, SLOT(setup()));
+			connect(m_reply, &QNetworkReply::finished, this, &NetworkAutomaticProxy::handleReplyFinished);
 		}
 		else
 		{
 			Console::addMessage(tr("Failed to load proxy auto-config (PAC). Invalid URL: %1").arg(url.url()), Console::NetworkCategory, Console::ErrorLevel);
 		}
 	}
-}
-
-void NetworkAutomaticProxy::setup()
-{
-	if (m_reply->error() == QNetworkReply::NoError && setup(m_reply->readAll()))
-	{
-		m_isValid = true;
-	}
-	else
-	{
-		Console::addMessage(tr("Failed to load proxy auto-config (PAC): %1").arg(m_reply->errorString()), Console::NetworkCategory, Console::ErrorLevel, m_reply->url().url());
-	}
-
-	m_reply->deleteLater();
 }
 
 QString NetworkAutomaticProxy::getPath() const
@@ -395,14 +395,14 @@ QVector<QNetworkProxy> NetworkAutomaticProxy::getProxy(const QString &url, const
 
 		if (proxy.count() == 2 && proxyHost.indexOf(QLatin1String("PROXY"), Qt::CaseInsensitive) == 0)
 		{
-			proxiesForQuery.append(QNetworkProxy(QNetworkProxy::HttpProxy, proxyHost.replace(0, 5, QString()), proxy.at(1).toInt()));
+			proxiesForQuery.append(QNetworkProxy(QNetworkProxy::HttpProxy, proxyHost.replace(0, 5, QString()), proxy.at(1).toUShort()));
 
 			continue;
 		}
 
 		if (proxy.count() == 2 && proxyHost.indexOf(QLatin1String("SOCKS"), Qt::CaseInsensitive) == 0)
 		{
-			proxiesForQuery.append(QNetworkProxy(QNetworkProxy::Socks5Proxy, proxyHost.replace(0, 5, QString()), proxy.at(1).toInt()));
+			proxiesForQuery.append(QNetworkProxy(QNetworkProxy::Socks5Proxy, proxyHost.replace(0, 5, QString()), proxy.at(1).toUShort()));
 
 			continue;
 		}

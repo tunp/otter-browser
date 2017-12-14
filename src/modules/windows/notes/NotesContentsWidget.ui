@@ -24,7 +24,7 @@
     <number>0</number>
    </property>
    <item>
-    <widget class="QLineEdit" name="filterLineEdit">
+    <widget class="Otter::LineEditWidget" name="filterLineEditWidget">
      <property name="placeholderText">
       <string>Search…</string>
      </property>
@@ -116,7 +116,7 @@
           </widget>
          </item>
          <item>
-          <widget class="QPlainTextEdit" name="textEdit">
+          <widget class="Otter::TextEditWidget" name="textEditWidget">
            <property name="sizePolicy">
             <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
              <horstretch>0</horstretch>
@@ -171,6 +171,11 @@
  </widget>
  <customwidgets>
   <customwidget>
+   <class>Otter::LineEditWidget</class>
+   <extends>QLineEdit</extends>
+   <header>src/ui/LineEditWidget.h</header>
+  </customwidget>
+  <customwidget>
    <class>Otter::ItemViewWidget</class>
    <extends>QTreeView</extends>
    <header>src/ui/ItemViewWidget.h</header>
@@ -181,9 +186,14 @@
    <header>src/ui/TextLabelWidget.h</header>
    <container>1</container>
   </customwidget>
+  <customwidget>
+   <class>Otter::TextEditWidget</class>
+   <extends>QPlainTextEdit</extends>
+   <header>src/ui/TextEditWidget.h</header>
+  </customwidget>
  </customwidgets>
  <tabstops>
-  <tabstop>filterLineEdit</tabstop>
+  <tabstop>filterLineEditWidget</tabstop>
   <tabstop>notesViewWidget</tabstop>
  </tabstops>
  <resources/>

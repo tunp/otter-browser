@@ -27,7 +27,28 @@
 namespace Otter
 {
 
-class Animation final : public QObject
+class Animation : public QObject
+{
+	Q_OBJECT
+
+public:
+	explicit Animation(QObject *parent = nullptr);
+
+	virtual void paint(QPainter *painter, const QRect &rectangle = {}) const = 0;
+	virtual QPixmap getCurrentPixmap() const = 0;
+	virtual bool isRunning() const = 0;
+	virtual void setColor(const QColor &color) = 0;
+	virtual void setScaledSize(const QSize &size) = 0;
+
+public slots:
+	virtual void start() = 0;
+	virtual void stop() = 0;
+
+signals:
+	void frameChanged();
+};
+
+class GenericAnimation final : public Animation
 {
 	Q_OBJECT
 
@@ -40,16 +61,17 @@ public:
 		InvalidFormat
 	};
 
-	explicit Animation(const QString &path, QObject *parent = nullptr);
+	explicit GenericAnimation(const QString &path, QObject *parent = nullptr);
 
-	QPixmap getCurrentPixmap() const;
-	bool isRunning() const;
-	void setColor(const QColor &color);
-	void setScaledSize(const QSize &size);
+	void paint(QPainter *painter, const QRect &rectangle = {}) const override;
+	QPixmap getCurrentPixmap() const override;
+	bool isRunning() const override;
+	void setColor(const QColor &color) override;
+	void setScaledSize(const QSize &size) override;
 
 public slots:
-	void start();
-	void stop();
+	void start() override;
+	void stop() override;
 
 protected:
 	void createSvgRenderer();
@@ -61,9 +83,33 @@ private:
 	QColor m_color;
 	QSize m_scaledSize;
 	AnimationFormat m_format;
+};
 
-signals:
-	void frameChanged();
+class SpinnerAnimation final : public Animation
+{
+	Q_OBJECT
+
+public:
+	explicit SpinnerAnimation(QObject *parent = nullptr);
+
+	void paint(QPainter *painter, const QRect &rectangle = {}) const override;
+	QPixmap getCurrentPixmap() const override;
+	bool isRunning() const override;
+	void setColor(const QColor &color) override;
+	void setScaledSize(const QSize &size) override;
+
+public slots:
+	void start() override;
+	void stop() override;
+
+protected:
+	void timerEvent(QTimerEvent *event) override;
+
+private:
+	QColor m_color;
+	QSize m_scaledSize;
+	int m_step;
+	int m_updateTimer;
 };
 
 }

@@ -40,9 +40,12 @@ public:
 	void setMode(BookmarksModel::FormatMode mode);
 	BookmarksItem* getCurrentFolder() const;
 
-protected slots:
+public slots:
 	void createFolder();
-	void updateBranch(const QModelIndex &parent = QModelIndex());
+
+protected slots:
+	void handleLayoutChanged();
+	void updateBranch(const QModelIndex &parent = {});
 
 private:
 	BookmarksModel *m_model;

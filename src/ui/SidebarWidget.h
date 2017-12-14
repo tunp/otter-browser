@@ -31,6 +31,7 @@ namespace Ui
 	class SidebarWidget;
 }
 
+class ContentsWidget;
 class ResizerWidget;
 class ToolBarWidget;
 
@@ -45,6 +46,7 @@ public:
 	void reload();
 	static QString getPanelTitle(const QString &identifier);
 	static QUrl getPanelUrl(const QString &identifier);
+	static QIcon getPanelIcon(const QString &identifier);
 	QSize sizeHint() const override;
 
 protected:
@@ -54,7 +56,6 @@ protected:
 protected slots:
 	void addWebPanel();
 	void choosePanel(bool isChecked);
-	void selectPanel();
 	void saveSize();
 	void updateLayout();
 	void updatePanels();
@@ -64,7 +65,7 @@ private:
 	ResizerWidget *m_resizerWidget;
 	QString m_currentPanel;
 	QHash<QString, QToolButton*> m_buttons;
-	QHash<QString, QWidget*> m_panels;
+	QHash<QString, ContentsWidget*> m_panels;
 	Ui::SidebarWidget *m_ui;
 };
 

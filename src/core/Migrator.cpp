@@ -52,7 +52,7 @@ public:
 	void createBackup() const override
 	{
 		const QString keyboardBackupPath(createBackupPath(QLatin1String("keyboard")));
-		const QList<QFileInfo> keyboardEntries(QDir(SessionsManager::getWritableDataPath(QString("keyboard"))).entryInfoList(QStringList(QLatin1String("*.ini"))));
+		const QList<QFileInfo> keyboardEntries(QDir(SessionsManager::getWritableDataPath(QLatin1String("keyboard"))).entryInfoList({QLatin1String("*.ini")}));
 
 		for (int i = 0; i < keyboardEntries.count(); ++i)
 		{
@@ -60,7 +60,7 @@ public:
 		}
 
 		const QString mouseBackupPath(createBackupPath(QLatin1String("mouse")));
-		const QList<QFileInfo> mouseEntries(QDir(SessionsManager::getWritableDataPath(QString("mouse"))).entryInfoList(QStringList(QLatin1String("*.ini"))));
+		const QList<QFileInfo> mouseEntries(QDir(SessionsManager::getWritableDataPath(QLatin1String("mouse"))).entryInfoList({QLatin1String("*.ini")}));
 
 		for (int i = 0; i < mouseEntries.count(); ++i)
 		{
@@ -70,7 +70,7 @@ public:
 
 	void migrate() const override
 	{
-		const QList<QFileInfo> keyboardEntries(QDir(SessionsManager::getWritableDataPath(QLatin1String("keyboard"))).entryInfoList(QStringList(QLatin1String("*.ini")), QDir::Files));
+		const QList<QFileInfo> keyboardEntries(QDir(SessionsManager::getWritableDataPath(QLatin1String("keyboard"))).entryInfoList({QLatin1String("*.ini")}, QDir::Files));
 
 		for (int i = 0; i < keyboardEntries.count(); ++i)
 		{
@@ -79,10 +79,10 @@ public:
 			IniSettings settings(keyboardEntries.at(i).absoluteFilePath());
 			const QStringList comments(settings.getComment().split(QLatin1Char('\n')));
 
-			for (int i = 0; i < comments.count(); ++i)
+			for (int j = 0; j < comments.count(); ++j)
 			{
-				const QString key(comments.at(i).section(QLatin1Char(':'), 0, 0).trimmed());
-				const QString value(comments.at(i).section(QLatin1Char(':'), 1).trimmed());
+				const QString key(comments.at(j).section(QLatin1Char(':'), 0, 0).trimmed());
+				const QString value(comments.at(j).section(QLatin1Char(':'), 1).trimmed());
 
 				if (key == QLatin1String("Title"))
 				{
@@ -120,9 +120,9 @@ public:
 				definition.shortcuts.reserve(shortcuts.count());
 				definition.action = action;
 
-				for (int j = 0; j < shortcuts.count(); ++j)
+				for (int k = 0; k < shortcuts.count(); ++k)
 				{
-					const QKeySequence shortcut(QKeySequence(shortcuts.at(j)));
+					const QKeySequence shortcut(QKeySequence(shortcuts.at(k)));
 
 					if (!shortcut.isEmpty())
 					{
@@ -144,7 +144,7 @@ public:
 			QFile::remove(keyboardEntries.at(i).absoluteFilePath());
 		}
 
-		const QList<QFileInfo> mouseEntries(QDir(SessionsManager::getWritableDataPath(QLatin1String("mouse"))).entryInfoList(QStringList(QLatin1String("*.ini")), QDir::Files));
+		const QList<QFileInfo> mouseEntries(QDir(SessionsManager::getWritableDataPath(QLatin1String("mouse"))).entryInfoList({QLatin1String("*.ini")}, QDir::Files));
 
 		for (int i = 0; i < mouseEntries.count(); ++i)
 		{
@@ -155,18 +155,18 @@ public:
 			const QStringList contexts(settings.getGroups());
 			QJsonArray contextsArray;
 
-			for (int i = 0; i < contexts.count(); ++i)
+			for (int j = 0; j < contexts.count(); ++j)
 			{
-				QJsonObject contextObject{{QLatin1String("context"), contexts.at(i)}};
+				QJsonObject contextObject{{QLatin1String("context"), contexts.at(j)}};
 				QJsonArray gesturesArray;
 
-				settings.beginGroup(contexts.at(i));
+				settings.beginGroup(contexts.at(j));
 
 				const QStringList gestures(settings.getKeys());
 
-				for (int j = 0; j < gestures.count(); ++j)
+				for (int k = 0; k < gestures.count(); ++k)
 				{
-					gesturesArray.append(QJsonObject{{QLatin1String("action"), settings.getValue(gestures.at(j)).toString()},{QLatin1String("steps"), QJsonArray::fromStringList(gestures.at(j).split(','))}});
+					gesturesArray.append(QJsonObject{{QLatin1String("action"), settings.getValue(gestures.at(k)).toString()},{QLatin1String("steps"), QJsonArray::fromStringList(gestures.at(k).split(','))}});
 				}
 
 				contextObject.insert(QLatin1String("gestures"), gesturesArray);
@@ -195,7 +195,7 @@ public:
 
 	bool needsMigration() const override
 	{
-		return (!QDir(SessionsManager::getWritableDataPath(QLatin1String("keyboard"))).entryList(QStringList(QLatin1String("*.ini")), QDir::Files).isEmpty() || !QDir(SessionsManager::getWritableDataPath(QLatin1String("mouse"))).entryList(QStringList(QLatin1String("*.ini")), QDir::Files).isEmpty());
+		return (!QDir(SessionsManager::getWritableDataPath(QLatin1String("keyboard"))).entryList({QLatin1String("*.ini")}, QDir::Files).isEmpty() || !QDir(SessionsManager::getWritableDataPath(QLatin1String("mouse"))).entryList({QLatin1String("*.ini")}, QDir::Files).isEmpty());
 	}
 };
 
@@ -209,7 +209,7 @@ public:
 	void createBackup() const override
 	{
 		const QString backupPath(createBackupPath(QLatin1String("other")));
-		const QList<QFileInfo> entries(QDir(SessionsManager::getWritableDataPath(QString())).entryInfoList(QStringList({QLatin1String("otter.conf"), QLatin1String("override.ini")})));
+		const QList<QFileInfo> entries(QDir(SessionsManager::getWritableDataPath({})).entryInfoList({QLatin1String("otter.conf"), QLatin1String("override.ini")}));
 
 		for (int i = 0; i < entries.count(); ++i)
 		{
@@ -341,6 +341,39 @@ public:
 	}
 };
 
+class SearchEnginesStorageMigration final : public Migration
+{
+public:
+	SearchEnginesStorageMigration() : Migration()
+	{
+	}
+
+	void migrate() const override
+	{
+		QDir().rename(SessionsManager::getWritableDataPath(QLatin1String("searches")), SessionsManager::getWritableDataPath(QLatin1String("searchEngines")));
+	}
+
+	QString getName() const override
+	{
+		return QLatin1String("searchEnginesStorage");
+	}
+
+	QString getTitle() const override
+	{
+		return QT_TRANSLATE_NOOP("migrations", "Search Engines");
+	}
+
+	bool needsBackup() const override
+	{
+		return false;
+	}
+
+	bool needsMigration() const override
+	{
+		return QFile::exists(SessionsManager::getWritableDataPath(QLatin1String("searches")));
+	}
+};
+
 class SessionsIniToJsonMigration final : public Migration
 {
 public:
@@ -351,7 +384,7 @@ public:
 	void createBackup() const override
 	{
 		const QString backupPath(createBackupPath(QLatin1String("sessions")));
-		const QList<QFileInfo> entries(QDir(SessionsManager::getWritableDataPath(QLatin1String("sessions"))).entryInfoList(QStringList(QLatin1String("*.ini"))));
+		const QList<QFileInfo> entries(QDir(SessionsManager::getWritableDataPath(QLatin1String("sessions"))).entryInfoList({QLatin1String("*.ini")}));
 
 		for (int i = 0; i < entries.count(); ++i)
 		{
@@ -361,7 +394,7 @@ public:
 
 	void migrate() const override
 	{
-		const QList<QFileInfo> entries(QDir(SessionsManager::getWritableDataPath(QLatin1String("sessions"))).entryInfoList(QStringList(QLatin1String("*.ini")), QDir::Files));
+		const QList<QFileInfo> entries(QDir(SessionsManager::getWritableDataPath(QLatin1String("sessions"))).entryInfoList({QLatin1String("*.ini")}, QDir::Files));
 
 		for (int i = 0; i < entries.count(); ++i)
 		{
@@ -370,7 +403,7 @@ public:
 
 			SessionInformation session;
 			session.path = entries.at(i).absolutePath() + QDir::separator() + entries.at(i).baseName() + QLatin1String(".json");
-			session.title = sessionData.value(QLatin1String("Session/title"), QString()).toString();
+			session.title = sessionData.value(QLatin1String("Session/title"), {}).toString();
 			session.index = (sessionData.value(QLatin1String("Session/index"), 1).toInt() - 1);
 			session.isClean = sessionData.value(QLatin1String("Session/clean"), true).toBool();
 
@@ -381,15 +414,15 @@ public:
 			{
 				const int tabs(sessionData.value(QStringLiteral("%1/Properties/windows").arg(j), 0).toInt());
 				SessionMainWindow sessionEntry;
-				sessionEntry.geometry = QByteArray::fromBase64(sessionData.value(QStringLiteral("%1/Properties/geometry").arg(j), QString()).toString().toLatin1());
+				sessionEntry.geometry = QByteArray::fromBase64(sessionData.value(QStringLiteral("%1/Properties/geometry").arg(j), {}).toString().toLatin1());
 				sessionEntry.index = (sessionData.value(QStringLiteral("%1/Properties/index").arg(j), 1).toInt() - 1);
 
 				for (int k = 1; k <= tabs; ++k)
 				{
-					const QString state(sessionData.value(QStringLiteral("%1/%2/Properties/state").arg(j).arg(k), QString()).toString());
-					const QString searchEngine(sessionData.value(QStringLiteral("%1/%2/Properties/searchEngine").arg(j).arg(k), QString()).toString());
-					const QString userAgent(sessionData.value(QStringLiteral("%1/%2/Properties/userAgent").arg(j).arg(k), QString()).toString());
-					const QStringList geometry(sessionData.value(QStringLiteral("%1/%2/Properties/geometry").arg(j).arg(k), QString()).toString().split(QLatin1Char(',')));
+					const QString state(sessionData.value(QStringLiteral("%1/%2/Properties/state").arg(j).arg(k), {}).toString());
+					const QString searchEngine(sessionData.value(QStringLiteral("%1/%2/Properties/searchEngine").arg(j).arg(k), {}).toString());
+					const QString userAgent(sessionData.value(QStringLiteral("%1/%2/Properties/userAgent").arg(j).arg(k), {}).toString());
+					const QStringList geometry(sessionData.value(QStringLiteral("%1/%2/Properties/geometry").arg(j).arg(k), {}).toString().split(QLatin1Char(',')));
 					const int historyAmount(sessionData.value(QStringLiteral("%1/%2/Properties/history").arg(j).arg(k), 0).toInt());
 					const int reloadTime(sessionData.value(QStringLiteral("%1/%2/Properties/reloadTime").arg(j).arg(k), -1).toInt());
 					WindowState windowState;
@@ -422,8 +455,8 @@ public:
 					{
 						const QStringList position(sessionData.value(QStringLiteral("%1/%2/History/%3/position").arg(j).arg(k).arg(l), 1).toStringList());
 						WindowHistoryEntry historyEntry;
-						historyEntry.url = sessionData.value(QStringLiteral("%1/%2/History/%3/url").arg(j).arg(k).arg(l), QString()).toString();
-						historyEntry.title = sessionData.value(QStringLiteral("%1/%2/History/%3/title").arg(j).arg(k).arg(l), QString()).toString();
+						historyEntry.url = sessionData.value(QStringLiteral("%1/%2/History/%3/url").arg(j).arg(k).arg(l), {}).toString();
+						historyEntry.title = sessionData.value(QStringLiteral("%1/%2/History/%3/title").arg(j).arg(k).arg(l), {}).toString();
 						historyEntry.position = ((position.count() == 2) ? QPoint(position.at(0).simplified().toInt(), position.at(1).simplified().toInt()) : QPoint(0, 0));
 						historyEntry.zoom = sessionData.value(QStringLiteral("%1/%2/History/%3/zoom").arg(j).arg(k).arg(l), defaultZoom).toInt();
 
@@ -455,7 +488,7 @@ public:
 
 	bool needsMigration() const override
 	{
-		return !QDir(SessionsManager::getWritableDataPath(QLatin1String("sessions"))).entryList(QStringList(QLatin1String("*.ini")), QDir::Files).isEmpty();
+		return !QDir(SessionsManager::getWritableDataPath(QLatin1String("sessions"))).entryList({QLatin1String("*.ini")}, QDir::Files).isEmpty();
 	}
 };
 
@@ -503,12 +536,17 @@ QString Migration::createBackupPath(const QString &sourcePath)
 
 QString Migration::getName() const
 {
-	return QString();
+	return {};
 }
 
 QString Migration::getTitle() const
 {
-	return QString();
+	return {};
+}
+
+bool Migration::needsBackup() const
+{
+	return true;
 }
 
 bool Migration::needsMigration() const
@@ -518,7 +556,7 @@ bool Migration::needsMigration() const
 
 bool Migrator::run()
 {
-	const QVector<Migration*> availableMigrations({new KeyboardAndMouseProfilesIniToJsonMigration(), new OptionsRenameMigration(), new SessionsIniToJsonMigration()});
+	const QVector<Migration*> availableMigrations({new KeyboardAndMouseProfilesIniToJsonMigration(), new OptionsRenameMigration(), new SearchEnginesStorageMigration(), new SessionsIniToJsonMigration()});
 	QVector<Migration*> possibleMigrations;
 	QStringList processedMigrations(SettingsManager::getOption(SettingsManager::Browser_MigrationsOption).toStringList());
 
@@ -556,16 +594,24 @@ bool Migrator::run()
 	migrationsViewWidget->setHeaderHidden(true);
 	migrationsViewWidget->header()->setStretchLastSection(true);
 
+	bool needsBackup(false);
+
 	for (int i = 0; i < possibleMigrations.count(); ++i)
 	{
 		QStandardItem *item(new QStandardItem(QCoreApplication::translate("migrations", possibleMigrations[i]->getTitle().toUtf8().constData())));
 		item->setFlags(Qt::ItemIsEnabled | Qt::ItemNeverHasChildren | Qt::ItemIsSelectable);
 
-		migrationsViewWidget->insertRow(item);
+		if (possibleMigrations[i]->needsBackup())
+		{
+			needsBackup = true;
+		}
+
+		migrationsViewWidget->insertRow({item});
 	}
 
 	QCheckBox *createBackupCheckBox(new QCheckBox(QCoreApplication::translate("Otter::Migrator", "Create backup")));
 	createBackupCheckBox->setChecked(true);
+	createBackupCheckBox->setEnabled(needsBackup);
 
 	QDialogButtonBox *buttonBox(new QDialogButtonBox(&dialog));
 	buttonBox->addButton(QDialogButtonBox::Yes);
@@ -588,15 +634,14 @@ bool Migrator::run()
 	dialog.exec();
 
 	const bool canProceed(clickedButton == QDialogButtonBox::Yes);
-	const bool needsBackup(createBackupCheckBox->isChecked());
 
-	if (canProceed || needsBackup)
+	if (canProceed || createBackupCheckBox->isChecked())
 	{
 		for (int i = 0; i < possibleMigrations.count(); ++i)
 		{
 			processedMigrations.append(possibleMigrations[i]->getName());
 
-			if (needsBackup)
+			if (createBackupCheckBox->isChecked())
 			{
 				possibleMigrations[i]->createBackup();
 			}

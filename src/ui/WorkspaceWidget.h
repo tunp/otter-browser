@@ -40,7 +40,7 @@ public:
 	bool eventFilter(QObject *object, QEvent *event) override;
 };
 
-class MdiWindow : public QMdiSubWindow
+class MdiWindow final : public QMdiSubWindow
 {
 	Q_OBJECT
 
@@ -49,6 +49,7 @@ public:
 
 	void storeState();
 	void restoreState();
+	Window* getWindow() const;
 
 protected:
 	void changeEvent(QEvent *event) override;
@@ -97,11 +98,12 @@ private:
 	MainWindow *m_mainWindow;
 	MdiWidget *m_mdi;
 	QPointer<Window> m_activeWindow;
+	QPointer<Window> m_peekedWindow;
 	int m_restoreTimer;
 	bool m_isRestored;
 
 signals:
-	void actionsStateChanged(const QVector<int> &identifiers);
+	void arbitraryActionsStateChanged(const QVector<int> &identifiers);
 };
 
 }

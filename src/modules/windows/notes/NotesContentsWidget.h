@@ -40,7 +40,7 @@ class NotesContentsWidget final : public ContentsWidget
 	Q_OBJECT
 
 public:
-	explicit NotesContentsWidget(const QVariantMap &parameters, Window *window);
+	explicit NotesContentsWidget(const QVariantMap &parameters, Window *window, QWidget *parent);
 	~NotesContentsWidget();
 
 	void print(QPrinter *printer) override;
@@ -65,8 +65,9 @@ protected slots:
 	void removeNote();
 	void restoreNote();
 	void openUrl(const QModelIndex &index = {});
+	void notifyPasteActionStateChanged();
 	void showContextMenu(const QPoint &position);
-	void updateActions(bool updateText = true);
+	void updateActions();
 	void updateText();
 
 private:

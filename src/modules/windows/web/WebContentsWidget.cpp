@@ -57,9 +57,9 @@ namespace Otter
 {
 
 QString WebContentsWidget::m_sharedQuickFindQuery = nullptr;
-QMap<int, QPixmap> WebContentsWidget::m_scrollCursors;
+QMap<WebContentsWidget::ScrollDirections, QPixmap> WebContentsWidget::m_scrollCursors;
 
-WebContentsWidget::WebContentsWidget(const QVariantMap &parameters, const QHash<int, QVariant> &options, WebWidget *widget, Window *window) : ContentsWidget(parameters, window),
+WebContentsWidget::WebContentsWidget(const QVariantMap &parameters, const QHash<int, QVariant> &options, WebWidget *widget, Window *window, QWidget *parent) : ContentsWidget(parameters, window, parent),
 	m_websiteInformationDialog(nullptr),
 	m_layout(new QVBoxLayout(this)),
 	m_splitter(new QSplitter(Qt::Vertical, this)),
@@ -246,9 +246,9 @@ void WebContentsWidget::keyPressEvent(QKeyEvent *event)
 		}
 		else if (!m_quickFindQuery.isEmpty())
 		{
-			m_quickFindQuery = QString();
+			m_quickFindQuery.clear();
 
-			m_webWidget->findInPage(QString());
+			m_webWidget->findInPage({});
 
 			event->accept();
 		}
@@ -349,16 +349,47 @@ void WebContentsWidget::triggerAction(int identifier, const QVariantMap &paramet
 	{
 		case ActionsManager::OpenSelectionAsLinkAction:
 			{
-				const QString text(m_webWidget->getSelectedText());
+				const QString text(m_webWidget->getSelectedText().trimmed());
 
 				if (!text.isEmpty())
 				{
-					InputInterpreter *interpreter(new InputInterpreter(this));
+					const InputInterpreter::InterpreterResult result(InputInterpreter::interpret(text, (InputInterpreter::NoBookmarkKeywordsFlag | InputInterpreter::NoHostLookupFlag | InputInterpreter::NoSearchKeywordsFlag)));
 
-					connect(interpreter, SIGNAL(requestedOpenUrl(QUrl,SessionsManager::OpenHints)), this, SIGNAL(requestedOpenUrl(QUrl,SessionsManager::OpenHints)));
-					connect(interpreter, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)), this, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)));
+					if (result.isValid())
+					{
+						SessionsManager::OpenHints hints(SessionsManager::calculateOpenHints());
 
-					interpreter->interpret(text, SessionsManager::calculateOpenHints(), true);
+						if (parameters.contains(QLatin1String("hints")))
+						{
+							hints = SessionsManager::calculateOpenHints(parameters);
+						}
+
+						switch (result.type)
+						{
+							case InputInterpreter::InterpreterResult::UrlType:
+								if (hints.testFlag(SessionsManager::CurrentTabOpen) && hints.testFlag(SessionsManager::PrivateOpen) == isPrivate())
+								{
+									setUrl(result.url);
+								}
+								else
+								{
+									MainWindow *mainWindow(MainWindow::findMainWindow(this));
+
+									if (mainWindow)
+									{
+										mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), result.url}, {QLatin1String("hints"), QVariant(hints)}});
+									}
+								}
+
+								break;
+							case InputInterpreter::InterpreterResult::SearchType:
+								emit requestedSearch(result.searchQuery, result.searchEngine, hints);
+
+								break;
+							default:
+								break;
+						}
+					}
 				}
 			}
 
@@ -408,19 +439,43 @@ void WebContentsWidget::triggerAction(int identifier, const QVariantMap &paramet
 		case ActionsManager::PasteAndGoAction:
 			if (!QGuiApplication::clipboard()->text().isEmpty())
 			{
-				InputInterpreter *interpreter(new InputInterpreter(this));
+				const InputInterpreter::InterpreterResult result(InputInterpreter::interpret(QGuiApplication::clipboard()->text().trimmed(), (InputInterpreter::NoBookmarkKeywordsFlag | InputInterpreter::NoHostLookupFlag | InputInterpreter::NoSearchKeywordsFlag)));
 
-				connect(interpreter, SIGNAL(requestedOpenUrl(QUrl,SessionsManager::OpenHints)), this, SIGNAL(requestedOpenUrl(QUrl,SessionsManager::OpenHints)));
-				connect(interpreter, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)), this, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)));
-
-				SessionsManager::OpenHints hints(SettingsManager::getOption(SettingsManager::Browser_OpenLinksInNewTabOption).toBool() ? SessionsManager::NewTabOpen : SessionsManager::CurrentTabOpen);
-
-				if (parameters.contains(QLatin1String("hints")))
+				if (result.isValid())
 				{
-					hints = SessionsManager::calculateOpenHints(parameters);
-				}
+					SessionsManager::OpenHints hints(SettingsManager::getOption(SettingsManager::Browser_OpenLinksInNewTabOption).toBool() ? SessionsManager::NewTabOpen : SessionsManager::CurrentTabOpen);
 
-				interpreter->interpret(QGuiApplication::clipboard()->text().trimmed(), hints, true);
+					if (parameters.contains(QLatin1String("hints")))
+					{
+						hints = SessionsManager::calculateOpenHints(parameters);
+					}
+
+					switch (result.type)
+					{
+						case InputInterpreter::InterpreterResult::UrlType:
+							if (hints.testFlag(SessionsManager::CurrentTabOpen) && hints.testFlag(SessionsManager::PrivateOpen) == isPrivate())
+							{
+								setUrl(result.url);
+							}
+							else
+							{
+								MainWindow *mainWindow(MainWindow::findMainWindow(this));
+
+								if (mainWindow)
+								{
+									mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), result.url}, {QLatin1String("hints"), QVariant(hints)}});
+								}
+							}
+
+							break;
+						case InputInterpreter::InterpreterResult::SearchType:
+							emit requestedSearch(result.searchQuery, result.searchEngine, hints);
+
+							break;
+						default:
+							break;
+					}
+				}
 			}
 
 			break;
@@ -433,12 +488,12 @@ void WebContentsWidget::triggerAction(int identifier, const QVariantMap &paramet
 
 				m_layout->insertWidget(0, m_searchBarWidget);
 
-				connect(m_searchBarWidget, SIGNAL(requestedSearch(WebWidget::FindFlags)), this, SLOT(findInPage(WebWidget::FindFlags)));
-				connect(m_searchBarWidget, SIGNAL(flagsChanged(WebWidget::FindFlags)), this, SLOT(updateFindHighlight(WebWidget::FindFlags)));
+				connect(m_searchBarWidget, &SearchBarWidget::requestedSearch, this, &WebContentsWidget::findInPage);
+				connect(m_searchBarWidget, &SearchBarWidget::flagsChanged, this, &WebContentsWidget::updateFindHighlight);
 
 				if (SettingsManager::getOption(SettingsManager::Search_EnableFindInPageAsYouTypeOption).toBool())
 				{
-					connect(m_searchBarWidget, SIGNAL(queryChanged()), this, SLOT(findInPage()));
+					connect(m_searchBarWidget, &SearchBarWidget::queryChanged, this, &WebContentsWidget::handleFindInPageQueryChanged);
 				}
 			}
 
@@ -514,11 +569,25 @@ void WebContentsWidget::triggerAction(int identifier, const QVariantMap &paramet
 
 			break;
 		case ActionsManager::StartDragScrollAction:
-			setScrollMode(DragScroll);
+			if (m_scrollMode == DragScroll)
+			{
+				setScrollMode(NoScroll);
+			}
+			else
+			{
+				setScrollMode(DragScroll);
+			}
 
 			break;
 		case ActionsManager::StartMoveScrollAction:
-			setScrollMode(MoveScroll);
+			if (m_scrollMode == MoveScroll)
+			{
+				setScrollMode(NoScroll);
+			}
+			else
+			{
+				setScrollMode(MoveScroll);
+			}
 
 			break;
 		case ActionsManager::EndScrollAction:
@@ -573,9 +642,9 @@ void WebContentsWidget::triggerAction(int identifier, const QVariantMap &paramet
 				{
 					m_websiteInformationDialog = new WebsiteInformationDialog(m_webWidget, this);
 
-					ContentsDialog *dialog(new ContentsDialog(ThemesManager::createIcon(QLatin1String("dialog-information")), m_websiteInformationDialog->windowTitle(), QString(), QString(), QDialogButtonBox::NoButton, m_websiteInformationDialog, this));
+					ContentsDialog *dialog(new ContentsDialog(ThemesManager::createIcon(QLatin1String("dialog-information")), m_websiteInformationDialog->windowTitle(), {}, {}, QDialogButtonBox::NoButton, m_websiteInformationDialog, this));
 
-					connect(m_websiteInformationDialog, SIGNAL(finished(int)), dialog, SLOT(close()));
+					connect(m_websiteInformationDialog, &WebsiteInformationDialog::finished, dialog, &ContentsDialog::close);
 
 					showDialog(dialog, false);
 				}
@@ -628,11 +697,6 @@ void WebContentsWidget::findInPage(WebWidget::FindFlags flags)
 		killTimer(m_quickFindTimer);
 
 		m_quickFindTimer = startTimer(2000);
-	}
-
-	if (flags == WebWidget::NoFlagsFind)
-	{
-		flags = (m_searchBarWidget ? m_searchBarWidget->getFlags() : WebWidget::HighlightAllFind);
 	}
 
 	m_quickFindQuery = (m_searchBarWidget ? m_searchBarWidget->getQuery() : m_sharedQuickFindQuery);
@@ -691,11 +755,11 @@ void WebContentsWidget::handleOptionChanged(int identifier, const QVariant &valu
 			{
 				if (value.toBool())
 				{
-					connect(m_searchBarWidget, SIGNAL(queryChanged(QString)), this, SLOT(findInPage()));
+					connect(m_searchBarWidget, &SearchBarWidget::queryChanged, this, &WebContentsWidget::handleFindInPageQueryChanged);
 				}
 				else
 				{
-					disconnect(m_searchBarWidget, SIGNAL(queryChanged(QString)), this, SLOT(findInPage()));
+					disconnect(m_searchBarWidget, &SearchBarWidget::queryChanged, this, &WebContentsWidget::handleFindInPageQueryChanged);
 				}
 			}
 
@@ -821,7 +885,7 @@ void WebContentsWidget::handleSavePasswordRequest(const PasswordsManager::Passwo
 		{
 			m_passwordBarWidget = new PasswordBarWidget(password, isUpdate, this);
 
-			connect(m_passwordBarWidget, SIGNAL(requestedClose()), this, SLOT(closePasswordBar()));
+			connect(m_passwordBarWidget, &PasswordBarWidget::requestedClose, this, &WebContentsWidget::closePasswordBar);
 
 			m_layout->insertWidget(0, m_passwordBarWidget);
 
@@ -834,10 +898,9 @@ void WebContentsWidget::handlePopupWindowRequest(const QUrl &parentUrl, const QU
 {
 	if (!m_popupsBarWidget)
 	{
-		m_popupsBarWidget = new PopupsBarWidget(parentUrl, this);
+		m_popupsBarWidget = new PopupsBarWidget(parentUrl, isPrivate(), this);
 
-		connect(m_popupsBarWidget, SIGNAL(requestedClose()), this, SLOT(closePopupsBar()));
-		connect(m_popupsBarWidget, SIGNAL(requestedNewWindow(QUrl,SessionsManager::OpenHints)), this, SLOT(notifyRequestedOpenUrl(QUrl,SessionsManager::OpenHints)));
+		connect(m_popupsBarWidget, &PopupsBarWidget::requestedClose, this, &WebContentsWidget::closePopupsBar);
 
 		m_layout->insertWidget(0, m_popupsBarWidget);
 
@@ -847,14 +910,14 @@ void WebContentsWidget::handlePopupWindowRequest(const QUrl &parentUrl, const QU
 	m_popupsBarWidget->addPopup(popupUrl);
 }
 
-void WebContentsWidget::handlePermissionRequest(WebWidget::FeaturePermission feature, const QUrl &url, bool cancel)
+void WebContentsWidget::handlePermissionRequest(WebWidget::FeaturePermission feature, const QUrl &url, bool isCancellation)
 {
 	if (!url.isValid())
 	{
 		return;
 	}
 
-	if (cancel)
+	if (isCancellation)
 	{
 		for (int i = 0; i < m_permissionBarWidgets.count(); ++i)
 		{
@@ -890,7 +953,7 @@ void WebContentsWidget::handlePermissionRequest(WebWidget::FeaturePermission fea
 
 		emit needsAttention();
 
-		connect(widget, SIGNAL(permissionChanged(WebWidget::PermissionPolicies)), this, SLOT(notifyPermissionChanged(WebWidget::PermissionPolicies)));
+		connect(widget, &PermissionBarWidget::permissionChanged, this, &WebContentsWidget::notifyPermissionChanged);
 	}
 }
 
@@ -956,6 +1019,11 @@ void WebContentsWidget::handleLoadingStateChange(WebWidget::LoadingState state)
 	}
 }
 
+void WebContentsWidget::handleFindInPageQueryChanged()
+{
+	findInPage(m_searchBarWidget ? m_searchBarWidget->getFlags() : WebWidget::HighlightAllFind);
+}
+
 void WebContentsWidget::notifyPermissionChanged(WebWidget::PermissionPolicies policies)
 {
 	PermissionBarWidget *widget(qobject_cast<PermissionBarWidget*>(sender()));
@@ -972,16 +1040,6 @@ void WebContentsWidget::notifyPermissionChanged(WebWidget::PermissionPolicies po
 	}
 }
 
-void WebContentsWidget::notifyRequestedOpenUrl(const QUrl &url, SessionsManager::OpenHints hints)
-{
-	if (isPrivate())
-	{
-		hints |= SessionsManager::PrivateOpen;
-	}
-
-	emit requestedOpenUrl(url, hints);
-}
-
 void WebContentsWidget::notifyRequestedNewWindow(WebWidget *widget, SessionsManager::OpenHints hints)
 {
 	if (isPrivate())
@@ -989,14 +1047,14 @@ void WebContentsWidget::notifyRequestedNewWindow(WebWidget *widget, SessionsMana
 		hints |= SessionsManager::PrivateOpen;
 	}
 
-	emit requestedNewWindow(new WebContentsWidget({{QLatin1String("hints"), QVariant(hints)}}, widget->getOptions(), widget, nullptr), hints);
+	emit requestedNewWindow(new WebContentsWidget({{QLatin1String("hints"), QVariant(hints)}}, widget->getOptions(), widget, nullptr, nullptr), hints);
 }
 
 void WebContentsWidget::updateFindHighlight(WebWidget::FindFlags flags)
 {
 	if (m_searchBarWidget)
 	{
-		m_webWidget->findInPage(QString(), (flags | WebWidget::HighlightAllFind));
+		m_webWidget->findInPage({}, (flags | WebWidget::HighlightAllFind));
 		m_webWidget->findInPage(m_searchBarWidget->getQuery(), flags);
 	}
 }
@@ -1051,8 +1109,8 @@ void WebContentsWidget::setScrollMode(ScrollMode mode)
 
 	if (mode == NoScroll)
 	{
-		m_beginCursorPosition = QPoint();
-		m_lastCursorPosition = QPoint();
+		m_beginCursorPosition = {};
+		m_lastCursorPosition = {};
 
 		if (m_scrollTimer > 0)
 		{
@@ -1076,7 +1134,7 @@ void WebContentsWidget::setWidget(WebWidget *widget, const QVariantMap &paramete
 {
 	if (m_webWidget)
 	{
-		disconnect(m_webWidget, SIGNAL(requestedCloseWindow()));
+		disconnect(m_webWidget, &WebWidget::requestedCloseWindow, m_window, &Window::requestClose);
 
 		m_webWidget->hide();
 		m_webWidget->close();
@@ -1100,7 +1158,7 @@ void WebContentsWidget::setWidget(WebWidget *widget, const QVariantMap &paramete
 
 			if (!webBackendName.isEmpty())
 			{
-				Console::addMessage(tr("Failed to create requested web backend: %1").arg(webBackendName), Console::OtherCategory, Console::WarningLevel, QString(), -1, (m_window ? m_window->getIdentifier() : 0));
+				Console::addMessage(tr("Failed to load requested web backend: %1").arg(webBackendName), Console::OtherCategory, Console::WarningLevel, {}, -1, (m_window ? m_window->getIdentifier() : 0));
 			}
 		}
 
@@ -1111,7 +1169,7 @@ void WebContentsWidget::setWidget(WebWidget *widget, const QVariantMap &paramete
 			m_createStartPageTimer = startTimer(50);
 		}
 
-		connect(m_splitter, SIGNAL(splitterMoved(int,int)), widget, SIGNAL(progressBarGeometryChanged()));
+		connect(m_splitter, &QSplitter::splitterMoved, widget, &WebWidget::geometryChanged);
 	}
 
 	bool isHidden(m_isStartPageEnabled && Utils::isUrlEmpty(widget->getUrl()) && (!m_webWidget || (m_startPageWidget && m_startPageWidget->isVisibleTo(this))));
@@ -1135,37 +1193,35 @@ void WebContentsWidget::setWidget(WebWidget *widget, const QVariantMap &paramete
 	{
 		widget->setWindowIdentifier(m_window->getIdentifier());
 
-		connect(m_webWidget, SIGNAL(requestedCloseWindow()), m_window, SLOT(requestClose()));
+		connect(m_webWidget, &WebWidget::requestedCloseWindow, m_window, &Window::requestClose);
 	}
 
 	handleLoadingStateChange(m_webWidget->getLoadingState());
 
-	connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int,QVariant)));
-	connect(m_webWidget, SIGNAL(aboutToNavigate()), this, SIGNAL(aboutToNavigate()));
-	connect(m_webWidget, SIGNAL(aboutToNavigate()), this, SLOT(closePopupsBar()));
-	connect(m_webWidget, SIGNAL(needsAttention()), this, SIGNAL(needsAttention()));
-	connect(m_webWidget, SIGNAL(requestedOpenUrl(QUrl,SessionsManager::OpenHints)), this, SLOT(notifyRequestedOpenUrl(QUrl,SessionsManager::OpenHints)));
-	connect(m_webWidget, SIGNAL(requestedNewWindow(WebWidget*,SessionsManager::OpenHints)), this, SLOT(notifyRequestedNewWindow(WebWidget*,SessionsManager::OpenHints)));
-	connect(m_webWidget, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)), this, SIGNAL(requestedSearch(QString,QString,SessionsManager::OpenHints)));
-	connect(m_webWidget, SIGNAL(requestedPopupWindow(QUrl,QUrl)), this, SLOT(handlePopupWindowRequest(QUrl,QUrl)));
-	connect(m_webWidget, SIGNAL(requestedPermission(WebWidget::FeaturePermission,QUrl,bool)), this, SLOT(handlePermissionRequest(WebWidget::FeaturePermission,QUrl,bool)));
-	connect(m_webWidget, SIGNAL(requestedSavePassword(PasswordsManager::PasswordInformation,bool)), this, SLOT(handleSavePasswordRequest(PasswordsManager::PasswordInformation,bool)));
-	connect(m_webWidget, SIGNAL(requestedGeometryChange(QRect)), this, SIGNAL(requestedGeometryChange(QRect)));
-	connect(m_webWidget, SIGNAL(requestedInspectorVisibilityChange(bool)), this, SLOT(handleInspectorVisibilityChangeRequest(bool)));
-	connect(m_webWidget, SIGNAL(statusMessageChanged(QString)), this, SIGNAL(statusMessageChanged(QString)));
-	connect(m_webWidget, SIGNAL(titleChanged(QString)), this, SIGNAL(titleChanged(QString)));
-	connect(m_webWidget, SIGNAL(urlChanged(QUrl)), this, SIGNAL(urlChanged(QUrl)));
-	connect(m_webWidget, SIGNAL(urlChanged(QUrl)), this, SLOT(handleUrlChange(QUrl)));
-	connect(m_webWidget, SIGNAL(iconChanged(QIcon)), this, SIGNAL(iconChanged(QIcon)));
-	connect(m_webWidget, SIGNAL(requestBlocked(NetworkManager::ResourceInformation)), this, SIGNAL(requestBlocked(NetworkManager::ResourceInformation)));
-	connect(m_webWidget, SIGNAL(actionsStateChanged(QVector<int>)), this, SIGNAL(actionsStateChanged(QVector<int>)));
-	connect(m_webWidget, SIGNAL(actionsStateChanged(ActionsManager::ActionDefinition::ActionCategories)), this, SIGNAL(actionsStateChanged(ActionsManager::ActionDefinition::ActionCategories)));
-	connect(m_webWidget, SIGNAL(contentStateChanged(WebWidget::ContentStates)), this, SIGNAL(contentStateChanged(WebWidget::ContentStates)));
-	connect(m_webWidget, SIGNAL(loadingStateChanged(WebWidget::LoadingState)), this, SIGNAL(loadingStateChanged(WebWidget::LoadingState)));
-	connect(m_webWidget, SIGNAL(loadingStateChanged(WebWidget::LoadingState)), this, SLOT(handleLoadingStateChange(WebWidget::LoadingState)));
-	connect(m_webWidget, SIGNAL(pageInformationChanged(WebWidget::PageInformation,QVariant)), this, SIGNAL(pageInformationChanged(WebWidget::PageInformation,QVariant)));
-	connect(m_webWidget, SIGNAL(optionChanged(int,QVariant)), this, SIGNAL(optionChanged(int,QVariant)));
-	connect(m_webWidget, SIGNAL(zoomChanged(int)), this, SIGNAL(zoomChanged(int)));
+	connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &WebContentsWidget::handleOptionChanged);
+	connect(m_webWidget, &WebWidget::aboutToNavigate, this, &WebContentsWidget::aboutToNavigate);
+	connect(m_webWidget, &WebWidget::aboutToNavigate, this, &WebContentsWidget::closePopupsBar);
+	connect(m_webWidget, &WebWidget::needsAttention, this, &WebContentsWidget::needsAttention);
+	connect(m_webWidget, &WebWidget::requestedNewWindow, this, &WebContentsWidget::notifyRequestedNewWindow);
+	connect(m_webWidget, &WebWidget::requestedPopupWindow, this, &WebContentsWidget::handlePopupWindowRequest);
+	connect(m_webWidget, &WebWidget::requestedPermission, this, &WebContentsWidget::handlePermissionRequest);
+	connect(m_webWidget, &WebWidget::requestedSavePassword, this, &WebContentsWidget::handleSavePasswordRequest);
+	connect(m_webWidget, &WebWidget::requestedGeometryChange, this, &WebContentsWidget::requestedGeometryChange);
+	connect(m_webWidget, &WebWidget::requestedInspectorVisibilityChange, this, &WebContentsWidget::handleInspectorVisibilityChangeRequest);
+	connect(m_webWidget, &WebWidget::statusMessageChanged, this, &WebContentsWidget::statusMessageChanged);
+	connect(m_webWidget, &WebWidget::titleChanged, this, &WebContentsWidget::titleChanged);
+	connect(m_webWidget, &WebWidget::urlChanged, this, &WebContentsWidget::urlChanged);
+	connect(m_webWidget, &WebWidget::urlChanged, this, &WebContentsWidget::handleUrlChange);
+	connect(m_webWidget, &WebWidget::iconChanged, this, &WebContentsWidget::iconChanged);
+	connect(m_webWidget, &WebWidget::requestBlocked, this, &WebContentsWidget::requestBlocked);
+	connect(m_webWidget, &WebWidget::arbitraryActionsStateChanged, this, &WebContentsWidget::arbitraryActionsStateChanged);
+	connect(m_webWidget, &WebWidget::categorizedActionsStateChanged, this, &WebContentsWidget::categorizedActionsStateChanged);
+	connect(m_webWidget, &WebWidget::contentStateChanged, this, &WebContentsWidget::contentStateChanged);
+	connect(m_webWidget, &WebWidget::loadingStateChanged, this, &WebContentsWidget::loadingStateChanged);
+	connect(m_webWidget, &WebWidget::loadingStateChanged, this, &WebContentsWidget::handleLoadingStateChange);
+	connect(m_webWidget, &WebWidget::pageInformationChanged, this, &WebContentsWidget::pageInformationChanged);
+	connect(m_webWidget, &WebWidget::optionChanged, this, &WebContentsWidget::optionChanged);
+	connect(m_webWidget, &WebWidget::zoomChanged, this, &WebContentsWidget::zoomChanged);
 
 	emit webWidgetChanged();
 }
@@ -1262,7 +1318,7 @@ void WebContentsWidget::setParent(Window *window)
 
 		m_webWidget->setWindowIdentifier(window->getIdentifier());
 
-		connect(m_webWidget, SIGNAL(requestedCloseWindow()), window, SLOT(requestClose()));
+		connect(m_webWidget, &WebWidget::requestedCloseWindow, window, &Window::requestClose);
 	}
 }
 
@@ -1275,7 +1331,7 @@ WebContentsWidget* WebContentsWidget::clone(bool cloneHistory) const
 		parameters[QLatin1String("hints")] = SessionsManager::PrivateOpen;
 	}
 
-	WebContentsWidget *webWidget(new WebContentsWidget(parameters, m_webWidget->getOptions(), m_webWidget->clone(cloneHistory), nullptr));
+	WebContentsWidget *webWidget(new WebContentsWidget(parameters, m_webWidget->getOptions(), m_webWidget->clone(cloneHistory), nullptr, nullptr));
 	webWidget->m_webWidget->setRequestedUrl(m_webWidget->getUrl(), false, true);
 
 	return webWidget;

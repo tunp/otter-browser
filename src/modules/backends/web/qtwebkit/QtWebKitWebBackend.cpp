@@ -32,6 +32,7 @@
 #include <QtCore/QRegularExpression>
 #include <QtWebKit/QWebHistoryInterface>
 #include <QtWebKit/QWebSettings>
+#include <QtWebKitWidgets/QWebFrame>
 
 namespace Otter
 {
@@ -69,11 +70,8 @@ QtWebKitWebBackend::QtWebKitWebBackend(QObject *parent) : WebBackend(parent),
 	}
 
 	QtWebKitPage *page(new QtWebKitPage());
-	const QRegularExpression platformExpression(QLatin1String("(\\([^\\)]+\\))"));
 
-	m_userAgentComponents[QLatin1String("platform")] = platformExpression.match(page->getDefaultUserAgent()).captured(1);
-	m_userAgentComponents[QLatin1String("engineVersion")] = QLatin1String("AppleWebKit/") + qWebKitVersion() + QLatin1String(" (KHTML, like Gecko)");
-	m_userAgentComponents[QLatin1String("applicationVersion")] = QCoreApplication::applicationName() + QLatin1Char('/') + QCoreApplication::applicationVersion();
+	m_userAgentComponents = {{QLatin1String("platform"), QRegularExpression(QLatin1String("(\\([^\\)]+\\))")).match(page->getDefaultUserAgent()).captured(1)}, {QLatin1String("engineVersion"), QLatin1String("AppleWebKit/") + qWebKitVersion() + QLatin1String(" (KHTML, like Gecko)")}, {QLatin1String("applicationVersion"), QCoreApplication::applicationName() + QLatin1Char('/') + QCoreApplication::applicationVersion()}};
 
 	page->deleteLater();
 }
@@ -172,12 +170,12 @@ WebWidget* QtWebKitWebBackend::createWidget(const QVariantMap &parameters, Conte
 		handleOptionChanged(SettingsManager::Content_DefaultFontSizeOption);
 		handleOptionChanged(SettingsManager::Permissions_EnableFullScreenOption);
 
-		connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), this, SLOT(handleOptionChanged(int)));
+		connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &QtWebKitWebBackend::handleOptionChanged);
 	}
 
 	QtWebKitWebWidget *widget(new QtWebKitWebWidget(parameters, this, nullptr, parent));
 
-	connect(widget, SIGNAL(widgetActivated(WebWidget*)), this, SLOT(setActiveWidget(WebWidget*)));
+	connect(widget, &QtWebKitWebWidget::widgetActivated, this, &QtWebKitWebBackend::setActiveWidget);
 
 	return widget;
 }
@@ -245,7 +243,7 @@ QString QtWebKitWebBackend::getUserAgent(const QString &pattern) const
 
 	const UserAgentDefinition userAgent(NetworkManagerFactory::getUserAgent(SettingsManager::getOption(SettingsManager::Network_UserAgentOption).toString()));
 
-	return ((userAgent.value.isEmpty()) ? QString() : getUserAgent(userAgent.value));
+	return (userAgent.value.isEmpty() ? QString() : getUserAgent(userAgent.value));
 }
 
 QUrl QtWebKitWebBackend::getHomePage() const
@@ -262,7 +260,7 @@ QString QtWebKitWebBackend::getActiveDictionary()
 		return (dictionary.isEmpty() ? SpellCheckManager::getDefaultDictionary() : dictionary);
 	}
 
-	return QString();
+	return {};
 }
 
 WebBackend::BackendCapabilities QtWebKitWebBackend::getCapabilities() const
@@ -272,7 +270,9 @@ WebBackend::BackendCapabilities QtWebKitWebBackend::getCapabilities() const
 
 int QtWebKitWebBackend::getOptionIdentifier(QtWebKitWebBackend::OptionIdentifier identifier)
 {
-#ifndef OTTER_ENABLE_QTWEBKIT_LEGACY
+#ifdef OTTER_ENABLE_QTWEBKIT_LEGACY
+	Q_UNUSED(identifier)
+#else
 	switch (identifier)
 	{
 		case QtWebKitBackend_EnableMediaOption:
@@ -291,7 +291,7 @@ int QtWebKitWebBackend::getOptionIdentifier(QtWebKitWebBackend::OptionIdentifier
 
 bool QtWebKitWebBackend::requestThumbnail(const QUrl &url, const QSize &size)
 {
-	connect(new QtWebKitThumbnailFetchJob(url, size, this), SIGNAL(thumbnailAvailable(QUrl,QPixmap,QString)), this, SIGNAL(thumbnailAvailable(QUrl,QPixmap,QString)));
+	connect(new QtWebKitThumbnailFetchJob(url, size, this), &QtWebKitThumbnailFetchJob::thumbnailAvailable, this, &QtWebKitWebBackend::thumbnailAvailable);
 
 	return true;
 }
@@ -303,7 +303,7 @@ QtWebKitThumbnailFetchJob::QtWebKitThumbnailFetchJob(const QUrl &url, const QSiz
 {
 	m_page->setParent(this);
 
-	connect(m_page, SIGNAL(loadFinished(bool)), this, SLOT(handlePageLoadFinished(bool)));
+	connect(m_page, &QtWebKitPage::loadFinished, this, &QtWebKitThumbnailFetchJob::handlePageLoadFinished);
 }
 
 void QtWebKitThumbnailFetchJob::handlePageLoadFinished(bool result)
@@ -312,7 +312,7 @@ void QtWebKitThumbnailFetchJob::handlePageLoadFinished(bool result)
 	{
 		deleteLater();
 
-		emit thumbnailAvailable(m_url, QPixmap(), QString());
+		emit thumbnailAvailable(m_url, {}, {});
 
 		return;
 	}

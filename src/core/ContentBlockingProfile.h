@@ -111,7 +111,7 @@ protected:
 		ExactMatch
 	};
 
-	struct ContentBlockingRule
+	struct ContentBlockingRule final
 	{
 		QString rule;
 		QStringList blockedDomains;
@@ -126,7 +126,7 @@ protected:
 		}
 	};
 
-	struct Node
+	struct Node final
 	{
 		QChar value = 0;
 		QVarLengthArray<Node*, 1> children;
@@ -135,7 +135,7 @@ protected:
 
 	QString getPath() const;
 	void loadHeader(const QString &path);
-	void parseRuleLine(QString line);
+	void parseRuleLine(const QString &rule);
 	void parseStyleSheetRule(const QStringList &line, QMultiHash<QString, QString> &list) const;
 	void addRule(ContentBlockingRule *rule, const QString &ruleString) const;
 	void deleteNode(Node *node) const;
@@ -146,7 +146,7 @@ protected:
 	bool resolveDomainExceptions(const QString &url, const QStringList &ruleList) const;
 
 protected slots:
-	void replyFinished();
+	void handleReplyFinished();
 
 private:
 	Node *m_root;

@@ -25,11 +25,8 @@
 
 #include <QtCore/QQueue>
 #include <QtNetwork/QNetworkReply>
-#include <QtWebKitWidgets/QWebHitTestResult>
-#include <QtWebKitWidgets/QWebInspector>
 #include <QtWebKitWidgets/QWebPage>
 #include <QtWebKitWidgets/QWebView>
-#include <QtWidgets/QToolButton>
 
 namespace Otter
 {
@@ -61,9 +58,9 @@ public:
 	QStringList getBlockedElements() const;
 	QUrl getUrl() const override;
 	QIcon getIcon() const override;
-	QPixmap createThumbnail() override;
+	QPixmap createThumbnail(const QSize &size = {}) override;
 	QPoint getScrollPosition() const override;
-	QRect getProgressBarGeometry() const override;
+	QRect getGeometry(bool excludeScrollBars = false) const override;
 	LinkUrl getActiveFrame() const override;
 	LinkUrl getActiveImage() const override;
 	LinkUrl getActiveLink() const override;
@@ -74,7 +71,8 @@ public:
 	QVector<LinkUrl> getFeeds() const override;
 	QVector<LinkUrl> getSearchEngines() const override;
 	QVector<NetworkManager::ResourceInformation> getBlockedRequests() const override;
-	QHash<QByteArray, QByteArray> getHeaders() const override;
+	QMap<QByteArray, QByteArray> getHeaders() const override;
+	QMultiMap<QString, QString> getMetaData() const override;
 	ContentStates getContentState() const override;
 	LoadingState getLoadingState() const override;
 	int getZoom() const override;
@@ -152,16 +150,15 @@ protected:
 	bool isScrollBar(const QPoint &position) const override;
 
 protected slots:
-	void downloadFile(const QNetworkRequest &request);
-	void downloadFile(QNetworkReply *reply);
 	void saveState(QWebFrame *frame, QWebHistoryItem *item);
 	void restoreState(QWebFrame *frame);
+	void handleDownloadRequested(const QNetworkRequest &request);
+	void handleUnsupportedContent(QNetworkReply *reply);
 	void handleOptionChanged(int identifier, const QVariant &value);
 	void handleLoadStarted();
 	void handleLoadProgress(int progress);
 	void handleLoadFinished(bool result);
-	void handleLinkHovered(const QString &link);
-	void handleViewSourceReplyFinished(QNetworkReply::NetworkError error = QNetworkReply::NoError);
+	void handleViewSourceReplyFinished();
 	void handlePrintRequest(QWebFrame *frame);
 #ifndef OTTER_ENABLE_QTWEBKIT_LEGACY
 	void handleFullScreenRequest(QWebFullScreenRequest request);

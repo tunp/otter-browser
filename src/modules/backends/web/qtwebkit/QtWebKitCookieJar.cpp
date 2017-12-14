@@ -49,11 +49,11 @@ void QtWebKitCookieJar::setup(const QStringList &thirdPartyAcceptedHosts, const 
 void QtWebKitCookieJar::showDialog(const QNetworkCookie &cookie, CookieJar::CookieOperation operation)
 {
 	AcceptCookieDialog *cookieDialog(new AcceptCookieDialog(cookie, operation, m_cookieJar, m_widget));
-	ContentsDialog *dialog(new ContentsDialog(ThemesManager::createIcon(QLatin1String("dialog-warning")), cookieDialog->windowTitle(), QString(), QString(), QDialogButtonBox::NoButton, cookieDialog, m_widget));
+	ContentsDialog *dialog(new ContentsDialog(ThemesManager::createIcon(QLatin1String("dialog-warning")), cookieDialog->windowTitle(), {}, {}, QDialogButtonBox::NoButton, cookieDialog, m_widget));
 	dialog->setAttribute(Qt::WA_DeleteOnClose);
 
-	connect(cookieDialog, SIGNAL(finished(int)), dialog, SLOT(close()));
-	connect(m_widget, SIGNAL(aboutToReload()), dialog, SLOT(close()));
+	connect(cookieDialog, &AcceptCookieDialog::finished, dialog, &ContentsDialog::close);
+	connect(m_widget, &WebWidget::aboutToReload, dialog, &ContentsDialog::close);
 
 	m_widget->showDialog(dialog, false);
 }
@@ -77,7 +77,7 @@ QList<QNetworkCookie> QtWebKitCookieJar::cookiesForUrl(const QUrl &url) const
 {
 	if (m_generalCookiesPolicy == CookieJar::IgnoreCookies)
 	{
-		return QList<QNetworkCookie>();
+		return {};
 	}
 
 	return m_cookieJar->getCookiesForUrl(url);

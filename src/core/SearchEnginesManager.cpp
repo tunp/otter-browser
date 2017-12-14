@@ -18,8 +18,6 @@
 **************************************************************************/
 
 #include "SearchEnginesManager.h"
-#include "NetworkManager.h"
-#include "NetworkManagerFactory.h"
 #include "SessionsManager.h"
 #include "SettingsManager.h"
 #include "ThemesManager.h"
@@ -60,7 +58,7 @@ void SearchEnginesManager::ensureInitialized()
 
 		loadSearchEngines();
 
-		connect(SettingsManager::getInstance(), SIGNAL(optionChanged(int,QVariant)), m_instance, SLOT(handleOptionChanged(int)));
+		connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, m_instance, &SearchEnginesManager::handleOptionChanged);
 	}
 }
 
@@ -75,7 +73,7 @@ void SearchEnginesManager::loadSearchEngines()
 
 	for (int i = 0; i < searchEnginesOrder.count(); ++i)
 	{
-		QFile file(SessionsManager::getReadableDataPath(QLatin1String("searches/") + searchEnginesOrder.at(i) + QLatin1String(".xml")));
+		QFile file(SessionsManager::getReadableDataPath(QLatin1String("searchEngines/") + searchEnginesOrder.at(i) + QLatin1String(".xml")));
 
 		if (!file.open(QIODevice::ReadOnly))
 		{
@@ -151,7 +149,7 @@ void SearchEnginesManager::updateSearchEnginesModel()
 
 		if (search.isValid())
 		{
-			QStandardItem *item(new QStandardItem((search.icon.isNull() ? ThemesManager::createIcon(QLatin1String("edit-find")) : search.icon), QString()));
+			QStandardItem *item(new QStandardItem((search.icon.isNull() ? ThemesManager::createIcon(QLatin1String("edit-find")) : search.icon), {}));
 			item->setData(search.title, TitleRole);
 			item->setData(search.identifier, IdentifierRole);
 			item->setData(search.keyword, KeywordRole);
@@ -181,7 +179,7 @@ void SearchEnginesManager::updateSearchEnginesModel()
 void SearchEnginesManager::updateSearchEnginesOptions()
 {
 	const QStringList searchEngines(m_searchEngines.keys());
-	QVector<SettingsManager::OptionDefinition::ChoiceDefinition> searchEngineChoices;
+	QVector<SettingsManager::OptionDefinition::Choice> searchEngineChoices;
 	searchEngineChoices.reserve(searchEngines.count());
 
 	for (int i = 0; i < searchEngines.count(); ++i)
@@ -209,20 +207,12 @@ void SearchEnginesManager::setupQuery(const QString &query, const SearchUrl &sea
 	}
 
 	QString urlString(searchUrl.url);
-	QHash<QString, QString> values;
-	values[QLatin1String("searchTerms")] = query;
-	values[QLatin1String("count")] = QString();
-	values[QLatin1String("startIndex")] = QString();
-	values[QLatin1String("startPage")] = QString();
-	values[QLatin1String("language")] = QLocale::system().name();
-	values[QLatin1String("inputEncoding")] = QLatin1String("UTF-8");
-	values[QLatin1String("outputEncoding")] = QLatin1String("UTF-8");
+	const QHash<QString, QString> values({{QLatin1String("searchTerms"), query}, {QLatin1String("count"), QString()}, {QLatin1String("startIndex"), QString()}, {QLatin1String("startPage"), QString()}, {QLatin1String("language"), QLocale::system().name()}, {QLatin1String("inputEncoding"), QLatin1String("UTF-8")}, {QLatin1String("outputEncoding"), QLatin1String("UTF-8")}});
+	QHash<QString, QString>::const_iterator iterator;
 
-	QHash<QString, QString>::iterator valuesIterator;
-
-	for (valuesIterator = values.begin(); valuesIterator != values.end(); ++valuesIterator)
+	for (iterator = values.constBegin(); iterator != values.constEnd(); ++iterator)
 	{
-		urlString = urlString.replace(QStringLiteral("{%1}").arg(valuesIterator.key()), QUrl::toPercentEncoding(valuesIterator.value()));
+		urlString = urlString.replace(QStringLiteral("{%1}").arg(iterator.key()), QUrl::toPercentEncoding(iterator.value()));
 	}
 
 	*method = ((searchUrl.method == QLatin1String("post")) ? QNetworkAccessManager::PostOperation : QNetworkAccessManager::GetOperation);
@@ -236,9 +226,9 @@ void SearchEnginesManager::setupQuery(const QString &query, const SearchUrl &sea
 	{
 		QString value(parameters.at(i).second);
 
-		for (valuesIterator = values.begin(); valuesIterator != values.end(); ++valuesIterator)
+		for (iterator = values.constBegin(); iterator != values.constEnd(); ++iterator)
 		{
-			value = value.replace(QStringLiteral("{%1}").arg(valuesIterator.key()), valuesIterator.value());
+			value = value.replace(QStringLiteral("{%1}").arg(iterator.key()), iterator.value());
 		}
 
 		if (*method == QNetworkAccessManager::GetOperation)
@@ -401,7 +391,7 @@ SearchEnginesManager::SearchEngineDefinition SearchEnginesManager::loadSearchEng
 	}
 	else
 	{
-		searchEngine.identifier = QString();
+		searchEngine.identifier.clear();
 	}
 
 	return searchEngine;
@@ -455,7 +445,7 @@ SearchEnginesManager::SearchEngineDefinition SearchEnginesManager::getSearchEngi
 
 	if (!m_searchEngines.contains(identifier))
 	{
-		QFile file(SessionsManager::getReadableDataPath(QLatin1String("searches/") + identifier + QLatin1String(".xml")));
+		QFile file(SessionsManager::getReadableDataPath(QLatin1String("searchEngines/") + identifier + QLatin1String(".xml")));
 
 		if (file.open(QIODevice::ReadOnly))
 		{
@@ -516,9 +506,9 @@ bool SearchEnginesManager::saveSearchEngine(const SearchEngineDefinition &search
 		return false;
 	}
 
-	QDir().mkpath(SessionsManager::getWritableDataPath(QLatin1String("searches")));
+	QDir().mkpath(SessionsManager::getWritableDataPath(QLatin1String("searchEngines")));
 
-	QFile file(SessionsManager::getWritableDataPath(QLatin1String("searches/") + searchEngine.identifier + QLatin1String(".xml")));
+	QFile file(SessionsManager::getWritableDataPath(QLatin1String("searchEngines/") + searchEngine.identifier + QLatin1String(".xml")));
 
 	if (!file.open(QIODevice::WriteOnly))
 	{
@@ -630,120 +620,6 @@ bool SearchEnginesManager::setupSearchQuery(const QString &query, const QString 
 	}
 
 	return false;
-}
-
-SearchEngineFetchJob::SearchEngineFetchJob(const QUrl &url, const QString &identifier, bool saveSearchEngine, QObject *parent) : QObject(parent),
-	m_reply(nullptr),
-	m_isFetchingIcon(false),
-	m_needsToSaveSearchEngine(saveSearchEngine)
-{
-	m_searchEngine.identifier = (identifier.isEmpty() ? Utils::createIdentifier(QString(), SearchEnginesManager::getSearchEngines()) : identifier);
-
-	QNetworkRequest request(url);
-	request.setHeader(QNetworkRequest::UserAgentHeader, NetworkManagerFactory::getUserAgent());
-
-	m_reply = NetworkManagerFactory::getNetworkManager()->get(request);
-
-	connect(m_reply, SIGNAL(error(QNetworkReply::NetworkError)), this, SLOT(handleRequestFailed()));
-	connect(m_reply, SIGNAL(finished()), this, SLOT(handleRequestFinished()));
-}
-
-SearchEngineFetchJob::~SearchEngineFetchJob()
-{
-	m_reply->deleteLater();
-}
-
-void SearchEngineFetchJob::cancel()
-{
-	if (m_reply)
-	{
-		m_reply->abort();
-	}
-
-	emit jobFinished(false);
-}
-
-void SearchEngineFetchJob::handleRequestFailed()
-{
-	deleteLater();
-
-	if (m_isFetchingIcon)
-	{
-		SearchEnginesManager::addSearchEngine(m_searchEngine);
-	}
-
-	emit jobFinished(m_isFetchingIcon);
-}
-
-void SearchEngineFetchJob::handleRequestFinished()
-{
-	if (m_isFetchingIcon)
-	{
-		QPixmap pixmap;
-
-		if (pixmap.loadFromData(m_reply->readAll()))
-		{
-			m_searchEngine.icon = QIcon(pixmap);
-		}
-
-		if (m_needsToSaveSearchEngine)
-		{
-			SearchEnginesManager::addSearchEngine(m_searchEngine);
-		}
-
-		deleteLater();
-
-		emit jobFinished(true);
-
-		return;
-	}
-
-	m_searchEngine = SearchEnginesManager::loadSearchEngine(m_reply, m_searchEngine.identifier);
-
-	if (!m_searchEngine.isValid())
-	{
-		deleteLater();
-
-		emit jobFinished(false);
-
-		return;
-	}
-
-	if (m_searchEngine.selfUrl.isEmpty())
-	{
-		m_searchEngine.selfUrl = m_reply->request().url();
-	}
-
-	if (m_searchEngine.iconUrl.isValid())
-	{
-		m_isFetchingIcon = true;
-
-		m_reply->deleteLater();
-
-		QNetworkRequest request(m_searchEngine.iconUrl);
-		request.setHeader(QNetworkRequest::UserAgentHeader, NetworkManagerFactory::getUserAgent());
-
-		m_reply = NetworkManagerFactory::getNetworkManager()->get(request);
-
-		connect(m_reply, SIGNAL(error(QNetworkReply::NetworkError)), this, SLOT(handleRequestFailed()));
-		connect(m_reply, SIGNAL(finished()), this, SLOT(handleRequestFinished()));
-	}
-	else
-	{
-		if (m_needsToSaveSearchEngine)
-		{
-			SearchEnginesManager::addSearchEngine(m_searchEngine);
-		}
-
-		deleteLater();
-
-		emit jobFinished(true);
-	}
-}
-
-SearchEnginesManager::SearchEngineDefinition SearchEngineFetchJob::getSearchEngine() const
-{
-	return m_searchEngine;
 }
 
 }

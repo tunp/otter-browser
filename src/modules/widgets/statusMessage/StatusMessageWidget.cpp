@@ -31,11 +31,21 @@ StatusMessageWidget::StatusMessageWidget(QWidget *parent) : QLabel(parent)
 	setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 	setIndent(style()->pixelMetric(QStyle::PM_ButtonMargin));
 
-	const MainWindow *window(MainWindow::findMainWindow(parent));
+	const MainWindow *mainWindow(MainWindow::findMainWindow(parent));
 
-	if (window)
+	if (mainWindow)
 	{
-		connect(window, SIGNAL(statusMessageChanged(QString)), this, SLOT(setMessage(QString)));
+		connect(mainWindow, &MainWindow::statusMessageChanged, this, &StatusMessageWidget::setMessage);
+	}
+}
+
+void StatusMessageWidget::changeEvent(QEvent *event)
+{
+	QLabel::changeEvent(event);
+
+	if (event->type() == QEvent::LayoutDirectionChange && !m_message.isEmpty())
+	{
+		setMessage(m_message);
 	}
 }
 
@@ -65,8 +75,7 @@ void StatusMessageWidget::setMessage(const QString &message)
 {
 	m_message = message;
 
-	setText(fontMetrics().elidedText(m_message, (QGuiApplication::isLeftToRight() ? Qt::ElideRight : Qt::ElideLeft), width()));
+	setText(fontMetrics().elidedText(m_message, (QGuiApplication::isLeftToRight() ? Qt::ElideRight : Qt::ElideLeft), (width() - indent())));
 }
 
 }
-
