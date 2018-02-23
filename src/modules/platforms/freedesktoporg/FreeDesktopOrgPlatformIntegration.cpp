@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2010 David Sansome <me@davidsansome.com>
 * Copyright (C) 2015 Piotr Wójcik <chocimier@tlen.pl>
 *
@@ -25,6 +25,7 @@
 #include "../../../core/NotificationsManager.h"
 #include "../../../core/SettingsManager.h"
 #include "../../../core/TransfersManager.h"
+#include "../../../core/Utils.h"
 #include "../../../../3rdparty/libmimeapps/DesktopEntry.h"
 #include "../../../../3rdparty/libmimeapps/Index.h"
 
@@ -113,7 +114,10 @@ FreeDesktopOrgPlatformIntegration::FreeDesktopOrgPlatformIntegration(Application
 
 	QTimer::singleShot(250, this, [&]()
 	{
-		QtConcurrent::run(this, &FreeDesktopOrgPlatformIntegration::createApplicationsCache);
+		QtConcurrent::run([&]()
+		{
+			getApplicationsForMimeType(QMimeDatabase().mimeTypeForName(QLatin1String("text/html")));
+		});
 	});
 
 	connect(TransfersManager::getInstance(), &TransfersManager::transferChanged, this, &FreeDesktopOrgPlatformIntegration::updateTransfersProgress);
@@ -125,7 +129,7 @@ FreeDesktopOrgPlatformIntegration::FreeDesktopOrgPlatformIntegration(Application
 
 FreeDesktopOrgPlatformIntegration::~FreeDesktopOrgPlatformIntegration()
 {
-	updateTransfersProgress(true);
+	setTransfersProgress(0, 0, 0);
 }
 
 void FreeDesktopOrgPlatformIntegration::runApplication(const QString &command, const QUrl &url) const
@@ -138,7 +142,7 @@ void FreeDesktopOrgPlatformIntegration::runApplication(const QString &command, c
 	std::vector<std::string> fileNames;
 	fileNames.push_back((url.isLocalFile() ? QDir::toNativeSeparators(url.toLocalFile()) : url.url()).toStdString());
 
-	std::vector<std::string> parsed(LibMimeApps::DesktopEntry::parseExec(command.toStdString(), fileNames, LibMimeApps::DesktopEntry::ParseOptions::NecessarilyUseUrl));
+	const std::vector<std::string> parsed(LibMimeApps::DesktopEntry::parseExec(command.toStdString(), fileNames, LibMimeApps::DesktopEntry::ParseOptions::NecessarilyUseUrl));
 
 	if (parsed.size() < 1)
 	{
@@ -146,6 +150,7 @@ void FreeDesktopOrgPlatformIntegration::runApplication(const QString &command, c
 	}
 
 	QStringList arguments;
+	arguments.reserve(static_cast<int>(parsed.size()));
 
 	for (std::vector<std::string>::size_type i = 1; i < parsed.size(); ++i)
 	{
@@ -153,11 +158,6 @@ void FreeDesktopOrgPlatformIntegration::runApplication(const QString &command, c
 	}
 
 	QProcess::startDetached(QString::fromStdString(parsed.at(0)), arguments);
-}
-
-void FreeDesktopOrgPlatformIntegration::createApplicationsCache()
-{
-	getApplicationsForMimeType(QMimeDatabase().mimeTypeForName(QLatin1String("text/html")));
 }
 
 void FreeDesktopOrgPlatformIntegration::handleNotificationCallFinished(QDBusPendingCallWatcher *watcher)
@@ -223,9 +223,6 @@ void FreeDesktopOrgPlatformIntegration::showNotification(Notification *notificat
 	}
 
 	const int visibilityDuration(SettingsManager::getOption(SettingsManager::Interface_NotificationVisibilityDurationOption).toInt());
-	QVariantMap hints;
-	hints[QLatin1String("image_data")] = Application::windowIcon().pixmap(128, 128).toImage();
-
 	QVariantList arguments;
 	arguments << Application::applicationName();
 	arguments << uint(0);
@@ -233,7 +230,7 @@ void FreeDesktopOrgPlatformIntegration::showNotification(Notification *notificat
 	arguments << tr("Notification");
 	arguments << notification->getMessage();
 	arguments << QStringList();
-	arguments << hints;
+	arguments << QVariantMap({{QLatin1String("image_data"), Application::windowIcon().pixmap(128, 128).toImage()}});
 	arguments << ((visibilityDuration < 0) ? -1 : (visibilityDuration * 1000));
 
 	QDBusPendingCallWatcher *watcher(new QDBusPendingCallWatcher(m_notificationsInterface->asyncCallWithArgumentList(QLatin1String("Notify"), arguments), this));
@@ -243,41 +240,44 @@ void FreeDesktopOrgPlatformIntegration::showNotification(Notification *notificat
 	connect(watcher, &QDBusPendingCallWatcher::finished, this, &FreeDesktopOrgPlatformIntegration::handleNotificationCallFinished);
 }
 
-void FreeDesktopOrgPlatformIntegration::updateTransfersProgress(bool clear)
+void FreeDesktopOrgPlatformIntegration::updateTransfersProgress()
 {
 	qint64 bytesTotal(0);
 	qint64 bytesReceived(0);
 	qint64 transferAmount(0);
 
-	if (!clear)
+	if (TransfersManager::hasRunningTransfers())
 	{
 		const QVector<Transfer*> transfers(TransfersManager::getInstance()->getTransfers());
 
 		for (int i = 0; i < transfers.count(); ++i)
 		{
-			if (transfers[i]->getState() == Transfer::RunningState && transfers[i]->getBytesTotal() > 0)
+			const Transfer *transfer(transfers.at(i));
+
+			if (transfer->getState() == Transfer::RunningState && transfer->getBytesTotal() > 0)
 			{
 				++transferAmount;
 
-				bytesTotal += transfers[i]->getBytesTotal();
-				bytesReceived += transfers[i]->getBytesReceived();
+				bytesTotal += transfer->getBytesTotal();
+				bytesReceived += transfer->getBytesReceived();
 			}
 		}
 	}
 
+	setTransfersProgress(bytesTotal, bytesReceived, transferAmount);
+}
+
+void FreeDesktopOrgPlatformIntegration::setTransfersProgress(qint64 bytesTotal, qint64 bytesReceived, qint64 transferAmount)
+{
 	const bool hasActiveTransfers(transferAmount > 0);
 	QVariantMap properties;
 	properties[QLatin1String("count")] = transferAmount;
 	properties[QLatin1String("count-visible")] = hasActiveTransfers;
-	properties[QLatin1String("progress")] = ((bytesReceived > 0) ? (static_cast<qreal>(bytesReceived) / bytesTotal) : 0.0);
+	properties[QLatin1String("progress")] = ((bytesReceived > 0) ? Utils::calculatePercent(bytesReceived, bytesTotal, 1) : 0.0);
 	properties[QLatin1String("progress-visible")] = hasActiveTransfers;
 
-	QVariantList arguments;
-	arguments << QLatin1String("application://otter-browser.desktop");
-	arguments << properties;
-
 	QDBusMessage message(QDBusMessage::createSignal(QLatin1String("/com/canonical/unity/launcherentry/9ddcf02c30a33cd63e9762f06957263f"), QLatin1String("com.canonical.Unity.LauncherEntry"), QLatin1String("Update")));
-	message.setArguments(arguments);
+	message.setArguments({QLatin1String("application://otter-browser.desktop"), properties});
 
 	QDBusConnection::sessionBus().send(message);
 }
@@ -302,7 +302,7 @@ QVector<ApplicationInformation> FreeDesktopOrgPlatformIntegration::getApplicatio
 	const LibMimeApps::Index index(QLocale().bcp47Name().toStdString());
 	const std::vector<LibMimeApps::DesktopEntry> applications(index.appsForMime(mimeType.name().toStdString()));
 	QVector<ApplicationInformation> result;
-	result.reserve(applications.size());
+	result.reserve(static_cast<int>(applications.size()));
 
 	for (std::vector<LibMimeApps::DesktopEntry>::size_type i = 0; i < applications.size(); ++i)
 	{

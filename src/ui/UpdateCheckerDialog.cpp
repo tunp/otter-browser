@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2015 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -92,7 +92,7 @@ void UpdateCheckerDialog::handleUpdateCheckFinished(const QVector<UpdateChecker:
 	}
 	else
 	{
-		bool isPackageMissing(false);
+		bool hasMissingPackages(false);
 
 		m_ui->label->setText(tr("Available updates:"));
 
@@ -105,11 +105,11 @@ void UpdateCheckerDialog::handleUpdateCheckFinished(const QVector<UpdateChecker:
 
 			if (availableUpdates.at(i).isAvailable)
 			{
-				updateButton->setProperty("downloadInfo", QVariant::fromValue<UpdateChecker::UpdateInformation>(availableUpdates.at(i)));
+				updateButton->setProperty("updateInformation", QVariant::fromValue<UpdateChecker::UpdateInformation>(availableUpdates.at(i)));
 			}
 			else
 			{
-				isPackageMissing = true;
+				hasMissingPackages = true;
 
 				updateButton->setDisabled(true);
 			}
@@ -122,7 +122,7 @@ void UpdateCheckerDialog::handleUpdateCheckFinished(const QVector<UpdateChecker:
 			connect(updateButton, &QPushButton::clicked, this, &UpdateCheckerDialog::downloadUpdate);
 		}
 
-		if (isPackageMissing)
+		if (hasMissingPackages)
 		{
 			QLabel *packageWarning(new QLabel(tr("Some of the updates do not contain packages for your platform. Try to check for updates later or visit details page for more info."), this));
 			packageWarning->setWordWrap(true);
@@ -134,13 +134,13 @@ void UpdateCheckerDialog::handleUpdateCheckFinished(const QVector<UpdateChecker:
 
 void UpdateCheckerDialog::downloadUpdate()
 {
-	QPushButton *button(qobject_cast<QPushButton*>(sender()));
+	const QPushButton *button(qobject_cast<QPushButton*>(sender()));
 
 	if (button)
 	{
-		QVariant updateInfo(button->property("downloadInfo"));
+		const QVariant updateInformation(button->property("updateInformation"));
 
-		if (!updateInfo.isNull())
+		if (!updateInformation.isNull())
 		{
 			for (int i = 0; i < m_ui->gridLayout->count(); ++i)
 			{
@@ -153,7 +153,7 @@ void UpdateCheckerDialog::downloadUpdate()
 			m_ui->progressBar->show();
 			m_ui->buttonBox->setDisabled(true);
 
-			Updater *updater(new Updater(updateInfo.value<UpdateChecker::UpdateInformation>(), this));
+			Updater *updater(new Updater(updateInformation.value<UpdateChecker::UpdateInformation>(), this));
 
 			connect(updater, &Updater::progress, this, &UpdateCheckerDialog::handleUpdateProgress);
 			connect(updater, &Updater::finished, this, &UpdateCheckerDialog::handleTransferFinished);
@@ -180,9 +180,9 @@ void UpdateCheckerDialog::handleUpdateProgress(int progress)
 	m_ui->progressBar->setFormat(QString::number(progress) + QLatin1Char('%'));
 }
 
-void UpdateCheckerDialog::handleTransferFinished(bool success)
+void UpdateCheckerDialog::handleTransferFinished(bool isSuccess)
 {
-	if (success)
+	if (isSuccess)
 	{
 		handleReadyToInstall();
 	}
@@ -201,7 +201,7 @@ void UpdateCheckerDialog::handleTransferFinished(bool success)
 
 void UpdateCheckerDialog::showDetails()
 {
-	QPushButton *button(qobject_cast<QPushButton*>(sender()));
+	const QPushButton *button(qobject_cast<QPushButton*>(sender()));
 
 	if (button)
 	{

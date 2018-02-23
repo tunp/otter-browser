@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -20,7 +20,6 @@
 #ifndef OTTER_TRANSFERSCONTENTSWIDGET_H
 #define OTTER_TRANSFERSCONTENTSWIDGET_H
 
-#include "../../../core/TransfersManager.h"
 #include "../../../ui/ContentsWidget.h"
 #include "../../../ui/ItemDelegate.h"
 
@@ -34,6 +33,7 @@ namespace Ui
 	class TransfersContentsWidget;
 }
 
+class Transfer;
 class Window;
 
 class ProgressBarDelegate final : public ItemDelegate
@@ -54,6 +54,7 @@ public:
 	{
 		BytesReceivedRole = Qt::UserRole,
 		BytesTotalRole,
+		InstanceRole,
 		ProgressRole,
 		StateRole,
 		TimeFinishedRole,
@@ -82,8 +83,8 @@ protected:
 
 protected slots:
 	void removeTransfer();
-	void openTransfer(const QModelIndex &index = {});
-	void openTransferFolder(const QModelIndex &index = {});
+	void openTransfer();
+	void openTransferFolder();
 	void copyTransferInformation();
 	void stopResumeTransfer();
 	void redownloadTransfer();
@@ -97,7 +98,6 @@ protected slots:
 
 private:
 	QStandardItemModel *m_model;
-	QHash<Transfer*, QQueue<qint64> > m_speeds;
 	bool m_isLoading;
 	Ui::TransfersContentsWidget *m_ui;
 };

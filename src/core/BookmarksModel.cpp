@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -289,6 +289,11 @@ quint64 BookmarksItem::getIdentifier() const
 int BookmarksItem::getType() const
 {
 	return QStandardItem::data(BookmarksModel::TypeRole).toInt();
+}
+
+int BookmarksItem::getVisits() const
+{
+	return QStandardItem::data(BookmarksModel::VisitsRole).toInt();
 }
 
 bool BookmarksItem::isAncestorOf(BookmarksItem *child) const
@@ -1055,7 +1060,7 @@ BookmarksItem* BookmarksModel::getItem(const QString &path) const
 
 	for (int i = 0; i < directories.count(); ++i)
 	{
-		bool hasFound(false);
+		bool hasMatch(false);
 
 		for (int j = 0; j < item->rowCount(); ++j)
 		{
@@ -1063,13 +1068,13 @@ BookmarksItem* BookmarksModel::getItem(const QString &path) const
 			{
 				item = item->child(j);
 
-				hasFound = true;
+				hasMatch = true;
 
 				break;
 			}
 		}
 
-		if (!hasFound)
+		if (!hasMatch)
 		{
 			return nullptr;
 		}
@@ -1082,7 +1087,10 @@ QMimeData* BookmarksModel::mimeData(const QModelIndexList &indexes) const
 {
 	QMimeData *mimeData(new QMimeData());
 	QStringList texts;
+	texts.reserve(indexes.count());
+
 	QList<QUrl> urls;
+	urls.reserve(indexes.count());
 
 	if (indexes.count() == 1)
 	{
@@ -1200,7 +1208,7 @@ QVector<BookmarksItem*> BookmarksModel::findUrls(const QUrl &url, QStandardItem 
 
 		if (item)
 		{
-			const BookmarkType type(static_cast<BookmarkType>(item->data(TypeRole).toInt()));
+			const BookmarkType type(static_cast<BookmarkType>(item->getType()));
 
 			if (type == FolderBookmark)
 			{
@@ -1210,7 +1218,7 @@ QVector<BookmarksItem*> BookmarksModel::findUrls(const QUrl &url, QStandardItem 
 				items += findUrls(url, item);
 #endif
 			}
-			else if (type == UrlBookmark && url == Utils::normalizeUrl(item->data(UrlRole).toUrl()))
+			else if (type == UrlBookmark && url == Utils::normalizeUrl(item->getUrl()))
 			{
 				items.append(item);
 			}

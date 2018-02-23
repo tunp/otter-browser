@@ -1,7 +1,7 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
 * Copyright (C) 2014 - 2016 Piotr Wójcik <chocimier@tlen.pl>
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -203,7 +203,7 @@ void QtWebKitFtpListingNetworkReply::processCommand(int command, bool isError)
 
 					for (iterator = entryVariables.begin(); iterator != entryVariables.end(); ++iterator)
 					{
-						entryHtml.replace(QStringLiteral("{%1}").arg(iterator.key()), iterator.value());
+						entryHtml.replace(QLatin1Char('{') + iterator.key() + QLatin1Char('}'), iterator.value());
 					}
 
 					entriesHtml.append(entryHtml);
@@ -215,7 +215,7 @@ void QtWebKitFtpListingNetworkReply::processCommand(int command, bool isError)
 
 				for (iterator = variables.begin(); iterator != variables.end(); ++iterator)
 				{
-					mainTemplate.replace(QStringLiteral("{%1}").arg(iterator.key()), iterator.value());
+					mainTemplate.replace(QLatin1Char('{') + iterator.key() + QLatin1Char('}'), iterator.value());
 				}
 
 				m_content = mainTemplate.toUtf8();
@@ -280,9 +280,9 @@ qint64 QtWebKitFtpListingNetworkReply::readData(char *data, qint64 maxSize)
 {
 	if (m_offset < m_content.size())
 	{
-		const qint64 number(qMin(maxSize, m_content.size() - m_offset));
+		const qint64 number(qMin(maxSize, (m_content.size() - m_offset)));
 
-		memcpy(data, (m_content.constData() + m_offset), number);
+		memcpy(data, (m_content.constData() + m_offset), static_cast<size_t>(number));
 
 		m_offset += number;
 

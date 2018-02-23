@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2016 - 2017 Piotr Wójcik <chocimier@tlen.pl>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -38,11 +38,26 @@ class Window;
 
 class TileDelegate final : public QStyledItemDelegate
 {
+	Q_OBJECT
+
 public:
+	enum BackgroundMode
+	{
+		NoBackground = 0,
+		FaviconBackground,
+		ThumbnailBackground
+	};
+
 	explicit TileDelegate(QObject *parent = nullptr);
 
 	void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override;
 	QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override;
+
+protected slots:
+	void handleOptionChanged(int identifier, const QVariant &value);
+
+private:
+	BackgroundMode m_mode;
 };
 
 class StartPageContentsWidget final : public QWidget
@@ -113,7 +128,7 @@ private:
 	QTime m_urlOpenTime;
 	QModelIndex m_currentIndex;
 	int m_deleteTimer;
-	bool m_ignoreEnter;
+	bool m_isIgnoringEnter;
 
 	static StartPageModel *m_model;
 	static Animation *m_spinnerAnimation;

@@ -409,10 +409,7 @@ void AddonsContentsWidget::save()
 		{
 			if (!name.isEmpty() && AddonsManager::getUserScript(name))
 			{
-				QJsonObject scriptObject;
-				scriptObject.insert(QLatin1String("isEnabled"), QJsonValue(index.data(Qt::CheckStateRole).toInt() == Qt::Checked));
-
-				settingsObject.insert(name, scriptObject);
+				settingsObject.insert(name, QJsonObject({{QLatin1String("isEnabled"), QJsonValue(index.data(Qt::CheckStateRole).toInt() == Qt::Checked)}}));
 			}
 			else
 			{
@@ -435,15 +432,19 @@ void AddonsContentsWidget::showContextMenu(const QPoint &position)
 {
 	const QVector<Addon*> addons(getSelectedAddons());
 	QMenu menu(this);
-	menu.addAction(tr("Add Addon…"), this, SLOT(addAddon()));
+
+	connect(menu.addAction(tr("Add Addon…")), &QAction::triggered, this, static_cast<void(AddonsContentsWidget::*)()>(&AddonsContentsWidget::addAddon));
 
 	if (!addons.isEmpty())
 	{
 		menu.addSeparator();
-		menu.addAction(tr("Open Addon File"), this, SLOT(openAddon()));
-		menu.addAction(tr("Reload Addon"), this, SLOT(reloadAddon()));
+
+		connect(menu.addAction(tr("Open Addon File")), &QAction::triggered, this, &AddonsContentsWidget::openAddon);
+		connect(menu.addAction(tr("Reload Addon")), &QAction::triggered, this, &AddonsContentsWidget::reloadAddon);
+
 		menu.addSeparator();
-		menu.addAction(tr("Remove Addon…"), this, SLOT(removeAddons()));
+
+		connect(menu.addAction(tr("Remove Addon…")), &QAction::triggered, this, &AddonsContentsWidget::removeAddons);
 	}
 
 	menu.exec(m_ui->addonsViewWidget->mapToGlobal(position));

@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -42,6 +42,7 @@ TransfersManager* TransfersManager::m_instance(nullptr);
 QVector<Transfer*> TransfersManager::m_transfers;
 QVector<Transfer*> TransfersManager::m_privateTransfers;
 bool TransfersManager::m_isInitilized(false);
+bool TransfersManager::m_hasRunningTransfers(false);
 
 Transfer::Transfer(TransferOptions options, QObject *parent) : QObject(parent ? parent : TransfersManager::getInstance()),
 	m_reply(nullptr),
@@ -55,7 +56,9 @@ Transfer::Transfer(TransferOptions options, QObject *parent) : QObject(parent ? 
 	m_state(UnknownState),
 	m_updateTimer(0),
 	m_updateInterval(0),
-	m_isSelectingPath(false)
+	m_remainingTime(-1),
+	m_isSelectingPath(false),
+	m_isArchived(false)
 {
 }
 
@@ -76,7 +79,9 @@ Transfer::Transfer(const QSettings &settings, QObject *parent) : QObject(parent 
 	m_state((m_bytesReceived > 0 && m_bytesTotal == m_bytesReceived && QFile::exists(settings.value(QLatin1String("target")).toString())) ? FinishedState : ErrorState),
 	m_updateTimer(0),
 	m_updateInterval(0),
-	m_isSelectingPath(false)
+	m_remainingTime(-1),
+	m_isSelectingPath(false),
+	m_isArchived(true)
 {
 }
 
@@ -94,7 +99,9 @@ Transfer::Transfer(const QUrl &source, const QString &target, TransferOptions op
 	m_state(UnknownState),
 	m_updateTimer(0),
 	m_updateInterval(0),
-	m_isSelectingPath(false)
+	m_remainingTime(-1),
+	m_isSelectingPath(false),
+	m_isArchived(false)
 {
 	QNetworkRequest request;
 	request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
@@ -121,7 +128,9 @@ Transfer::Transfer(const QNetworkRequest &request, const QString &target, Transf
 	m_state(UnknownState),
 	m_updateTimer(0),
 	m_updateInterval(0),
-	m_isSelectingPath(false)
+	m_remainingTime(-1),
+	m_isSelectingPath(false),
+	m_isArchived(false)
 {
 	start(NetworkManagerFactory::getNetworkManager()->get(request), target);
 }
@@ -139,7 +148,9 @@ Transfer::Transfer(QNetworkReply *reply, const QString &target, TransferOptions 
 	m_state(UnknownState),
 	m_updateTimer(0),
 	m_updateInterval(0),
-	m_isSelectingPath(false)
+	m_remainingTime(-1),
+	m_isSelectingPath(false),
+	m_isArchived(false)
 {
 	start(reply, target);
 }
@@ -163,6 +174,27 @@ void Transfer::timerEvent(QTimerEvent *event)
 
 		if (m_speed != oldSpeed)
 		{
+			m_speeds.enqueue(m_speed);
+
+			if (m_speeds.count() > 10)
+			{
+				m_speeds.dequeue();
+			}
+
+			if (m_bytesTotal > 0)
+			{
+				qint64 speedSum(0);
+
+				for (int i = 0; i < m_speeds.count(); ++i)
+				{
+					speedSum += m_speeds.at(i);
+				}
+
+				speedSum /= (m_speeds.count());
+
+				m_remainingTime = (static_cast<qreal>(m_bytesTotal - m_bytesReceived) / speedSum);
+			}
+
 			emit changed();
 		}
 	}
@@ -260,7 +292,7 @@ void Transfer::start(QNetworkReply *reply, const QString &target)
 
 	m_device->reset();
 
-	m_mimeType = QMimeDatabase().mimeTypeForData(m_device);
+	m_mimeType = mimeDatabase.mimeTypeForData(m_device);
 
 	m_device->seek(m_device->size());
 
@@ -276,21 +308,21 @@ void Transfer::start(QNetworkReply *reply, const QString &target)
 
 	if (target.isEmpty())
 	{
-		QString path;
-		QString fileName(getSuggestedFileName());
-
 		if (!SettingsManager::getOption(SettingsManager::Browser_AlwaysAskWhereToSaveDownloadOption).toBool())
 		{
 			m_options |= IsQuickTransferOption;
 		}
 
+		const QString directory(m_options.testFlag(IsQuickTransferOption) ? SettingsManager::getOption(SettingsManager::Paths_DownloadsOption).toString() : QString());
+		const QString fileName(getSuggestedFileName());
+
 		if (m_options.testFlag(IsQuickTransferOption))
 		{
-			path = SettingsManager::getOption(SettingsManager::Paths_DownloadsOption).toString();
+			finalTarget = directory + QDir::separator() + fileName;
 
-			if (QFile::exists(path + QDir::separator() + fileName) && QMessageBox::question(Application::getActiveWindow(), tr("Question"), tr("File with that name already exists.\nDo you want to overwrite it?"), QMessageBox::Yes, QMessageBox::No) == QMessageBox::No)
+			if (QFile::exists(finalTarget))
 			{
-				path.clear();
+				m_options |= CanAskForPathOption;
 			}
 		}
 
@@ -298,14 +330,11 @@ void Transfer::start(QNetworkReply *reply, const QString &target)
 		{
 			m_isSelectingPath = true;
 
-			const SaveInformation information(Utils::getSavePath(fileName, path));
-
-			path = information.path;
-			canOverwriteExisting = information.canOverwriteExisting;
+			const SaveInformation information(Utils::getSavePath(fileName, directory));
 
 			m_isSelectingPath = false;
 
-			if (path.isEmpty())
+			if (!information.canSave)
 			{
 				if (m_reply)
 				{
@@ -318,9 +347,12 @@ void Transfer::start(QNetworkReply *reply, const QString &target)
 
 				return;
 			}
+
+			finalTarget = information.path;
+			canOverwriteExisting = true;
 		}
 
-		finalTarget = QDir::toNativeSeparators(path);
+		finalTarget = QDir::toNativeSeparators(finalTarget);
 	}
 	else
 	{
@@ -350,7 +382,7 @@ void Transfer::start(QNetworkReply *reply, const QString &target)
 		}
 		else
 		{
-			m_mimeType = QMimeDatabase().mimeTypeForFile(m_target);
+			m_mimeType = mimeDatabase.mimeTypeForFile(m_target);
 		}
 	}
 }
@@ -416,6 +448,8 @@ void Transfer::stop()
 			deleteLater();
 		}
 	}
+
+	m_speeds.clear();
 
 	emit stopped();
 	emit changed();
@@ -733,12 +767,24 @@ Transfer::TransferState Transfer::getState() const
 	return m_state;
 }
 
+int Transfer::getRemainingTime() const
+{
+	return m_remainingTime;
+}
+
+bool Transfer::isArchived() const
+{
+	return m_isArchived;
+}
+
 bool Transfer::resume()
 {
 	if (m_state != ErrorState || !QFile::exists(m_target))
 	{
 		return false;
 	}
+
+	m_isArchived = false;
 
 	if (m_bytesTotal == 0)
 	{
@@ -786,6 +832,8 @@ bool Transfer::resume()
 bool Transfer::restart()
 {
 	stop();
+
+	m_isArchived = false;
 
 	QFile *file(new QFile(m_target));
 
@@ -839,7 +887,7 @@ bool Transfer::setTarget(const QString &target, bool canOverwriteExisting)
 
 		if (result == QMessageBox::No)
 		{
-			QFileInfo information(target);
+			const QFileInfo information(target);
 			const QString path(Utils::getSavePath(information.fileName(), information.path(), {}, true).path);
 
 			if (path.isEmpty())
@@ -958,6 +1006,23 @@ void TransfersManager::scheduleSave()
 	}
 }
 
+void TransfersManager::updateRunningTransfersState()
+{
+	bool hasRunningTransfers(false);
+
+	for (int i = 0; i < m_transfers.count(); ++i)
+	{
+		if (m_transfers.at(i)->getState() == Transfer::RunningState)
+		{
+			hasRunningTransfers = true;
+
+			break;
+		}
+	}
+
+	m_hasRunningTransfers = hasRunningTransfers;
+}
+
 void TransfersManager::addTransfer(Transfer *transfer)
 {
 	m_transfers.append(transfer);
@@ -1035,6 +1100,11 @@ void TransfersManager::handleTransferStarted()
 
 	if (transfer && transfer->getState() != Transfer::CancelledState)
 	{
+		if (transfer->getState() == Transfer::RunningState)
+		{
+			m_hasRunningTransfers = true;
+		}
+
 		emit transferStarted(transfer);
 
 		scheduleSave();
@@ -1045,11 +1115,13 @@ void TransfersManager::handleTransferFinished()
 {
 	Transfer *transfer(qobject_cast<Transfer*>(sender()));
 
+	updateRunningTransfersState();
+
 	if (transfer)
 	{
 		if (transfer->getState() == Transfer::FinishedState)
 		{
-			connect(NotificationsManager::createNotification(NotificationsManager::TransferCompletedEvent, tr("Transfer completed:\n%1").arg(QFileInfo(transfer->getTarget()).fileName()), Notification::InformationLevel, this), &Notification::clicked, transfer, &Transfer::openTarget);
+			connect(NotificationsManager::createNotification(NotificationsManager::TransferCompletedEvent, tr("Download completed:\n%1").arg(QFileInfo(transfer->getTarget()).fileName()), Notification::InformationLevel, this), &Notification::clicked, transfer, &Transfer::openTarget);
 		}
 
 		emit transferFinished(transfer);
@@ -1076,6 +1148,8 @@ void TransfersManager::handleTransferChanged()
 void TransfersManager::handleTransferStopped()
 {
 	Transfer *transfer(qobject_cast<Transfer*>(sender()));
+
+	updateRunningTransfersState();
 
 	if (transfer)
 	{
@@ -1226,6 +1300,11 @@ bool TransfersManager::isDownloading(const QString &source, const QString &targe
 	}
 
 	return false;
+}
+
+bool TransfersManager::hasRunningTransfers()
+{
+	return m_hasRunningTransfers;
 }
 
 }

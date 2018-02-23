@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2014 - 2015 Piotr Wójcik <chocimier@tlen.pl>
 * Copyright (C) 2015 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
@@ -319,27 +319,29 @@ ActionsManager::ActionsManager(QObject *parent) : QObject(parent),
 	registerAction(SaveSessionAction, QT_TRANSLATE_NOOP("actions", "Save Current Session…"), {}, {}, ActionDefinition::ApplicationScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsImmutableFlag));
 	registerAction(OpenUrlAction, QT_TRANSLATE_NOOP("actions", "Open URL"), {}, {}, ActionDefinition::MainWindowScope, ActionDefinition::RequiresParameters);
 	registerAction(OpenLinkAction, QT_TRANSLATE_NOOP("actions", "Open"), {}, ThemesManager::createIcon(QLatin1String("document-open")), ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::LinkCategory);
-	registerAction(OpenLinkInCurrentTabAction, QT_TRANSLATE_NOOP("actions", "Open in This Tab"), {}, {}, ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::LinkCategory);
-	registerAction(OpenLinkInNewTabAction, QT_TRANSLATE_NOOP("actions", "Open in New Tab"), {}, {}, ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::LinkCategory);
+	registerAction(OpenLinkInCurrentTabAction, QT_TRANSLATE_NOOP("actions", "Open in This Tab"), {}, {}, ActionDefinition::WindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsDeprecatedFlag), ActionDefinition::LinkCategory);
+	registerAction(OpenLinkInNewTabAction, QT_TRANSLATE_NOOP("actions", "Open in New Tab"), {}, {}, ActionDefinition::WindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsDeprecatedFlag), ActionDefinition::LinkCategory);
 	registerAction(OpenLinkInNewTabBackgroundAction, QT_TRANSLATE_NOOP("actions", "Open in New Background Tab"), {}, {}, ActionDefinition::WindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsDeprecatedFlag), ActionDefinition::LinkCategory);
-	registerAction(OpenLinkInNewWindowAction, QT_TRANSLATE_NOOP("actions", "Open in New Window"), {}, {}, ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::LinkCategory);
+	registerAction(OpenLinkInNewWindowAction, QT_TRANSLATE_NOOP("actions", "Open in New Window"), {}, {}, ActionDefinition::WindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsDeprecatedFlag), ActionDefinition::LinkCategory);
 	registerAction(OpenLinkInNewWindowBackgroundAction, QT_TRANSLATE_NOOP("actions", "Open in New Background Window"), {}, {}, ActionDefinition::WindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsDeprecatedFlag), ActionDefinition::LinkCategory);
-	registerAction(OpenLinkInNewPrivateTabAction, QT_TRANSLATE_NOOP("actions", "Open in New Private Tab"), {}, {}, ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::LinkCategory);
+	registerAction(OpenLinkInNewPrivateTabAction, QT_TRANSLATE_NOOP("actions", "Open in New Private Tab"), {}, {}, ActionDefinition::WindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsDeprecatedFlag), ActionDefinition::LinkCategory);
 	registerAction(OpenLinkInNewPrivateTabBackgroundAction, QT_TRANSLATE_NOOP("actions", "Open in New Private Background Tab"), {}, {}, ActionDefinition::WindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsDeprecatedFlag), ActionDefinition::LinkCategory);
-	registerAction(OpenLinkInNewPrivateWindowAction, QT_TRANSLATE_NOOP("actions", "Open in New Private Window"), {}, {}, ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::LinkCategory);
+	registerAction(OpenLinkInNewPrivateWindowAction, QT_TRANSLATE_NOOP("actions", "Open in New Private Window"), {}, {}, ActionDefinition::WindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsDeprecatedFlag), ActionDefinition::LinkCategory);
 	registerAction(OpenLinkInNewPrivateWindowBackgroundAction, QT_TRANSLATE_NOOP("actions", "Open in New Private Background Window"), {}, {}, ActionDefinition::WindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsDeprecatedFlag), ActionDefinition::LinkCategory);
 	registerAction(CopyLinkToClipboardAction, QT_TRANSLATE_NOOP("actions", "Copy Link to Clipboard"), {}, {}, ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::LinkCategory);
 	registerAction(BookmarkLinkAction, QT_TRANSLATE_NOOP("actions", "Bookmark Link…"), {}, ThemesManager::createIcon(QLatin1String("bookmark-new")), ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::LinkCategory);
 	registerAction(SaveLinkToDiskAction, QT_TRANSLATE_NOOP("actions", "Save Link Target As…"), {}, {}, ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::LinkCategory);
 	registerAction(SaveLinkToDownloadsAction, QT_TRANSLATE_NOOP("actions", "Save to Downloads"), {}, {}, ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::LinkCategory);
 	registerAction(OpenSelectionAsLinkAction, QT_TRANSLATE_NOOP("actions", "Go to This Address"), {}, {}, ActionDefinition::WindowScope);
-	registerAction(OpenFrameInCurrentTabAction, QT_TRANSLATE_NOOP("actions", "Open"), QT_TRANSLATE_NOOP("actions", "Open Frame in This Tab"), {}, ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::FrameCategory);
-	registerAction(OpenFrameInNewTabAction, QT_TRANSLATE_NOOP("actions", "Open in New Tab"), QT_TRANSLATE_NOOP("actions", "Open Frame in New Tab"), {}, ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::FrameCategory);
+	registerAction(OpenFrameAction, QT_TRANSLATE_NOOP("actions", "Open"), QT_TRANSLATE_NOOP("actions", "Open Frame"), {}, ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::FrameCategory);
+	registerAction(OpenFrameInCurrentTabAction, QT_TRANSLATE_NOOP("actions", "Open"), QT_TRANSLATE_NOOP("actions", "Open Frame in This Tab"), {}, ActionDefinition::WindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsDeprecatedFlag), ActionDefinition::FrameCategory);
+	registerAction(OpenFrameInNewTabAction, QT_TRANSLATE_NOOP("actions", "Open in New Tab"), QT_TRANSLATE_NOOP("actions", "Open Frame in New Tab"), {}, ActionDefinition::WindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsDeprecatedFlag), ActionDefinition::FrameCategory);
 	registerAction(OpenFrameInNewTabBackgroundAction, QT_TRANSLATE_NOOP("actions", "Open in New Background Tab"), QT_TRANSLATE_NOOP("actions", "Open Frame in New Background Tab"), {}, ActionDefinition::WindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsDeprecatedFlag), ActionDefinition::FrameCategory);
 	registerAction(CopyFrameLinkToClipboardAction, QT_TRANSLATE_NOOP("actions", "Copy Frame Link to Clipboard"), {}, {}, ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::FrameCategory);
 	registerAction(ReloadFrameAction, QT_TRANSLATE_NOOP("actions", "Reload"), QT_TRANSLATE_NOOP("actions", "Reload Frame"), {}, ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::FrameCategory);
 	registerAction(ViewFrameSourceAction, QT_TRANSLATE_NOOP("actions", "View Frame Source"), {}, {}, ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::FrameCategory);
-	registerAction(OpenImageInNewTabAction, QT_TRANSLATE_NOOP("actions", "Open Image In New Tab"), {}, {}, ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::ImageCategory);
+	registerAction(OpenImageAction, QT_TRANSLATE_NOOP("actions", "Open Image"), {}, {}, ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::ImageCategory);
+	registerAction(OpenImageInNewTabAction, QT_TRANSLATE_NOOP("actions", "Open Image In New Tab"), {}, {}, ActionDefinition::WindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsDeprecatedFlag), ActionDefinition::ImageCategory);
 	registerAction(OpenImageInNewTabBackgroundAction, QT_TRANSLATE_NOOP("actions", "Open Image in New Background Tab"), {}, {}, ActionDefinition::WindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsDeprecatedFlag), ActionDefinition::ImageCategory);
 	registerAction(SaveImageToDiskAction, QT_TRANSLATE_NOOP("actions", "Save Image…"), {}, {}, ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::ImageCategory);
 	registerAction(CopyImageToClipboardAction, QT_TRANSLATE_NOOP("actions", "Copy Image to Clipboard"), {}, {}, ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::ImageCategory);
@@ -444,7 +446,7 @@ ActionsManager::ActionsManager(QObject *parent) : QObject(parent),
 	registerAction(AddonsAction, QT_TRANSLATE_NOOP("actions", "Addons"), {}, ThemesManager::createIcon(QLatin1String("preferences-plugin")), ActionDefinition::MainWindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsImmutableFlag));
 	registerAction(NotesAction, QT_TRANSLATE_NOOP("actions", "Notes"), {}, ThemesManager::createIcon(QLatin1String("notes")), ActionDefinition::MainWindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsImmutableFlag));
 	registerAction(PasswordsAction, QT_TRANSLATE_NOOP("actions", "Passwords"), {}, ThemesManager::createIcon(QLatin1String("dialog-password")), ActionDefinition::MainWindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsImmutableFlag));
-	registerAction(TransfersAction, QT_TRANSLATE_NOOP("actions", "Transfers"), {}, ThemesManager::createIcon(QLatin1String("transfers")), ActionDefinition::MainWindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsImmutableFlag));
+	registerAction(TransfersAction, QT_TRANSLATE_NOOP("actions", "Downloads"), {}, ThemesManager::createIcon(QLatin1String("transfers")), ActionDefinition::MainWindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsImmutableFlag));
 	registerAction(PreferencesAction, QT_TRANSLATE_NOOP("actions", "Preferences…"), {}, {}, ActionDefinition::MainWindowScope, (ActionDefinition::IsEnabledFlag | ActionDefinition::IsImmutableFlag));
 	registerAction(WebsitePreferencesAction, QT_TRANSLATE_NOOP("actions", "Website Preferences…"), {}, {}, ActionDefinition::WindowScope, ActionDefinition::IsEnabledFlag, ActionDefinition::PageCategory);
 	registerAction(QuickPreferencesAction, QT_TRANSLATE_NOOP("actions", "Quick Preferences"), {}, {}, ActionDefinition::WindowScope);
@@ -617,11 +619,11 @@ QString ActionsManager::createReport()
 
 			for (int j = 0; j < definitions.count(); ++j)
 			{
-				const QVector<QKeySequence> shortcuts(definitions[j].second);
+				const QVector<QKeySequence> shortcuts(definitions.at(j).second);
 
 				stream << QLatin1Char('\t');
 				stream.setFieldWidth(30);
-				stream << QLatin1Char(' ') + QJsonDocument(QJsonObject::fromVariantMap(definitions[j].first)).toJson(QJsonDocument::Compact);
+				stream << QLatin1Char(' ') + QJsonDocument(QJsonObject::fromVariantMap(definitions.at(j).first)).toJson(QJsonDocument::Compact);
 				stream.setFieldWidth(20);
 
 				for (int k = 0; k < shortcuts.count(); ++k)

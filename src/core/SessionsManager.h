@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2014 Piotr Wójcik <chocimier@tlen.pl>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -138,7 +138,7 @@ struct SessionWindow final
 				return history.at(historyIndex).title;
 			}
 
-			if (history.at(historyIndex).url == QLatin1String("about:start") || (SettingsManager::getOption(SettingsManager::StartPage_EnableStartPageOption).toBool() && Utils::isUrlEmpty(history.at(historyIndex).url)))
+			if (history.at(historyIndex).url == QLatin1String("about:start") && SettingsManager::getOption(SettingsManager::StartPage_EnableStartPageOption).toBool())
 			{
 				return QCoreApplication::translate("main", "Start Page");
 			}

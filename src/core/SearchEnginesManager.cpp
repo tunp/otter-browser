@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@
 #include "Utils.h"
 
 #include <QtCore/QDir>
+#include <QtCore/QFile>
 #include <QtCore/QXmlStreamReader>
 #include <QtCore/QXmlStreamWriter>
 #include <QtNetwork/QNetworkRequest>
@@ -64,10 +65,13 @@ void SearchEnginesManager::ensureInitialized()
 
 void SearchEnginesManager::loadSearchEngines()
 {
-	m_searchEngines.clear();
-	m_searchKeywords.clear();
-
 	m_searchEnginesOrder = SettingsManager::getOption(SettingsManager::Search_SearchEnginesOrderOption).toStringList();
+
+	m_searchEngines.clear();
+	m_searchEngines.reserve(m_searchEnginesOrder.count());
+
+	m_searchKeywords.clear();
+	m_searchKeywords.reserve(m_searchEnginesOrder.count());
 
 	const QStringList searchEnginesOrder(m_searchEnginesOrder);
 
@@ -95,6 +99,8 @@ void SearchEnginesManager::loadSearchEngines()
 			m_searchEnginesOrder.removeAll(searchEnginesOrder.at(i));
 		}
 	}
+
+	m_searchEngines.squeeze();
 
 	emit m_instance->searchEnginesModified();
 
@@ -212,7 +218,7 @@ void SearchEnginesManager::setupQuery(const QString &query, const SearchUrl &sea
 
 	for (iterator = values.constBegin(); iterator != values.constEnd(); ++iterator)
 	{
-		urlString = urlString.replace(QStringLiteral("{%1}").arg(iterator.key()), QUrl::toPercentEncoding(iterator.value()));
+		urlString = urlString.replace(QLatin1Char('{') + iterator.key() + QLatin1Char('}'), QUrl::toPercentEncoding(iterator.value()));
 	}
 
 	*method = ((searchUrl.method == QLatin1String("post")) ? QNetworkAccessManager::PostOperation : QNetworkAccessManager::GetOperation);
@@ -228,7 +234,7 @@ void SearchEnginesManager::setupQuery(const QString &query, const SearchUrl &sea
 
 		for (iterator = values.constBegin(); iterator != values.constEnd(); ++iterator)
 		{
-			value = value.replace(QStringLiteral("{%1}").arg(iterator.key()), iterator.value());
+			value = value.replace(QLatin1Char('{') + iterator.key() + QLatin1Char('}'), iterator.value());
 		}
 
 		if (*method == QNetworkAccessManager::GetOperation)
@@ -249,7 +255,7 @@ void SearchEnginesManager::setupQuery(const QString &query, const SearchUrl &sea
 
 				for (int j = 0; j < plainValue.length(); ++j)
 				{
-					const char character(plainValue[j]);
+					const char character(plainValue.at(j));
 
 					if (character == 32 || (character >= 33 && character <= 126 && character != 61))
 					{

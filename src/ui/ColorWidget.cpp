@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -51,9 +51,9 @@ void ColorWidget::changeEvent(QEvent *event)
 {
 	QWidget::changeEvent(event);
 
-	if (event->type() == QEvent::LanguageChange)
+	if (event->type() == QEvent::LanguageChange && !m_color.isValid())
 	{
-		setColor(m_color);
+		setToolTip(tr("Invalid"));
 	}
 }
 
@@ -101,22 +101,22 @@ void ColorWidget::mouseReleaseEvent(QMouseEvent *event)
 	if (event->button() == Qt::LeftButton && m_buttonRectangle.contains(event->pos()))
 	{
 		QMenu menu(this);
-		menu.addAction(tr("Select Color…"), this, SLOT(selectColor()));
-		menu.addAction(tr("Copy Color"), this, SLOT(copyColor()));
+
+		connect(menu.addAction(tr("Select Color…")), &QAction::triggered, this, &ColorWidget::selectColor);
+		connect(menu.addAction(tr("Copy Color")), &QAction::triggered, this, [&]()
+		{
+			QApplication::clipboard()->setText(m_color.name((m_color.alpha() < 255) ? QColor::HexArgb : QColor::HexRgb).toUpper());
+		});
+
 		menu.addSeparator();
-		menu.addAction(ThemesManager::createIcon(QLatin1String("edit-clear")), tr("Clear"), this, SLOT(clear()));
+
+		connect(menu.addAction(ThemesManager::createIcon(QLatin1String("edit-clear")), tr("Clear")), &QAction::triggered, this, [&]()
+		{
+			setColor(QColor());
+		});
+
 		menu.exec(mapToGlobal(isRightToLeft() ? m_buttonRectangle.bottomRight() : m_buttonRectangle.bottomLeft()));
 	}
-}
-
-void ColorWidget::clear()
-{
-	setColor(QColor());
-}
-
-void ColorWidget::copyColor()
-{
-	QApplication::clipboard()->setText(m_color.name((m_color.alpha() < 255) ? QColor::HexArgb : QColor::HexRgb).toUpper());
 }
 
 void ColorWidget::selectColor()
@@ -167,14 +167,14 @@ void ColorWidget::setColor(const QColor &color)
 {
 	if (color != m_color)
 	{
-		const QString text(color.isValid() ? color.name((color.alpha() < 255) ? QColor::HexArgb : QColor::HexRgb).toUpper() : tr("Invalid"));
+		const QString text(color.isValid() ? color.name((color.alpha() < 255) ? QColor::HexArgb : QColor::HexRgb).toUpper() : QString());
 
 		if (!m_lineEditWidget->hasFocus())
 		{
 			m_lineEditWidget->setText(text);
 		}
 
-		setToolTip(text);
+		setToolTip(text.isEmpty() ? tr("Invalid") : text);
 		update();
 
 		m_color = color;

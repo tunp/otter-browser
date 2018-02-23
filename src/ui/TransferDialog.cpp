@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -27,6 +27,7 @@
 
 #include <QtCore/QFileInfo>
 #include <QtCore/QtMath>
+#include <QtWidgets/QFileIconProvider>
 
 namespace Otter
 {
@@ -35,7 +36,8 @@ TransferDialog::TransferDialog(Transfer *transfer, QWidget *parent) : Dialog(par
 	m_transfer(transfer),
 	m_ui(new Ui::TransferDialog)
 {
-	const QPixmap icon(ThemesManager::createIcon(transfer->getMimeType().iconName()).pixmap(16, 16));
+	const QString iconName(transfer->getMimeType().iconName());
+	const QPixmap icon(QIcon::fromTheme(iconName, QFileIconProvider().icon(iconName)).pixmap(16, 16));
 	QString fileName(transfer->getSuggestedFileName());
 
 	if (fileName.isEmpty())
@@ -56,7 +58,7 @@ TransferDialog::TransferDialog(Transfer *transfer, QWidget *parent) : Dialog(par
 
 	m_ui->nameTextLabelWidget->setText(fileName);
 	m_ui->typeTextLabelWidget->setText(transfer->getMimeType().comment());
-	m_ui->fromTextLabelWidget->setText(transfer->getSource().host().isEmpty() ? QLatin1String("localhost") : transfer->getSource().host());
+	m_ui->fromTextLabelWidget->setText(Utils::extractHost(transfer->getSource()));
 	m_ui->openWithComboBoxWidget->setMimeType(transfer->getMimeType());
 
 	setProgress(m_transfer->getBytesReceived(), m_transfer->getBytesTotal());
@@ -174,7 +176,7 @@ void TransferDialog::setProgress(qint64 bytesReceived, qint64 bytesTotal)
 	}
 	else
 	{
-		const int progress((bytesReceived > 0 && bytesTotal > 0) ? qFloor((static_cast<qreal>(bytesReceived) / bytesTotal) * 100) : 0);
+		const int progress((bytesReceived > 0 && bytesTotal > 0) ? qFloor((static_cast<qreal>(bytesReceived) / static_cast<qreal>(bytesTotal)) * 100) : 0);
 
 		m_ui->sizeTextLabelWidget->setText(tr("%1 (%2% downloaded)").arg(Utils::formatUnit(bytesTotal)).arg(progress));
 	}

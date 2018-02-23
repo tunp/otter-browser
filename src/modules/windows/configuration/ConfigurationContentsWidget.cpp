@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -28,7 +28,6 @@
 #include "ui_ConfigurationContentsWidget.h"
 
 #include <QtCore/QMetaEnum>
-#include <QtCore/QSettings>
 #include <QtGui/QClipboard>
 #include <QtGui/QKeyEvent>
 #include <QtGui/QPainter>
@@ -259,6 +258,8 @@ void ConfigurationContentsWidget::changeEvent(QEvent *event)
 	if (event->type() == QEvent::LanguageChange)
 	{
 		m_ui->retranslateUi(this);
+
+		m_model->setHorizontalHeaderLabels({tr("Name"), tr("Type"), tr("Value")});
 	}
 }
 
@@ -496,16 +497,26 @@ void ConfigurationContentsWidget::showContextMenu(const QPoint &position)
 
 	if (index.isValid() && index.parent() != m_ui->configurationViewWidget->rootIndex())
 	{
-		menu.addAction(tr("Copy Option Name"), this, SLOT(copyOptionName()));
-		menu.addAction(tr("Copy Option Value"), this, SLOT(copyOptionValue()));
+		connect(menu.addAction(tr("Copy Option Name")), &QAction::triggered, this, &ConfigurationContentsWidget::copyOptionName);
+		connect(menu.addAction(tr("Copy Option Value")), &QAction::triggered, this, &ConfigurationContentsWidget::copyOptionValue);
+
 		menu.addSeparator();
-		menu.addAction(tr("Save Value"), this, SLOT(saveOption()))->setEnabled(index.sibling(index.row(), 0).data(IsModifiedRole).toBool());
-		menu.addAction(tr("Restore Default Value"), this, SLOT(resetOption()))->setEnabled(index.sibling(index.row(), 2).data(Qt::EditRole) != SettingsManager::getOptionDefinition(index.sibling(index.row(), 2).data(IdentifierRole).toInt()).defaultValue);
+
+		QAction *saveAction(menu.addAction(tr("Save Value")));
+		saveAction->setEnabled(index.sibling(index.row(), 0).data(IsModifiedRole).toBool());
+
+		QAction *resetAction(menu.addAction(tr("Restore Default Value")));
+		resetAction->setEnabled(index.sibling(index.row(), 2).data(Qt::EditRole) != SettingsManager::getOptionDefinition(index.sibling(index.row(), 2).data(IdentifierRole).toInt()).defaultValue);
+
 		menu.addSeparator();
+
+		connect(saveAction, &QAction::triggered, this, &ConfigurationContentsWidget::saveOption);
+		connect(resetAction, &QAction::triggered, this, &ConfigurationContentsWidget::resetOption);
 	}
 
-	menu.addAction(tr("Expand All"), m_ui->configurationViewWidget, SLOT(expandAll()));
-	menu.addAction(tr("Collapse All"), m_ui->configurationViewWidget, SLOT(collapseAll()));
+	connect(menu.addAction(tr("Expand All")), &QAction::triggered, m_ui->configurationViewWidget, &ItemViewWidget::expandAll);
+	connect(menu.addAction(tr("Collapse All")), &QAction::triggered, m_ui->configurationViewWidget, &ItemViewWidget::collapseAll);
+
 	menu.exec(m_ui->configurationViewWidget->mapToGlobal(position));
 }
 

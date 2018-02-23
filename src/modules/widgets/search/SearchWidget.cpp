@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2014 - 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -131,11 +131,11 @@ QSize SearchDelegate::sizeHint(const QStyleOptionViewItem &option, const QModelI
 
 	if (index.data(Qt::AccessibleDescriptionRole).toString() == QLatin1String("separator"))
 	{
-		size.setHeight(option.fontMetrics.lineSpacing() * 0.75);
+		size.setHeight(qRound(option.fontMetrics.lineSpacing() * 0.75));
 	}
 	else
 	{
-		size.setHeight(option.fontMetrics.lineSpacing() * 1.25);
+		size.setHeight(qRound(option.fontMetrics.lineSpacing() * 1.25));
 	}
 
 	return size;
@@ -154,7 +154,7 @@ SearchWidget::SearchWidget(Window *window, QWidget *parent) : LineEditWidget(par
 
 	const ToolBarWidget *toolBar(qobject_cast<ToolBarWidget*>(parent));
 
-	if (toolBar && toolBar->getIdentifier() != ToolBarsManager::AddressBar)
+	if (toolBar && toolBar->getDefinition().isGlobal())
 	{
 		connect(toolBar, &ToolBarWidget::windowChanged, this, &SearchWidget::setWindow);
 	}
@@ -678,7 +678,7 @@ void SearchWidget::setSearchEngine(const QModelIndex &index, bool canSendRequest
 	{
 		const QString query(m_query);
 
-		if (query != getPopup()->getItem(index)->text())
+		if (query != index.data(Qt::DisplayRole).toString())
 		{
 			setText(query);
 		}
@@ -717,7 +717,7 @@ void SearchWidget::setQuery(const QString &query)
 {
 	m_query = query;
 
-	if (getPopup()->model() == SearchEnginesManager::getSearchEnginesModel() || m_query.isEmpty())
+	if (m_query.isEmpty() || getPopup()->model() == SearchEnginesManager::getSearchEnginesModel())
 	{
 		hidePopup();
 	}
@@ -762,7 +762,7 @@ void SearchWidget::setWindow(Window *window)
 
 		const ToolBarWidget *toolBar(qobject_cast<ToolBarWidget*>(parentWidget()));
 
-		if (!toolBar || toolBar->getIdentifier() != ToolBarsManager::AddressBar)
+		if (!toolBar || toolBar->getDefinition().isGlobal())
 		{
 			connect(window, &Window::aboutToClose, this, [&]()
 			{

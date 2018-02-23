@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2014 - 2015 Piotr Wójcik <chocimier@tlen.pl>
 * Copyright (C) 2015 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
@@ -432,6 +432,11 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 			{
 				QVariantMap mutableParameters(parameters);
 				mutableParameters[QLatin1String("hints")] = SessionsManager::NewTabOpen;
+
+				if (SettingsManager::getOption(SettingsManager::StartPage_EnableStartPageOption).toBool())
+				{
+					mutableParameters[QLatin1String("url")] = QUrl(QLatin1String("about:start"));
+				}
 
 				triggerAction(ActionsManager::OpenUrlAction, mutableParameters);
 			}
@@ -927,8 +932,9 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 		case ActionsManager::ShowPanelAction:
 			{
 				const int toolBarIdentifier(parameters.value(QLatin1String("sidebar"), ToolBarsManager::SideBar).toInt());
+				const QString panel(parameters.value(QLatin1String("panel")).toString());
 				ToolBarsManager::ToolBarDefinition definition(ToolBarsManager::getToolBarDefinition(toolBarIdentifier));
-				definition.currentPanel = parameters.value(QLatin1String("panel")).toString();
+				definition.currentPanel = ((definition.currentPanel == panel) ? QString() : panel);
 
 				if (definition.isValid())
 				{
@@ -1300,18 +1306,21 @@ void MainWindow::addWindow(Window *window, SessionsManager::OpenHints hints, int
 
 	if (m_isSessionRestored && SettingsManager::getOption(SettingsManager::TabBar_PrependPinnedTabOption).toBool() && !window->isPinned())
 	{
-		for (int i = 0; i < m_windows.count(); ++i)
+		const MainWindowSessionItem *mainWindowItem(SessionsManager::getModel()->getMainWindowItem(this));
+
+		if (mainWindowItem)
 		{
-			const Window *window(getWindowByIndex(i));
-
-			if (!window || !window->isPinned())
+			for (int i = 0; i < mainWindowItem->rowCount(); ++i)
 			{
-				if (index < i)
+				if (!mainWindowItem->index().child(i, 0).data(SessionModel::IsPinnedRole).toBool())
 				{
-					index = i;
-				}
+					if (index < i)
+					{
+						index = i;
+					}
 
-				break;
+					break;
+				}
 			}
 		}
 	}
@@ -1356,10 +1365,7 @@ void MainWindow::addWindow(Window *window, SessionsManager::OpenHints hints, int
 	connect(window, &Window::requestedSearch, this, &MainWindow::search);
 	connect(window, &Window::requestedCloseWindow, this, &MainWindow::handleRequestedCloseWindow);
 	connect(window, &Window::isPinnedChanged, this, &MainWindow::handleWindowIsPinnedChanged);
-	connect(window, &Window::requestedNewWindow, this, [&](ContentsWidget *widget, SessionsManager::OpenHints hints)
-	{
-		openWindow(widget, hints);
-	});
+	connect(window, &Window::requestedNewWindow, this, &MainWindow::openWindow);
 
 	emit windowAdded(window->getIdentifier());
 }
@@ -1588,6 +1594,11 @@ void MainWindow::handleRequestedCloseWindow(Window *window)
 			{
 				window->clear();
 
+				if (SettingsManager::getOption(SettingsManager::StartPage_EnableStartPageOption).toBool())
+				{
+					window->setUrl(QUrl(QLatin1String("about:start")));
+				}
+
 				return;
 			}
 		}
@@ -1787,11 +1798,13 @@ void MainWindow::updateShortcuts()
 
 	for (int i = 0; i < definitions.count(); ++i)
 	{
-		for (int j = 0; j < definitions[i].shortcuts.count(); ++j)
+		const KeyboardProfile::Action definition(definitions.at(i));
+
+		for (int j = 0; j < definition.shortcuts.count(); ++j)
 		{
-			if (ActionsManager::isShortcutAllowed(definitions[i].shortcuts[j]))
+			if (ActionsManager::isShortcutAllowed(definition.shortcuts.at(j)))
 			{
-				m_shortcuts.append(new Shortcut(definitions[i].action, definitions[i].shortcuts[j], definitions[i].parameters, this));
+				m_shortcuts.append(new Shortcut(definition.action, definition.shortcuts.at(j), definition.parameters, this));
 			}
 		}
 	}
@@ -2193,7 +2206,7 @@ ActionsManager::ActionDefinition::State MainWindow::getActionState(int identifie
 			break;
 		case ActionsManager::OpenPanelAction:
 			{
-				ToolBarsManager::ToolBarDefinition toolBarDefinition(ToolBarsManager::getToolBarDefinition(parameters.value(QLatin1String("sidebar"), ToolBarsManager::SideBar).toInt()));
+				const ToolBarsManager::ToolBarDefinition toolBarDefinition(ToolBarsManager::getToolBarDefinition(parameters.value(QLatin1String("sidebar"), ToolBarsManager::SideBar).toInt()));
 
 				state.isEnabled = (toolBarDefinition.isValid() && !toolBarDefinition.currentPanel.isEmpty());
 			}

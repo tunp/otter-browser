@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2015 - 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -279,6 +279,7 @@ Application::Application(int &argc, char **argv) : QApplication(argc, argv), Act
 	{
 		const QStringList decodedArguments(arguments);
 		QStringList encodedArguments;
+		encodedArguments.reserve(decodedArguments.count());
 
 #ifdef Q_OS_WIN
 		AllowSetForegroundWindow(ASFW_ANY);
@@ -354,14 +355,14 @@ Application::Application(int &argc, char **argv) : QApplication(argc, argv), Act
 				messageBox.setCheckBox(new QCheckBox(tr("Do not show this message again")));
 				messageBox.addButton(tr("Continue in Read-only Mode"), QMessageBox::YesRole);
 
-				QAbstractButton *ignoreButton(messageBox.addButton(tr("Ignore"), QMessageBox::ActionRole));
-				QAbstractButton *quitButton(messageBox.addButton(tr("Quit"), QMessageBox::RejectRole));
+				const QAbstractButton *ignoreButton(messageBox.addButton(tr("Ignore"), QMessageBox::ActionRole));
+				const QAbstractButton *quitButton(messageBox.addButton(tr("Quit"), QMessageBox::RejectRole));
 
 				messageBox.exec();
 
 				if (messageBox.clickedButton() == quitButton)
 				{
-					quit();
+					exit();
 
 					return;
 				}
@@ -461,18 +462,16 @@ Application::Application(int &argc, char **argv) : QApplication(argc, argv), Act
 	}
 
 	const QDate lastUpdate(QDate::fromString(SettingsManager::getOption(SettingsManager::Updates_LastCheckOption).toString(), Qt::ISODate));
-	const int interval(SettingsManager::getOption(SettingsManager::Updates_CheckIntervalOption).toInt());
+	const int updateCheckInterval(SettingsManager::getOption(SettingsManager::Updates_CheckIntervalOption).toInt());
 
-	if (interval > 0 && (lastUpdate.isNull() ? interval : lastUpdate.daysTo(QDate::currentDate())) >= interval && !SettingsManager::getOption(SettingsManager::Updates_ActiveChannelsOption).toStringList().isEmpty())
+	if (updateCheckInterval > 0 && (lastUpdate.isNull() ? updateCheckInterval : lastUpdate.daysTo(QDate::currentDate())) >= updateCheckInterval && !SettingsManager::getOption(SettingsManager::Updates_ActiveChannelsOption).toStringList().isEmpty())
 	{
-		UpdateChecker *updateChecker(new UpdateChecker(this));
-
-		connect(updateChecker, &UpdateChecker::finished, this, &Application::handleUpdateCheckResult);
+		connect(new UpdateChecker(this), &UpdateChecker::finished, this, &Application::handleUpdateCheckResult);
 
 		if (!m_updateCheckTimer)
 		{
 			m_updateCheckTimer = new LongTermTimer(this);
-			m_updateCheckTimer->start(static_cast<quint64>(interval * 1000 * SECONDS_IN_DAY));
+			m_updateCheckTimer->start(static_cast<quint64>(updateCheckInterval * 1000 * SECONDS_IN_DAY));
 
 			connect(m_updateCheckTimer, &LongTermTimer::timeout, this, &Application::periodicUpdateCheck);
 		}
@@ -559,16 +558,16 @@ void Application::triggerAction(int identifier, const QVariantMap &parameters, Q
 		case ActionsManager::SetOptionAction:
 			{
 				const QString mode(parameters.value(QLatin1String("mode"), QLatin1String("set")).toString());
-				const QUrl url(parameters.contains(QLatin1String("host")) ? QUrl::fromUserInput(parameters.value(QLatin1String("host")).toString()) : QUrl());
+				const QString host(parameters.value(QLatin1String("host")).toString());
 				const int option(SettingsManager::getOptionIdentifier(parameters.value(QLatin1String("option")).toString()));
 
 				if (mode == QLatin1String("set"))
 				{
-					SettingsManager::setOption(option, parameters.value(QLatin1String("value")), url);
+					SettingsManager::setOption(option, parameters.value(QLatin1String("value")), host);
 				}
 				else if (mode == QLatin1String("reset"))
 				{
-					SettingsManager::setOption(option, {}, url);
+					SettingsManager::setOption(option, {}, host);
 				}
 				else if (mode == QLatin1String("toggle"))
 				{
@@ -576,7 +575,7 @@ void Application::triggerAction(int identifier, const QVariantMap &parameters, Q
 
 					if (definition.type == SettingsManager::BooleanType)
 					{
-						SettingsManager::setOption(option, !SettingsManager::getOption(option, url).toBool(), url);
+						SettingsManager::setOption(option, !SettingsManager::getOption(option, host).toBool(), host);
 					}
 				}
 			}
@@ -621,7 +620,7 @@ void Application::triggerAction(int identifier, const QVariantMap &parameters, Q
 			{
 				for (int i = 0; i < m_windows.count(); ++i)
 				{
-					if (m_windows[i]->isPrivate())
+					if (m_windows.at(i)->isPrivate())
 					{
 						m_windows[i]->close();
 					}
@@ -950,6 +949,7 @@ void Application::handleNewConnection()
 
 	const QStringList encodedArguments(QString(QByteArray::fromBase64(data.toUtf8())).split(QLatin1Char(' ')));
 	QStringList decodedArguments;
+	decodedArguments.reserve(encodedArguments.count());
 
 	for (int i = 0; i < encodedArguments.count(); ++i)
 	{
@@ -1113,7 +1113,7 @@ void Application::handlePositionalArguments(QCommandLineParser *parser, bool for
 
 		if (m_isHidden)
 		{
-			m_instance->setHidden(false);
+			setHidden(false);
 		}
 		else
 		{
@@ -1616,7 +1616,7 @@ bool Application::canClose()
 
 		if (messageBox.clickedButton() == hideButton)
 		{
-			m_instance->setHidden(true);
+			setHidden(true);
 
 			return false;
 		}
@@ -1673,7 +1673,7 @@ bool Application::canClose()
 
 			if (messageBox.clickedButton() == hideButton)
 			{
-				m_instance->setHidden(true);
+				setHidden(true);
 
 				return false;
 			}

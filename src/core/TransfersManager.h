@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -23,6 +23,7 @@
 #include <QtCore/QFile>
 #include <QtCore/QMimeType>
 #include <QtCore/QPointer>
+#include <QtCore/QQueue>
 #include <QtCore/QSettings>
 #include <QtNetwork/QNetworkReply>
 
@@ -78,6 +79,8 @@ public:
 	virtual qint64 getBytesTotal() const;
 	TransferOptions getOptions() const;
 	virtual TransferState getState() const;
+	virtual int getRemainingTime() const;
+	bool isArchived() const;
 
 public slots:
 	void openTarget() const;
@@ -110,6 +113,7 @@ private:
 	QDateTime m_timeStarted;
 	QDateTime m_timeFinished;
 	QMimeType m_mimeType;
+	QQueue<qint64> m_speeds;
 	qint64 m_speed;
 	qint64 m_bytesStart;
 	qint64 m_bytesReceivedDifference;
@@ -119,7 +123,9 @@ private:
 	TransferState m_state;
 	int m_updateTimer;
 	int m_updateInterval;
+	int m_remainingTime;
 	bool m_isSelectingPath;
+	bool m_isArchived;
 
 signals:
 	void progressChanged(qint64 bytesReceived, qint64 bytesTotal);
@@ -144,12 +150,14 @@ public:
 	static QVector<Transfer*> getTransfers();
 	static bool removeTransfer(Transfer *transfer, bool keepFile = true);
 	static bool isDownloading(const QString &source, const QString &target = {});
+	static bool hasRunningTransfers();
 
 protected:
 	explicit TransfersManager(QObject *parent);
 
 	void timerEvent(QTimerEvent *event) override;
 	void scheduleSave();
+	void updateRunningTransfersState();
 
 protected slots:
 	void save();
@@ -165,6 +173,7 @@ private:
 	static QVector<Transfer*> m_transfers;
 	static QVector<Transfer*> m_privateTransfers;
 	static bool m_isInitilized;
+	static bool m_hasRunningTransfers;
 
 signals:
 	void transferStarted(Transfer *transfer);

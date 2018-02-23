@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2016 Piotr Wójcik <chocimier@tlen.pl>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -98,7 +98,7 @@ ToolBarWidget::ToolBarWidget(int identifier, Window *window, QWidget *parent) : 
 
 	if (m_mainWindow)
 	{
-		if (m_identifier != ToolBarsManager::AddressBar && m_identifier != ToolBarsManager::ProgressBar)
+		if (definition.isGlobal())
 		{
 			connect(m_mainWindow, &MainWindow::currentWindowChanged, this, &ToolBarWidget::notifyWindowChanged);
 		}
@@ -128,7 +128,9 @@ void ToolBarWidget::changeEvent(QEvent *event)
 		case QEvent::LanguageChange:
 			if (m_toggleButton)
 			{
-				m_toggleButton->setToolTip(tr("Toggle Visibility"));
+				const QKeySequence shortcut(ActionsManager::getActionShortcut(ActionsManager::ShowToolBarAction, {{QLatin1String("toolBar"), ToolBarsManager::getToolBarName(m_identifier)}}));
+
+				m_toggleButton->setToolTip(tr("Toggle Visibility") + (shortcut.isEmpty() ? QString() : QLatin1String(" (") + shortcut.toString(QKeySequence::NativeText) + QLatin1Char(')')));
 			}
 
 			break;
@@ -740,10 +742,8 @@ void ToolBarWidget::handleFullScreenStateChanged(bool isFullScreen)
 	{
 		reload();
 	}
-	else
-	{
-		setVisible(m_identifier == ToolBarsManager::ProgressBar || shouldBeVisible(isFullScreen ? ToolBarsManager::FullScreenMode : ToolBarsManager::NormalMode));
-	}
+
+	setVisible(shouldBeVisible(isFullScreen ? ToolBarsManager::FullScreenMode : ToolBarsManager::NormalMode));
 }
 
 void ToolBarWidget::updateToggleGeometry()
@@ -810,7 +810,7 @@ void ToolBarWidget::setDefinition(const ToolBarsManager::ToolBarDefinition &defi
 
 	m_isCollapsed = (definition.hasToggle && !calculateShouldBeVisible(definition, m_state, mode));
 
-	setVisible(m_identifier == ToolBarsManager::ProgressBar || definition.hasToggle || shouldBeVisible(mode));
+	setVisible(shouldBeVisible(mode));
 	setOrientation((m_area != Qt::LeftToolBarArea && m_area != Qt::RightToolBarArea) ? Qt::Horizontal : Qt::Vertical);
 	clearEntries();
 
@@ -818,8 +818,10 @@ void ToolBarWidget::setDefinition(const ToolBarsManager::ToolBarDefinition &defi
 	{
 		if (!m_toggleButton)
 		{
+			const QKeySequence shortcut(ActionsManager::getActionShortcut(ActionsManager::ShowToolBarAction, {{QLatin1String("toolBar"), ToolBarsManager::getToolBarName(m_identifier)}}));
+
 			m_toggleButton = new QPushButton(this);
-			m_toggleButton->setToolTip(tr("Toggle Visibility"));
+			m_toggleButton->setToolTip(tr("Toggle Visibility") + (shortcut.isEmpty() ? QString() : QLatin1String(" (") + shortcut.toString(QKeySequence::NativeText) + QLatin1Char(')')));
 			m_toggleButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
 			connect(m_toggleButton, &QPushButton::clicked, this, &ToolBarWidget::toggleVisibility);
@@ -853,14 +855,7 @@ void ToolBarWidget::setState(const ToolBarState &state)
 {
 	m_state = state;
 
-	if (getDefinition().hasToggle)
-	{
-		reload();
-	}
-	else
-	{
-		setVisible(m_identifier == ToolBarsManager::ProgressBar || shouldBeVisible((m_mainWindow ? m_mainWindow->windowState().testFlag(Qt::WindowFullScreen) : false) ? ToolBarsManager::FullScreenMode : ToolBarsManager::NormalMode));
-	}
+	handleFullScreenStateChanged(m_mainWindow ? m_mainWindow->windowState().testFlag(Qt::WindowFullScreen) : false);
 }
 
 void ToolBarWidget::setToolBarLocked(bool locked)

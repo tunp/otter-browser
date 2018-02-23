@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -20,7 +20,6 @@
 #ifndef OTTER_QTWEBENGINEWEBWIDGET_H
 #define OTTER_QTWEBENGINEWEBWIDGET_H
 
-#include "../../../../core/Utils.h"
 #include "../../../../ui/WebWidget.h"
 
 #include <QtNetwork/QNetworkReply>
@@ -31,9 +30,6 @@ namespace Otter
 {
 
 class ContentsDialog;
-#if QT_VERSION < 0x050700
-class IconFetchJob;
-#endif
 class QtWebEnginePage;
 class SourceViewerWebWidget;
 
@@ -58,8 +54,8 @@ public:
 			imageUrl = QUrl(map.value(QLatin1String("imageUrl")).toString());
 			linkUrl = QUrl(map.value(QLatin1String("linkUrl")).toString());
 			mediaUrl = QUrl(map.value(QLatin1String("mediaUrl")).toString());
-			geometry = QRect(geometryMap.value(QLatin1String("x")).toInt(), geometryMap.value(QLatin1String("y")).toInt(), geometryMap.value(QLatin1String("w")).toInt(), geometryMap.value(QLatin1String("h")).toInt());
-			position = map.value(QLatin1String("position")).toPoint();
+			elementGeometry = QRect(geometryMap.value(QLatin1String("x")).toInt(), geometryMap.value(QLatin1String("y")).toInt(), geometryMap.value(QLatin1String("w")).toInt(), geometryMap.value(QLatin1String("h")).toInt());
+			hitPosition = map.value(QLatin1String("position")).toPoint();
 			playbackRate = map.value(QLatin1String("playbackRate")).toReal();
 			flags = static_cast<HitTestFlags>(map.value(QLatin1String("flags")).toInt());
 		}
@@ -75,16 +71,18 @@ public:
 	QUrl getUrl() const override;
 	QIcon getIcon() const override;
 	QPoint getScrollPosition() const override;
+	LinkUrl getActiveFrame() const override;
+	LinkUrl getActiveImage() const override;
+	LinkUrl getActiveLink() const override;
+	LinkUrl getActiveMedia() const override;
 	WindowHistoryInformation getHistory() const override;
 	HitTestResult getHitTestResult(const QPoint &position) override;
 	LoadingState getLoadingState() const override;
 	int getZoom() const override;
 	int findInPage(const QString &text, FindFlags flags = NoFlagsFind) override;
 	bool hasSelection() const override;
-#if QT_VERSION >= 0x050700
 	bool isAudible() const override;
 	bool isAudioMuted() const override;
-#endif
 	bool isFullScreen() const override;
 	bool isPrivate() const override;
 	bool eventFilter(QObject *object, QEvent *event) override;
@@ -129,9 +127,6 @@ protected slots:
 	void pageLoadStarted();
 	void pageLoadFinished();
 	void handleViewSourceReplyFinished();
-#if QT_VERSION < 0x050700
-	void handleIconChange(const QUrl &url);
-#endif
 	void handleAuthenticationRequired(const QUrl &url, QAuthenticator *authenticator);
 	void handleProxyAuthenticationRequired(const QUrl &url, QAuthenticator *authenticator, const QString &proxy);
 	void handleFullScreenRequest(QWebEngineFullScreenRequest request);
@@ -142,32 +137,19 @@ protected slots:
 	void notifyIconChanged();
 	void notifyPermissionRequested(const QUrl &url, QWebEnginePage::Feature nativeFeature, bool cancel);
 	void notifyRenderProcessTerminated(QWebEnginePage::RenderProcessTerminationStatus status);
-	void notifyDocumentLoadingProgress(int progress);
 	void notifyNavigationActionsChanged();
 
 private:
 	QWebEngineView *m_webView;
 	QtWebEnginePage *m_page;
-#if QT_VERSION < 0x050700
-	IconFetchJob *m_iconFetchJob;
-#endif
 	QTime *m_loadingTime;
-#if QT_VERSION < 0x050700
-	QIcon m_icon;
-#endif
 	QDateTime m_lastUrlClickTime;
 	HitTestResult m_hitResult;
-#if QT_VERSION < 0x050700
-	QPoint m_scrollPosition;
-#endif
 	QHash<QNetworkReply*, QPointer<SourceViewerWebWidget> > m_viewSourceReplies;
 	LoadingState m_loadingState;
 	TrileanValue m_canGoForwardValue;
 	int m_documentLoadingProgress;
 	int m_focusProxyTimer;
-#if QT_VERSION < 0x050700
-	int m_scrollTimer;
-#endif
 	int m_updateNavigationActionsTimer;
 	bool m_isEditing;
 	bool m_isFullScreen;

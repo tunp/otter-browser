@@ -1,7 +1,7 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
 * Copyright (C) 2014 - 2016 Jan Bajer aka bajasoft <jbajer@gmail.com>
-* Copyright (C) 2016 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2016 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -32,7 +32,6 @@
 
 #include <windows.h>
 
-#include <QtCore/QCoreApplication>
 #include <QtCore/QDir>
 #include <QtCore/QMimeData>
 #include <QtCore/QTemporaryDir>
@@ -100,18 +99,23 @@ void WindowsPlatformIntegration::removeWindow(MainWindow *mainWindow)
 
 void WindowsPlatformIntegration::updateTaskbarButtons()
 {
-	const QVector<Transfer*> transfers(TransfersManager::getInstance()->getTransfers());
 	qint64 bytesTotal(0);
 	qint64 bytesReceived(0);
-	bool hasActiveTransfers(false);
+	const bool hasRunningTransfers(TransfersManager::hasRunningTransfers());
 
-	for (int i = 0; i < transfers.count(); ++i)
+	if (hasRunningTransfers)
 	{
-		if (transfers[i]->getState() == Transfer::RunningState && transfers[i]->getBytesTotal() > 0)
+		const QVector<Transfer*> transfers(TransfersManager::getInstance()->getTransfers());
+
+		for (int i = 0; i < transfers.count(); ++i)
 		{
-			hasActiveTransfers = true;
-			bytesTotal += transfers[i]->getBytesTotal();
-			bytesReceived += transfers[i]->getBytesReceived();
+			const Transfer *transfer(transfers.at(i));
+
+			if (transfer->getState() == Transfer::RunningState && transfer->getBytesTotal() > 0)
+			{
+				bytesTotal += transfer->getBytesTotal();
+				bytesReceived += transfer->getBytesReceived();
+			}
 		}
 	}
 
@@ -121,7 +125,7 @@ void WindowsPlatformIntegration::updateTaskbarButtons()
 	{
 		MainWindow *mainWindow(mainWindows.at(i));
 
-		if (hasActiveTransfers)
+		if (hasRunningTransfers)
 		{
 			if (!m_taskbarButtons.contains(mainWindow))
 			{
@@ -130,7 +134,7 @@ void WindowsPlatformIntegration::updateTaskbarButtons()
 				m_taskbarButtons[mainWindow]->progress()->show();
 			}
 
-			m_taskbarButtons[mainWindow]->progress()->setValue((bytesReceived > 0) ? qFloor((static_cast<qreal>(bytesReceived) / bytesTotal) * 100) : 0);
+			m_taskbarButtons[mainWindow]->progress()->setValue((bytesReceived > 0) ? qFloor(Utils::calculatePercent(bytesReceived, bytesTotal)) : 0);
 		}
 		else if (m_taskbarButtons.contains(mainWindow))
 		{
@@ -241,7 +245,7 @@ void WindowsPlatformIntegration::startLinkDrag(const QUrl &url, const QString &t
 	mimeData->setText(url.toString());
 
 	QTemporaryDir directory;
-	QFile file(directory.path() + QDir::separator() + (url.host().isEmpty() ? QLatin1String("localhost") : url.host()) + QLatin1String(".url"));
+	QFile file(directory.path() + QDir::separator() + Utils::extractHost(url) + QLatin1String(".url"));
 
 	if (file.open(QIODevice::WriteOnly))
 	{
@@ -496,7 +500,7 @@ bool WindowsPlatformIntegration::setAsDefaultBrowser()
 			}
 		}
 
-		Console::addMessage(QCoreApplication::translate("main", "Failed to run File Associations Manager, error code: %1\nApplication ID: %2").arg(result).arg(pid), Otter::Console::OtherCategory, Console::ErrorLevel);
+		Console::addMessage(QCoreApplication::translate("main", "Failed to run File Associations Manager, error code: %1\nApplication ID: %2").arg(result).arg(pid), Console::OtherCategory, Console::ErrorLevel);
 	}
 	else if (QSysInfo::windowsVersion() >= QSysInfo::WV_VISTA)
 	{
@@ -515,7 +519,7 @@ bool WindowsPlatformIntegration::setAsDefaultBrowser()
 			}
 		}
 
-		Console::addMessage(QCoreApplication::translate("main", "Failed to run File Associations Manager, error code: %1").arg(result), Otter::Console::OtherCategory, Console::ErrorLevel);
+		Console::addMessage(QCoreApplication::translate("main", "Failed to run File Associations Manager, error code: %1").arg(result), Console::OtherCategory, Console::ErrorLevel);
 	}
 	else
 	{
@@ -570,7 +574,7 @@ bool WindowsPlatformIntegration::registerToSystem()
 
 	if (m_applicationRegistration.status() != QSettings::NoError || capabilities.status() != QSettings::NoError)
 	{
-		Console::addMessage(QCoreApplication::translate("main", "Failed to register application to system registry: %1, %2").arg(m_applicationRegistration.status(), capabilities.status()), Otter::Console::OtherCategory, Console::ErrorLevel);
+		Console::addMessage(QCoreApplication::translate("main", "Failed to register application to system registry: %1, %2").arg(m_applicationRegistration.status(), capabilities.status()), Console::OtherCategory, Console::ErrorLevel);
 
 		return false;
 	}

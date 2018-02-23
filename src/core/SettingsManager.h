@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2014 - 2016 Piotr Wójcik <chocimier@tlen.pl>
 * Copyright (C) 2016 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
@@ -23,7 +23,6 @@
 #define OTTER_SETTINGSMANAGER_H
 
 #include <QtCore/QObject>
-#include <QtCore/QUrl>
 #include <QtCore/QVariant>
 #include <QtGui/QIcon>
 
@@ -298,26 +297,26 @@ public:
 	};
 
 	static void createInstance(const QString &path);
-	static void removeOverride(const QUrl &url, const QString &key = {});
+	static void removeOverride(const QString &host, int identifier = -1);
 	static void updateOptionDefinition(int identifier, const OptionDefinition &definition);
-	static void setOption(int identifier, const QVariant &value, const QUrl &url = {});
+	static void setOption(int identifier, const QVariant &value, const QString &host = {});
 	static SettingsManager* getInstance();
 	static QString createDisplayValue(int identifier, const QVariant &value);
 	static QString createReport();
 	static QString getGlobalPath();
 	static QString getOverridePath();
 	static QString getOptionName(int identifier);
-	static QVariant getOption(int identifier, const QUrl &url = {});
+	static QVariant getOption(int identifier, const QString &host = {});
 	static QStringList getOptions();
+	static QStringList getOverrideHosts();
 	static OptionDefinition getOptionDefinition(int identifier);
 	static int registerOption(const QString &name, OptionType type, const QVariant &defaultValue = {}, const QStringList &choices = {}, OptionDefinition::OptionFlags flags = static_cast<OptionDefinition::OptionFlags>(OptionDefinition::IsEnabledFlag | OptionDefinition::IsVisibleFlag));
 	static int getOptionIdentifier(const QString &name);
-	static bool hasOverride(const QUrl &url, int identifier = -1);
+	static bool hasOverride(const QString &host, int identifier = -1);
 
 protected:
 	explicit SettingsManager(QObject *parent);
 
-	static QString getHost(const QUrl &url);
 	static void registerOption(int identifier, OptionType type, const QVariant &defaultValue = {}, const QStringList &choices = {}, OptionDefinition::OptionFlags flags = static_cast<OptionDefinition::OptionFlags>(OptionDefinition::IsEnabledFlag |OptionDefinition:: IsVisibleFlag | OptionDefinition::IsBuiltInFlag));
 	static void saveOption(const QString &path, const QString &key, const QVariant &value, OptionType type);
 

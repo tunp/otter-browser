@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2014 Piotr Wójcik <chocimier@tlen.pl>
 * Copyright (C) 2016 - 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
@@ -97,9 +97,10 @@ void NetworkManager::handleSslErrors(QNetworkReply *reply, const QList<QSslError
 		return;
 	}
 
-	const QStringList exceptions(SettingsManager::getOption(SettingsManager::Security_IgnoreSslErrorsOption, reply->url()).toStringList());
-	QStringList messages;
+	const QStringList exceptions(SettingsManager::getOption(SettingsManager::Security_IgnoreSslErrorsOption, Utils::extractHost(reply->url())).toStringList());
 	QList<QSslError> errorsToIgnore;
+	QStringList messages;
+	messages.reserve(errors.count());
 
 	for (int i = 0; i < errors.count(); ++i)
 	{

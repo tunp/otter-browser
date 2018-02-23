@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2016 - 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -82,7 +82,7 @@ void QtWebEnginePage::validatePopup(const QUrl &url)
 		}
 	}
 
-	const QString popupsPolicy(SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanOpenWindowsOption, (m_widget ? m_widget->getRequestedUrl() : QUrl())).toString());
+	const QString popupsPolicy(SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanOpenWindowsOption, Utils::extractHost(m_widget ? m_widget->getRequestedUrl() : QUrl())).toString());
 
 	if (popupsPolicy == QLatin1String("ask"))
 	{
@@ -153,44 +153,22 @@ void QtWebEnginePage::handleLoadFinished()
 	{
 		if (m_widget)
 		{
-			const QVector<int> profiles(ContentBlockingManager::getProfileList(m_widget->getOption(SettingsManager::ContentBlocking_ProfilesOption, url()).toStringList()));
+			const QUrl url(m_widget->getUrl());
+			const ContentBlockingManager::CosmeticFiltersResult cosmeticFilters(ContentBlockingManager::getCosmeticFilters(ContentBlockingManager::getProfileList(m_widget->getOption(SettingsManager::ContentBlocking_ProfilesOption).toStringList()), url));
 
-			if (!profiles.isEmpty() && ContentBlockingManager::getCosmeticFiltersMode() != ContentBlockingManager::NoFiltersMode)
+			if (!cosmeticFilters.rules.isEmpty() || !cosmeticFilters.exceptions.isEmpty())
 			{
-				const ContentBlockingManager::CosmeticFiltersMode mode(ContentBlockingManager::checkUrl(profiles, url(), url(), NetworkManager::OtherType).comesticFiltersMode);
-				QStringList styleSheetBlackList;
-				QStringList styleSheetWhiteList;
+				QFile file(QLatin1String(":/modules/backends/web/qtwebengine/resources/hideElements.js"));
 
-				if (mode != ContentBlockingManager::NoFiltersMode)
+				if (file.open(QIODevice::ReadOnly))
 				{
-					if (mode != ContentBlockingManager::DomainOnlyFiltersMode)
-					{
-						styleSheetBlackList = ContentBlockingManager::getStyleSheet(profiles);
-					}
+					runJavaScript(QString(file.readAll()).arg(createJavaScriptList(cosmeticFilters.exceptions)).arg(createJavaScriptList(cosmeticFilters.rules)));
 
-					const QStringList domainList(ContentBlockingManager::createSubdomainList(url().host()));
-
-					for (int i = 0; i < domainList.count(); ++i)
-					{
-						styleSheetBlackList += ContentBlockingManager::getStyleSheetBlackList(domainList.at(i), profiles);
-						styleSheetWhiteList += ContentBlockingManager::getStyleSheetWhiteList(domainList.at(i), profiles);
-					}
-				}
-
-				if (!styleSheetBlackList.isEmpty() || !styleSheetWhiteList.isEmpty())
-				{
-					QFile file(QLatin1String(":/modules/backends/web/qtwebengine/resources/hideElements.js"));
-
-					if (file.open(QIODevice::ReadOnly))
-					{
-						runJavaScript(QString(file.readAll()).arg(createJavaScriptList(styleSheetWhiteList)).arg(createJavaScriptList(styleSheetBlackList)));
-
-						file.close();
-					}
+					file.close();
 				}
 			}
 
-			const QStringList blockedRequests(qobject_cast<QtWebEngineWebBackend*>(m_widget->getBackend())->getBlockedElements(url().host()));
+			const QStringList blockedRequests(qobject_cast<QtWebEngineWebBackend*>(m_widget->getBackend())->getBlockedElements(url.host()));
 
 			if (!blockedRequests.isEmpty())
 			{
@@ -208,7 +186,7 @@ void QtWebEnginePage::handleLoadFinished()
 		QString string(url().toString());
 		string.truncate(1000);
 
-		const QRegularExpressionMatch match(QRegularExpression(QStringLiteral(">(<img style=\"-webkit-user-select: none;(?: cursor: zoom-in;)?\"|<video controls=\"\" autoplay=\"\" name=\"media\"><source) src=\"%1").arg(QRegularExpression::escape(string))).match(result));
+		const QRegularExpressionMatch match(QRegularExpression(QLatin1String(">(<img style=\"-webkit-user-select: none;(?: cursor: zoom-in;)?\"|<video controls=\"\" autoplay=\"\" name=\"media\"><source) src=\"") + QRegularExpression::escape(string)).match(result));
 		const bool isViewingMedia(match.hasMatch());
 
 		if (isViewingMedia && match.captured().startsWith(QLatin1String("><img")))
@@ -239,7 +217,6 @@ QWebEnginePage* QtWebEnginePage::createWindow(QWebEnginePage::WebWindowType type
 {
 	if (type != QWebEnginePage::WebDialog)
 	{
-		QtWebEngineWebWidget *widget(nullptr);
 		const QString popupsPolicy((m_widget ? m_widget->getOption(SettingsManager::Permissions_ScriptsCanOpenWindowsOption) : SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanOpenWindowsOption)).toString());
 
 		if (!m_widget || m_widget->getLastUrlClickTime().isNull() || m_widget->getLastUrlClickTime().secsTo(QDateTime::currentDateTime()) > 1)
@@ -260,9 +237,7 @@ QWebEnginePage* QtWebEnginePage::createWindow(QWebEnginePage::WebWindowType type
 			}
 		}
 
-		widget = createWidget(SessionsManager::calculateOpenHints((popupsPolicy == QLatin1String("openAllInBackground")) ? (SessionsManager::NewTabOpen | SessionsManager::BackgroundOpen) : SessionsManager::NewTabOpen));
-
-		return widget->getPage();
+		return createWidget(SessionsManager::calculateOpenHints((popupsPolicy == QLatin1String("openAllInBackground")) ? (SessionsManager::NewTabOpen | SessionsManager::BackgroundOpen) : SessionsManager::NewTabOpen))->getPage();
 	}
 
 	return QWebEnginePage::createWindow(type);
@@ -287,7 +262,7 @@ QtWebEngineWebWidget* QtWebEnginePage::createWidget(SessionsManager::OpenHints h
 
 	widget->pageLoadStarted();
 
-	emit requestedNewWindow(widget, hints);
+	emit requestedNewWindow(widget, hints, {});
 
 	return widget;
 }
@@ -339,8 +314,8 @@ bool QtWebEnginePage::acceptNavigationRequest(const QUrl &url, QWebEnginePage::N
 
 	if (isMainFrame && type == QWebEnginePage::NavigationTypeReload && m_previousNavigationType == QWebEnginePage::NavigationTypeFormSubmitted && SettingsManager::getOption(SettingsManager::Choices_WarnFormResendOption).toBool())
 	{
-		bool cancel(false);
-		bool warn(true);
+		bool shouldCancelRequest(false);
+		bool shouldWarnNextTime(true);
 
 		if (m_widget)
 		{
@@ -351,8 +326,8 @@ bool QtWebEnginePage::acceptNavigationRequest(const QUrl &url, QWebEnginePage::N
 
 			m_widget->showDialog(&dialog);
 
-			cancel = !dialog.isAccepted();
-			warn = !dialog.getCheckBoxState();
+			shouldCancelRequest = !dialog.isAccepted();
+			shouldWarnNextTime = !dialog.getCheckBoxState();
 		}
 		else
 		{
@@ -365,13 +340,13 @@ bool QtWebEnginePage::acceptNavigationRequest(const QUrl &url, QWebEnginePage::N
 			dialog.setDefaultButton(QMessageBox::Cancel);
 			dialog.setCheckBox(new QCheckBox(tr("Do not show this message again")));
 
-			cancel = (dialog.exec() == QMessageBox::Cancel);
-			warn = !dialog.checkBox()->isChecked();
+			shouldCancelRequest = (dialog.exec() == QMessageBox::Cancel);
+			shouldWarnNextTime = !dialog.checkBox()->isChecked();
 		}
 
-		SettingsManager::setOption(SettingsManager::Choices_WarnFormResendOption, warn);
+		SettingsManager::setOption(SettingsManager::Choices_WarnFormResendOption, shouldWarnNextTime);
 
-		if (cancel)
+		if (shouldCancelRequest)
 		{
 			return false;
 		}

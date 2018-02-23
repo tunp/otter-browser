@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2014 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -233,7 +233,7 @@ QString QtWebKitWebBackend::getUserAgent(const QString &pattern) const
 
 		for (iterator = m_userAgentComponents.begin(); iterator != m_userAgentComponents.end(); ++iterator)
 		{
-			userAgent = userAgent.replace(QStringLiteral("{%1}").arg(iterator.key()), iterator.value());
+			userAgent = userAgent.replace(QLatin1Char('{') + iterator.key() + QLatin1Char('}'), iterator.value());
 		}
 
 		m_userAgents[pattern] = ((pattern == userAgent) ? QString() : userAgent);
@@ -338,7 +338,7 @@ void QtWebKitThumbnailFetchJob::handlePageLoadFinished(bool result)
 			contentsSize.setWidth(2000);
 		}
 
-		contentsSize.setHeight(m_size.height() * (qreal(contentsSize.width()) / m_size.width()));
+		contentsSize.setHeight(qRound(m_size.height() * (static_cast<qreal>(contentsSize.width()) / m_size.width())));
 
 		m_page->setViewportSize(contentsSize);
 

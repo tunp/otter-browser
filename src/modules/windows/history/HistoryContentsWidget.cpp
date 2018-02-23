@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -89,6 +89,8 @@ void HistoryContentsWidget::changeEvent(QEvent *event)
 	if (event->type() == QEvent::LanguageChange)
 	{
 		m_ui->retranslateUi(this);
+
+		m_model->setHorizontalHeaderLabels({tr("Address"), tr("Title"), tr("Date")});
 	}
 }
 
@@ -128,7 +130,7 @@ void HistoryContentsWidget::populateEntries()
 
 		if (groupItem)
 		{
-			groupItem->setData(dates.value(i, QDate()), Qt::UserRole);
+			groupItem->setData(dates.value(i, QDate()), GroupDateRole);
 			groupItem->removeRows(0, groupItem->rowCount());
 		}
 	}
@@ -178,7 +180,7 @@ void HistoryContentsWidget::removeEntry()
 
 void HistoryContentsWidget::removeDomainEntries()
 {
-	QStandardItem *domainItem(findEntry(getEntry(m_ui->historyViewWidget->currentIndex())));
+	const QStandardItem *domainItem(findEntry(getEntry(m_ui->historyViewWidget->currentIndex())));
 
 	if (!domainItem)
 	{
@@ -211,16 +213,16 @@ void HistoryContentsWidget::removeDomainEntries()
 	HistoryManager::removeEntries(entries);
 }
 
-void HistoryContentsWidget::openEntry(const QModelIndex &index)
+void HistoryContentsWidget::openEntry()
 {
-	const QModelIndex entryIndex(index.isValid() ? index : m_ui->historyViewWidget->currentIndex());
+	const QModelIndex index(m_ui->historyViewWidget->currentIndex());
 
-	if (!entryIndex.isValid() || entryIndex.parent() == m_model->invisibleRootItem()->index())
+	if (!index.isValid() || index.parent() == m_model->invisibleRootItem()->index())
 	{
 		return;
 	}
 
-	const QUrl url(entryIndex.sibling(entryIndex.row(), 0).data(Qt::DisplayRole).toString());
+	const QUrl url(index.sibling(index.row(), 0).data(Qt::DisplayRole).toString());
 
 	if (url.isValid())
 	{
@@ -267,7 +269,9 @@ void HistoryContentsWidget::handleEntryAdded(HistoryEntryItem *entry)
 	{
 		groupItem = m_model->item(i, 0);
 
-		if (groupItem && (entry->getTimeVisited().date() >= groupItem->data(Qt::UserRole).toDate() || !groupItem->data(Qt::UserRole).toDate().isValid()))
+		const QDate date(groupItem ? groupItem->data(GroupDateRole).toDate() : QDate());
+
+		if (!date.isValid() || entry->getTimeVisited().date() >= date)
 		{
 			break;
 		}
@@ -363,19 +367,36 @@ void HistoryContentsWidget::showContextMenu(const QPoint &position)
 
 	if (entry > 0)
 	{
-		menu.addAction(ThemesManager::createIcon(QLatin1String("document-open")), tr("Open"), this, SLOT(openEntry()));
-		menu.addAction(tr("Open in New Tab"), this, SLOT(openEntry()))->setData(SessionsManager::NewTabOpen);
-		menu.addAction(tr("Open in New Background Tab"), this, SLOT(openEntry()))->setData(static_cast<int>(SessionsManager::NewTabOpen | SessionsManager::BackgroundOpen));
+		connect(menu.addAction(ThemesManager::createIcon(QLatin1String("document-open")), tr("Open")), &QAction::triggered, this, &HistoryContentsWidget::openEntry);
+
+		QAction *openInNewTabAction(menu.addAction(tr("Open in New Tab")));
+		openInNewTabAction->setData(SessionsManager::NewTabOpen);
+
+		QAction *openInNewBackgroundTabAction(menu.addAction(tr("Open in New Background Tab")));
+		openInNewBackgroundTabAction->setData(static_cast<int>(SessionsManager::NewTabOpen | SessionsManager::BackgroundOpen));
+
 		menu.addSeparator();
-		menu.addAction(tr("Open in New Window"), this, SLOT(openEntry()))->setData(SessionsManager::NewWindowOpen);
-		menu.addAction(tr("Open in New Background Window"), this, SLOT(openEntry()))->setData(static_cast<int>(SessionsManager::NewWindowOpen | SessionsManager::BackgroundOpen));
+
+		QAction *openInNewWindowAction(menu.addAction(tr("Open in New Window")));
+		openInNewWindowAction->setData(SessionsManager::NewWindowOpen);
+
+		QAction *openInNewBackgroundWindowAction(menu.addAction(tr("Open in New Background Window")));
+		openInNewBackgroundWindowAction->setData(static_cast<int>(SessionsManager::NewWindowOpen | SessionsManager::BackgroundOpen));
+
 		menu.addSeparator();
-		menu.addAction(tr("Add to Bookmarks…"), this, SLOT(bookmarkEntry()));
-		menu.addAction(tr("Copy Link to Clipboard"), this, SLOT(copyEntryLink()));
+
+		connect(menu.addAction(tr("Add to Bookmarks…")), &QAction::triggered, this, &HistoryContentsWidget::bookmarkEntry);
+		connect(menu.addAction(tr("Copy Link to Clipboard")), &QAction::triggered, this, &HistoryContentsWidget::copyEntryLink);
+
 		menu.addSeparator();
-		menu.addAction(tr("Remove Entry"), this, SLOT(removeEntry()));
-		menu.addAction(tr("Remove All Entries from This Domain"), this, SLOT(removeDomainEntries()));
-		menu.addSeparator();
+
+		connect(menu.addAction(tr("Remove Entry")), &QAction::triggered, this, &HistoryContentsWidget::removeEntry);
+		connect(menu.addAction(tr("Remove All Entries from This Domain")), &QAction::triggered, this, &HistoryContentsWidget::removeDomainEntries);
+
+		connect(openInNewTabAction, &QAction::triggered, this, &HistoryContentsWidget::openEntry);
+		connect(openInNewBackgroundTabAction, &QAction::triggered, this, &HistoryContentsWidget::openEntry);
+		connect(openInNewWindowAction, &QAction::triggered, this, &HistoryContentsWidget::openEntry);
+		connect(openInNewBackgroundWindowAction, &QAction::triggered, this, &HistoryContentsWidget::openEntry);
 	}
 
 	menu.addAction(new Action(ActionsManager::ClearHistoryAction, {}, ActionExecutor::Object(mainWindow, mainWindow), &menu));
@@ -441,18 +462,19 @@ bool HistoryContentsWidget::eventFilter(QObject *object, QEvent *event)
 	{
 		const QKeyEvent *keyEvent(static_cast<QKeyEvent*>(event));
 
-		if (keyEvent && (keyEvent->key() == Qt::Key_Enter || keyEvent->key() == Qt::Key_Return))
+		switch (keyEvent->key())
 		{
-			openEntry();
+			case Qt::Key_Delete:
+				removeEntry();
 
-			return true;
-		}
+				return true;
+			case Qt::Key_Enter:
+			case Qt::Key_Return:
+				openEntry();
 
-		if (keyEvent && keyEvent->key() == Qt::Key_Delete)
-		{
-			removeEntry();
-
-			return true;
+				return true;
+			default:
+				break;
 		}
 	}
 	else if (object == m_ui->historyViewWidget->viewport() && event->type() == QEvent::MouseButtonRelease)

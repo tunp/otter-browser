@@ -1,7 +1,7 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
 * Copyright (C) 2014 Piotr Wójcik <chocimier@tlen.pl>
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -75,7 +75,7 @@ AcceptLanguageDialog::AcceptLanguageDialog(const QString &languages, QWidget *pa
 	});
 
 	entries.prepend(QPair<QString, QString>(tr("Any other"), QLatin1String("*")));
-	entries.prepend(QPair<QString, QString>(tr("System language (%1 - %2)").arg(QLocale::system().nativeLanguageName()).arg(QLocale::system().nativeCountryName()), QString("system")));
+	entries.prepend(QPair<QString, QString>(tr("System language (%1 - %2)").arg(QLocale::system().nativeLanguageName()).arg(QLocale::system().nativeCountryName()), QLatin1String("system")));
 
 	for (int i = 0; i < entries.count(); ++i)
 	{
@@ -107,6 +107,8 @@ void AcceptLanguageDialog::changeEvent(QEvent *event)
 	if (event->type() == QEvent::LanguageChange)
 	{
 		m_ui->retranslateUi(this);
+
+		m_model->setHorizontalHeaderLabels({tr("Name"), tr("Code")});
 	}
 }
 
@@ -177,7 +179,7 @@ void AcceptLanguageDialog::updateActions()
 QString AcceptLanguageDialog::getLanguages()
 {
 	QString result;
-	double step(0.1);
+	qreal step(0.1);
 
 	if (m_model->rowCount() > 100)
 	{
@@ -190,15 +192,17 @@ QString AcceptLanguageDialog::getLanguages()
 
 	for (int i = 0; i < m_model->rowCount(); ++i)
 	{
-		if (m_model->item(i))
+		const QModelIndex index(m_model->index(i, 0));
+
+		if (index.isValid())
 		{
 			if (result.isEmpty())
 			{
-				result += m_model->item(i)->data(Qt::UserRole).toString();
+				result.append(index.data(Qt::UserRole).toString());
 			}
 			else
 			{
-				result += QStringLiteral(",%1;q=%2").arg(m_model->item(i)->data(Qt::UserRole).toString()).arg(qMax(1 - (i * step), 0.001));
+				result.append(QStringLiteral(",%1;q=%2").arg(index.data(Qt::UserRole).toString()).arg(qMax(1 - (i * step), 0.001)));
 			}
 		}
 	}
@@ -208,11 +212,20 @@ QString AcceptLanguageDialog::getLanguages()
 
 bool AcceptLanguageDialog::eventFilter(QObject *object, QEvent *event)
 {
-	if (object == m_ui->languagesComboBox && event->type() == QEvent::KeyPress && (static_cast<QKeyEvent*>(event)->key() == Qt::Key_Enter || static_cast<QKeyEvent*>(event)->key() == Qt::Key_Return))
+	if (object == m_ui->languagesComboBox && event->type() == QEvent::KeyPress)
 	{
-		addNewLanguage();
+		const QKeyEvent *keyEvent(static_cast<QKeyEvent*>(event));
 
-		return true;
+		switch (keyEvent->key())
+		{
+			case Qt::Key_Enter:
+			case Qt::Key_Return:
+				addNewLanguage();
+
+				return true;
+			default:
+				break;
+		}
 	}
 
 	return false;

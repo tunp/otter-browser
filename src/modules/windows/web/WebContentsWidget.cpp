@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2015 Jan Bajer aka bajasoft <jbajer@gmail.com>
 * Copyright (C) 2017 Piotr Wójcik <chocimier@tlen.pl>
 *
@@ -50,7 +50,6 @@
 
 #include <QtGui/QClipboard>
 #include <QtGui/QMouseEvent>
-#include <QtWidgets/QApplication>
 #include <QtWidgets/QInputDialog>
 
 namespace Otter
@@ -100,13 +99,16 @@ void WebContentsWidget::timerEvent(QTimerEvent *event)
 
 		handleUrlChange(m_webWidget->getRequestedUrl());
 	}
-	else if (event->timerId() == m_quickFindTimer && m_searchBarWidget)
+	else if (event->timerId() == m_quickFindTimer)
 	{
 		killTimer(m_quickFindTimer);
 
 		m_quickFindTimer = 0;
 
-		m_searchBarWidget->hide();
+		if (m_searchBarWidget)
+		{
+			m_searchBarWidget->hide();
+		}
 	}
 	else if (event->timerId() == m_scrollTimer)
 	{
@@ -133,42 +135,35 @@ void WebContentsWidget::timerEvent(QTimerEvent *event)
 
 		if (!m_scrollCursors.contains(directions))
 		{
-			if (directions == (BottomDirection | LeftDirection))
+			QStringList mappedDirections;
+			mappedDirections.reserve(2);
+
+			if (directions == NoDirection)
 			{
-				m_scrollCursors[directions] = QPixmap(QLatin1String(":/cursors/scroll-bottom-left.png"));
+				mappedDirections.append(QLatin1String("vertical"));
 			}
-			else if (directions == (BottomDirection | RightDirection))
+			else
 			{
-				m_scrollCursors[directions] = QPixmap(QLatin1String(":/cursors/scroll-bottom-right.png"));
+				if (directions.testFlag(BottomDirection))
+				{
+					mappedDirections.append(QLatin1String("bottom"));
+				}
+				else if (directions.testFlag(TopDirection))
+				{
+					mappedDirections.append(QLatin1String("top"));
+				}
+
+				if (directions.testFlag(LeftDirection))
+				{
+					mappedDirections.append(QLatin1String("left"));
+				}
+				else if (directions.testFlag(RightDirection))
+				{
+					mappedDirections.append(QLatin1String("right"));
+				}
 			}
-			else if (directions == BottomDirection)
-			{
-				m_scrollCursors[directions] = QPixmap(QLatin1String(":/cursors/scroll-bottom.png"));
-			}
-			else if (directions == LeftDirection)
-			{
-				m_scrollCursors[directions] = QPixmap(QLatin1String(":/cursors/scroll-left.png"));
-			}
-			else if (directions == RightDirection)
-			{
-				m_scrollCursors[directions] = QPixmap(QLatin1String(":/cursors/scroll-right.png"));
-			}
-			else if (directions == (TopDirection | LeftDirection))
-			{
-				m_scrollCursors[directions] = QPixmap(QLatin1String(":/cursors/scroll-top-left.png"));
-			}
-			else if (directions == (TopDirection | RightDirection))
-			{
-				m_scrollCursors[directions] = QPixmap(QLatin1String(":/cursors/scroll-top-right.png"));
-			}
-			else if (directions == TopDirection)
-			{
-				m_scrollCursors[directions] = QPixmap(QLatin1String(":/cursors/scroll-top.png"));
-			}
-			else if (directions == NoDirection)
-			{
-				m_scrollCursors[directions] = QPixmap(QLatin1String(":/cursors/scroll-vertical.png"));
-			}
+
+			m_scrollCursors[directions] = QPixmap(QLatin1String(":/cursors/scroll-") + mappedDirections.join(QLatin1Char('-')) + QLatin1String(".png"));
 		}
 
 		scrollContents(scrollDelta);
@@ -357,12 +352,7 @@ void WebContentsWidget::triggerAction(int identifier, const QVariantMap &paramet
 
 					if (result.isValid())
 					{
-						SessionsManager::OpenHints hints(SessionsManager::calculateOpenHints());
-
-						if (parameters.contains(QLatin1String("hints")))
-						{
-							hints = SessionsManager::calculateOpenHints(parameters);
-						}
+						const SessionsManager::OpenHints hints(parameters.contains(QLatin1String("hints")) ? SessionsManager::calculateOpenHints(parameters) : SessionsManager::calculateOpenHints());
 
 						switch (result.type)
 						{
@@ -701,7 +691,7 @@ void WebContentsWidget::findInPage(WebWidget::FindFlags flags)
 
 	m_quickFindQuery = (m_searchBarWidget ? m_searchBarWidget->getQuery() : m_sharedQuickFindQuery);
 
-	const bool hasFound(m_webWidget->findInPage(m_quickFindQuery, flags) != 0);
+	const int matchesAmount(m_webWidget->findInPage(m_quickFindQuery, flags));
 
 	if (!m_quickFindQuery.isEmpty() && !isPrivate() && SettingsManager::getOption(SettingsManager::Search_ReuseLastQuickFindQueryOption).toBool())
 	{
@@ -710,7 +700,7 @@ void WebContentsWidget::findInPage(WebWidget::FindFlags flags)
 
 	if (m_searchBarWidget)
 	{
-		m_searchBarWidget->setResultsFound(hasFound);
+		m_searchBarWidget->setMatchesAmount(matchesAmount);
 	}
 }
 
@@ -788,7 +778,7 @@ void WebContentsWidget::handleUrlChange(const QUrl &url)
 		return;
 	}
 
-	const bool showStartPage((m_isStartPageEnabled && Utils::isUrlEmpty(url)) || url == QUrl(QLatin1String("about:start")));
+	const bool showStartPage(m_isStartPageEnabled && url.scheme() == QLatin1String("about") && url.path() == QLatin1String("start"));
 
 	if (showStartPage)
 	{
@@ -986,7 +976,7 @@ void WebContentsWidget::handleLoadingStateChange(WebWidget::LoadingState state)
 {
 	if (state == WebWidget::CrashedLoadingState)
 	{
-		const QString tabCrashingAction(SettingsManager::getOption(SettingsManager::Interface_TabCrashingActionOption, getUrl()).toString());
+		const QString tabCrashingAction(SettingsManager::getOption(SettingsManager::Interface_TabCrashingActionOption, Utils::extractHost(getUrl())).toString());
 		bool reloadTab(tabCrashingAction != QLatin1String("close"));
 
 		if (tabCrashingAction == QLatin1String("ask"))
@@ -1040,14 +1030,14 @@ void WebContentsWidget::notifyPermissionChanged(WebWidget::PermissionPolicies po
 	}
 }
 
-void WebContentsWidget::notifyRequestedNewWindow(WebWidget *widget, SessionsManager::OpenHints hints)
+void WebContentsWidget::notifyRequestedNewWindow(WebWidget *widget, SessionsManager::OpenHints hints, const QVariantMap &parameters)
 {
 	if (isPrivate())
 	{
 		hints |= SessionsManager::PrivateOpen;
 	}
 
-	emit requestedNewWindow(new WebContentsWidget({{QLatin1String("hints"), QVariant(hints)}}, widget->getOptions(), widget, nullptr, nullptr), hints);
+	emit requestedNewWindow(new WebContentsWidget({{QLatin1String("hints"), QVariant(hints)}}, widget->getOptions(), widget, nullptr, nullptr), hints, parameters);
 }
 
 void WebContentsWidget::updateFindHighlight(WebWidget::FindFlags flags)
@@ -1350,11 +1340,11 @@ QString WebContentsWidget::parseQuery(const QString &query) const
 	}
 
 	QString mutableQuery(query);
-	const QStringList placeholders({QLatin1String("clipboard"), QLatin1String("frameUrl"), QLatin1String("imageUrl"), QLatin1String("linkUrl"), QLatin1String("pageUrl"), QLatin1String("selection")});
+	const QStringList placeholders({QLatin1String("clipboard"), QLatin1String("frameUrl"), QLatin1String("imageUrl"), QLatin1String("linkUrl"), QLatin1String("mediaUrl"), QLatin1String("pageUrl"), QLatin1String("selection")});
 
 	for (int i = 0; i < placeholders.count(); ++i)
 	{
-		const QString placeholder(QStringLiteral("{%1}").arg(placeholders.at(i)));
+		const QString placeholder(QLatin1Char('{') + placeholders.at(i) + QLatin1Char('}'));
 
 		if (mutableQuery.contains(placeholder))
 		{
@@ -1375,6 +1365,10 @@ QString WebContentsWidget::parseQuery(const QString &query) const
 				else if (placeholders.at(i) == QLatin1String("linkUrl"))
 				{
 					mutableQuery.replace(placeholder, m_webWidget->getActiveLink().url.toString());
+				}
+				else if (placeholders.at(i) == QLatin1String("mediaUrl"))
+				{
+					mutableQuery.replace(placeholder, m_webWidget->getActiveMedia().url.toString());
 				}
 				else if (placeholders.at(i) == QLatin1String("pageUrl"))
 				{

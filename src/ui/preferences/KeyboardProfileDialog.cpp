@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -267,6 +267,7 @@ void KeyboardProfileDialog::changeEvent(QEvent *event)
 	if (event->type() == QEvent::LanguageChange)
 	{
 		m_ui->retranslateUi(this);
+		m_ui->actionsViewWidget->getSourceModel()->setHorizontalHeaderLabels({tr("Status"), tr("Action"), tr("Parameters"), tr("Shortcut")});
 	}
 }
 
@@ -316,7 +317,7 @@ KeyboardProfile KeyboardProfileDialog::getProfile() const
 		if (action >= 0 && !shortcut.isEmpty())
 		{
 			const QVariantMap parameters(m_ui->actionsViewWidget->getIndex(i, 1).data(ParametersRole).toMap());
-			bool hasFound(false);
+			bool hasMatch(false);
 
 			if (actions.contains(action))
 			{
@@ -330,14 +331,14 @@ KeyboardProfile KeyboardProfileDialog::getProfile() const
 
 						actions[action] = actionVariants;
 
-						hasFound = true;
+						hasMatch = true;
 
 						break;
 					}
 				}
 			}
 
-			if (!hasFound)
+			if (!hasMatch)
 			{
 				actions[action] = {{parameters, {shortcut}}};
 			}
@@ -355,8 +356,8 @@ KeyboardProfile KeyboardProfileDialog::getProfile() const
 		for (int j = 0; j < actionVariants.count(); ++j)
 		{
 			KeyboardProfile::Action definition;
-			definition.parameters = actionVariants[j].first;
-			definition.shortcuts = actionVariants[j].second;
+			definition.parameters = actionVariants.at(j).first;
+			definition.shortcuts = actionVariants.at(j).second;
 			definition.action = iterator.key();
 
 			definitions.append(definition);
@@ -411,7 +412,7 @@ KeyboardProfileDialog::ValidationResult KeyboardProfileDialog::validateShortcut(
 	if (!messages.isEmpty())
 	{
 		result.text = messages.join(QLatin1Char('\n'));
-		result.icon = (ThemesManager::createIcon(result.isError ? QLatin1String("dialog-error") : QLatin1String("dialog-warning")));
+		result.icon = ThemesManager::createIcon(result.isError ? QLatin1String("dialog-error") : QLatin1String("dialog-warning"));
 	}
 
 	return result;

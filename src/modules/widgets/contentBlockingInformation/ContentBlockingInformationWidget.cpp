@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2016 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2016 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2016 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -60,7 +60,7 @@ ContentBlockingInformationWidget::ContentBlockingInformationWidget(Window *windo
 
 	const ToolBarWidget *toolBar(qobject_cast<ToolBarWidget*>(parent));
 
-	if (toolBar && toolBar->getIdentifier() != ToolBarsManager::AddressBar)
+	if (toolBar && toolBar->getDefinition().isGlobal())
 	{
 		connect(toolBar, &ToolBarWidget::windowChanged, this, &ContentBlockingInformationWidget::setWindow);
 	}
@@ -72,6 +72,16 @@ ContentBlockingInformationWidget::ContentBlockingInformationWidget(Window *windo
 	connect(menu, &QMenu::aboutToShow, this, &ContentBlockingInformationWidget::populateHostsMenu);
 	connect(menu, &QMenu::aboutToHide, this, &ContentBlockingInformationWidget::saveHosts);
 	connect(defaultAction(), &QAction::triggered, this, &ContentBlockingInformationWidget::toggleContentBlocking);
+}
+
+void ContentBlockingInformationWidget::changeEvent(QEvent *event)
+{
+	ToolButtonWidget::changeEvent(event);
+
+	if (event->type() == QEvent::LanguageChange)
+	{
+		updateState();
+	}
 }
 
 void ContentBlockingInformationWidget::resizeEvent(QResizeEvent *event)
@@ -532,7 +542,7 @@ void ContentBlockingInformationWidget::updateState()
 
 	const qreal labelWidth(QFontMetricsF(font).width(label));
 
-	font.setPixelSize(fontSize * 0.8);
+	font.setPixelSize(qRound(fontSize * 0.8));
 
 	const QRectF rectangle((iconSize - labelWidth), (iconSize - fontSize), labelWidth, fontSize);
 	QPixmap pixmap(m_icon.pixmap(iconSize, iconSize, (m_isContentBlockingEnabled ? QIcon::Normal : QIcon::Disabled)));

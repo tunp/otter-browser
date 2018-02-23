@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -32,6 +32,7 @@
 #include <QtGui/QClipboard>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QMessageBox>
+#include <QtWidgets/QScrollBar>
 #include <QtWidgets/QVBoxLayout>
 
 namespace Otter
@@ -128,6 +129,7 @@ void SourceViewerWebWidget::triggerAction(int identifier, const QVariantMap &par
 
 				QNetworkRequest request(QUrl(getUrl().toString().mid(12)));
 				request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::PreferCache);
+				request.setHeader(QNetworkRequest::UserAgentHeader, NetworkManagerFactory::getUserAgent());
 
 				if (!m_networkManager)
 				{
@@ -162,6 +164,7 @@ void SourceViewerWebWidget::triggerAction(int identifier, const QVariantMap &par
 
 				QNetworkRequest request(QUrl(getUrl().toString().mid(12)));
 				request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
+				request.setHeader(QNetworkRequest::UserAgentHeader, NetworkManagerFactory::getUserAgent());
 
 				m_viewSourceReply = NetworkManagerFactory::getNetworkManager()->get(request);
 
@@ -304,7 +307,10 @@ void SourceViewerWebWidget::showContextMenu(const QPoint &position)
 		showLineNumbersAction->setCheckable(true);
 		showLineNumbersAction->setChecked(SettingsManager::getOption(SettingsManager::SourceViewer_ShowLineNumbersOption).toBool());
 
-		connect(showLineNumbersAction, &QAction::triggered, this, &SourceViewerWebWidget::setShowLineNumbers);
+		connect(showLineNumbersAction, &QAction::triggered, [&](bool show)
+		{
+			SettingsManager::setOption(SettingsManager::SourceViewer_ShowLineNumbersOption, show);
+		});
 
 		menu.exec(menuPosition);
 	}
@@ -314,11 +320,6 @@ void SourceViewerWebWidget::showContextMenu(const QPoint &position)
 		menu.load(QLatin1String("menu/webWidget.json"), {QLatin1String("edit"), QLatin1String("source")}, ActionExecutor::Object(this, this));
 		menu.exec(menuPosition);
 	}
-}
-
-void SourceViewerWebWidget::setShowLineNumbers(bool show)
-{
-	SettingsManager::setOption(SettingsManager::SourceViewer_ShowLineNumbersOption, show);
 }
 
 void SourceViewerWebWidget::setOption(int identifier, const QVariant &value)
@@ -345,7 +346,8 @@ void SourceViewerWebWidget::setOptions(const QHash<int, QVariant> &options, cons
 
 void SourceViewerWebWidget::setScrollPosition(const QPoint &position)
 {
-	Q_UNUSED(position)
+	m_sourceViewer->horizontalScrollBar()->setValue(position.x());
+	m_sourceViewer->verticalScrollBar()->setValue(position.y());
 }
 
 void SourceViewerWebWidget::setHistory(const WindowHistoryInformation &history)
@@ -403,18 +405,15 @@ void SourceViewerWebWidget::setContents(const QByteArray &contents, const QStrin
 		codec = QTextCodec::codecForHtml(contents);
 	}
 
-	QString text;
-
 	if (codec)
 	{
-		text = codec->toUnicode(contents);
+		m_sourceViewer->setPlainText(codec->toUnicode(contents));
 	}
 	else
 	{
-		text = QString(contents);
+		m_sourceViewer->setPlainText(QString(contents));
 	}
 
-	m_sourceViewer->setPlainText(text);
 	m_sourceViewer->document()->setModified(false);
 }
 
@@ -449,7 +448,7 @@ QIcon SourceViewerWebWidget::getIcon() const
 
 QPoint SourceViewerWebWidget::getScrollPosition() const
 {
-	return {};
+	return {m_sourceViewer->horizontalScrollBar()->value(), m_sourceViewer->verticalScrollBar()->value()};
 }
 
 ActionsManager::ActionDefinition::State SourceViewerWebWidget::getActionState(int identifier, const QVariantMap &parameters) const
@@ -482,19 +481,15 @@ ActionsManager::ActionDefinition::State SourceViewerWebWidget::getActionState(in
 		case ActionsManager::FindPreviousAction:
 		case ActionsManager::QuickFindAction:
 		case ActionsManager::ActivateContentAction:
-			break;
+			return WebWidget::getActionState(identifier, parameters);
 		default:
-			{
-				ActionsManager::ActionDefinition::State state(ActionsManager::getActionDefinition(identifier).getDefaultState());
-				state.isEnabled = false;
-
-				return state;
-			}
-
 			break;
 	}
 
-	return WebWidget::getActionState(identifier, parameters);
+	ActionsManager::ActionDefinition::State state(ActionsManager::getActionDefinition(identifier).getDefaultState());
+	state.isEnabled = false;
+
+	return state;
 }
 
 WindowHistoryInformation SourceViewerWebWidget::getHistory() const
@@ -514,7 +509,7 @@ WindowHistoryInformation SourceViewerWebWidget::getHistory() const
 WebWidget::HitTestResult SourceViewerWebWidget::getHitTestResult(const QPoint &position)
 {
 	HitTestResult result;
-	result.position = position;
+	result.hitPosition = position;
 	result.flags = HitTestResult::IsContentEditableTest;
 
 	if (m_sourceViewer->document()->isEmpty())
@@ -538,6 +533,16 @@ int SourceViewerWebWidget::getZoom() const
 int SourceViewerWebWidget::findInPage(const QString &text, WebWidget::FindFlags flags)
 {
 	return m_sourceViewer->findText(text, flags);
+}
+
+bool SourceViewerWebWidget::canRedo() const
+{
+	return m_sourceViewer->document()->isRedoAvailable();
+}
+
+bool SourceViewerWebWidget::canUndo() const
+{
+	return m_sourceViewer->document()->isUndoAvailable();
 }
 
 bool SourceViewerWebWidget::hasSelection() const

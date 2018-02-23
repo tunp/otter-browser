@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2016 - 2017 Piotr Wójcik <chocimier@tlen.pl>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -20,7 +20,6 @@
 
 #include "StartPageWidget.h"
 #include "StartPageModel.h"
-#include "WebContentsWidget.h"
 #include "../../../core/Application.h"
 #include "../../../core/BookmarksModel.h"
 #include "../../../core/GesturesManager.h"
@@ -28,11 +27,11 @@
 #include "../../../core/SessionsManager.h"
 #include "../../../core/SettingsManager.h"
 #include "../../../core/ThemesManager.h"
-#include "../../../core/Utils.h"
 #include "../../../modules/widgets/search/SearchWidget.h"
 #include "../../../ui/Animation.h"
 #include "../../../ui/BookmarkPropertiesDialog.h"
 #include "../../../ui/ContentsDialog.h"
+#include "../../../ui/ContentsWidget.h"
 #include "../../../ui/Menu.h"
 #include "../../../ui/OpenAddressDialog.h"
 #include "../../../ui/Window.h"
@@ -53,15 +52,18 @@ StartPageModel* StartPageWidget::m_model(nullptr);
 Animation* StartPageWidget::m_spinnerAnimation(nullptr);
 QPointer<StartPagePreferencesDialog> StartPageWidget::m_preferencesDialog(nullptr);
 
-TileDelegate::TileDelegate(QObject *parent) : QStyledItemDelegate(parent)
+TileDelegate::TileDelegate(QObject *parent) : QStyledItemDelegate(parent),
+	m_mode(NoBackground)
 {
+	handleOptionChanged(SettingsManager::StartPage_TileBackgroundModeOption, SettingsManager::getOption(SettingsManager::StartPage_TileBackgroundModeOption));
+
+	connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &TileDelegate::handleOptionChanged);
 }
 
 void TileDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const
 {
-	const int textHeight(option.fontMetrics.boundingRect(QLatin1String("X")).height() * 1.5);
+	const int textHeight(qRound(option.fontMetrics.boundingRect(QLatin1String("X")).height() * 1.5));
 	const bool isAddTile(index.data(Qt::AccessibleDescriptionRole).toString() == QLatin1String("add"));
-	const QString tileBackgroundMode(SettingsManager::getOption(SettingsManager::StartPage_TileBackgroundModeOption).toString());
 	QRect rectangle(option.rect);
 	rectangle.adjust(3, 3, -3, -3);
 
@@ -78,12 +80,12 @@ void TileDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option, 
 		}
 		else
 		{
-			painter->setPen(QPen(QColor(200, 200, 200), 1));
+			painter->setPen(QPen(QColor(26, 35, 126, 51), 1));
 		}
 
 		if (isAddTile)
 		{
-			painter->setBrush(QColor(200, 200, 200, 100));
+			painter->setBrush(QColor(179, 229, 252, 224));
 		}
 		else
 		{
@@ -101,33 +103,43 @@ void TileDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option, 
 	}
 
 	painter->setClipPath(path);
-	painter->fillRect(rectangle, QGuiApplication::palette().color(QPalette::Window));
+	painter->fillRect(rectangle, QColor(179, 229, 252, 128));
 
-	if (tileBackgroundMode != QLatin1String("none"))
+	if (m_mode != NoBackground)
 	{
 		rectangle.adjust(0, 0, 0, -textHeight);
 	}
 
 	const BookmarksModel::BookmarkType type(static_cast<BookmarksModel::BookmarkType>(index.data(BookmarksModel::TypeRole).toInt()));
 
-	if (type == BookmarksModel::FolderBookmark && tileBackgroundMode != QLatin1String("none"))
+	if (type == BookmarksModel::FolderBookmark && m_mode != NoBackground)
 	{
 		ThemesManager::createIcon(QLatin1String("inode-directory")).paint(painter, rectangle, Qt::AlignCenter, (index.flags().testFlag(Qt::ItemIsEnabled) ? QIcon::Normal : QIcon::Disabled));
 	}
-	else if (tileBackgroundMode == QLatin1String("thumbnail"))
+	else
 	{
-		painter->setBrush(Qt::white);
-		painter->setPen(Qt::transparent);
-		painter->drawRect(rectangle);
-		painter->drawPixmap(rectangle, QPixmap(StartPageModel::getThumbnailPath(index.data(BookmarksModel::IdentifierRole).toULongLong())), QRect(0, 0, rectangle.width(), rectangle.height()));
-	}
-	else if (tileBackgroundMode == QLatin1String("favicon"))
-	{
-		const int faviconSize(((rectangle.height() > rectangle.width()) ? rectangle.width() : rectangle.height()) / 4);
-		QRect faviconRectangle(0, 0, faviconSize, faviconSize);
-		faviconRectangle.moveCenter(rectangle.center());
+		switch (m_mode)
+		{
+			case FaviconBackground:
+				{
+					const int faviconSize(((rectangle.height() > rectangle.width()) ? rectangle.width() : rectangle.height()) / 4);
+					QRect faviconRectangle(0, 0, faviconSize, faviconSize);
+					faviconRectangle.moveCenter(rectangle.center());
 
-		HistoryManager::getIcon(index.data(BookmarksModel::UrlRole).toUrl()).paint(painter, faviconRectangle);
+					HistoryManager::getIcon(index.data(BookmarksModel::UrlRole).toUrl()).paint(painter, faviconRectangle);
+				}
+
+				break;
+			case ThumbnailBackground:
+				painter->setBrush(Qt::white);
+				painter->setPen(Qt::transparent);
+				painter->drawRect(rectangle);
+				painter->drawPixmap(rectangle, QPixmap(StartPageModel::getThumbnailPath(index.data(BookmarksModel::IdentifierRole).toULongLong())), QRect(0, 0, rectangle.width(), rectangle.height()));
+
+				break;
+			default:
+				break;
+		}
 	}
 
 	if (index.data(StartPageModel::IsReloadingRole).toBool())
@@ -144,10 +156,13 @@ void TileDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option, 
 		}
 	}
 
-	painter->setClipping(false);
-	painter->setPen(QGuiApplication::palette().color((index.flags().testFlag(Qt::ItemIsEnabled) ? QPalette::Active : QPalette::Disabled), QPalette::Text));
+	QPalette palette(QGuiApplication::palette());
+	palette.setColor(QPalette::Text, QColor(26, 35, 128));
 
-	if (tileBackgroundMode == QLatin1String("none"))
+	painter->setClipping(false);
+	painter->setPen(palette.color((index.flags().testFlag(Qt::ItemIsEnabled) ? QPalette::Active : QPalette::Disabled), QPalette::Text));
+
+	if (m_mode == NoBackground)
 	{
 		painter->drawText(rectangle, Qt::AlignCenter, option.fontMetrics.elidedText(index.data(Qt::DisplayRole).toString(), option.textElideMode, (rectangle.width() - 20)));
 	}
@@ -162,11 +177,32 @@ void TileDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option, 
 	}
 	else
 	{
-		painter->setPen(QPen(QColor(200, 200, 200), 1));
+		painter->setPen(QPen(QColor(26, 35, 126, 51), 1));
 	}
 
 	painter->setBrush(Qt::transparent);
 	painter->drawPath(path);
+}
+
+void TileDelegate::handleOptionChanged(int identifier, const QVariant &value)
+{
+	if (identifier == SettingsManager::StartPage_TileBackgroundModeOption)
+	{
+		const QString mode(value.toString());
+
+		if (mode == QLatin1String("favicon"))
+		{
+			m_mode = FaviconBackground;
+		}
+		else if (mode == QLatin1String("thumbnail"))
+		{
+			m_mode = ThumbnailBackground;
+		}
+		else
+		{
+			m_mode = NoBackground;
+		}
+	}
 }
 
 QSize TileDelegate::sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const
@@ -174,9 +210,9 @@ QSize TileDelegate::sizeHint(const QStyleOptionViewItem &option, const QModelInd
 	Q_UNUSED(option)
 	Q_UNUSED(index)
 
-	const qreal zoom(SettingsManager::getOption(SettingsManager::StartPage_ZoomLevelOption).toInt() / qreal(100));
+	const qreal zoom(SettingsManager::getOption(SettingsManager::StartPage_ZoomLevelOption).toInt() / static_cast<qreal>(100));
 
-	return QSize(((SettingsManager::getOption(SettingsManager::StartPage_TileWidthOption).toInt() + 6) * zoom), ((SettingsManager::getOption(SettingsManager::StartPage_TileHeightOption).toInt() + 6) * zoom));
+	return QSize(qRound((SettingsManager::getOption(SettingsManager::StartPage_TileWidthOption).toInt() + 6) * zoom), qRound((SettingsManager::getOption(SettingsManager::StartPage_TileHeightOption).toInt() + 6) * zoom));
 }
 
 StartPageContentsWidget::StartPageContentsWidget(QWidget *parent) : QWidget(parent),
@@ -199,7 +235,7 @@ void StartPageContentsWidget::paintEvent(QPaintEvent *event)
 		return;
 	}
 
-	QPixmap pixmap(m_path);
+	const QPixmap pixmap(m_path);
 
 	if (pixmap.isNull())
 	{
@@ -219,8 +255,8 @@ void StartPageContentsWidget::paintEvent(QPaintEvent *event)
 				}
 				else
 				{
-					const qreal pixmapAspectRatio(pixmap.width() / qreal(pixmap.height()));
-					const qreal backgroundAspectRatio(width() / qreal(height()));
+					const qreal pixmapAspectRatio(pixmap.width() / static_cast<qreal>(pixmap.height()));
+					const qreal backgroundAspectRatio(width() / static_cast<qreal>(height()));
 					QPixmap newBackground(size());
 
 					if (pixmapAspectRatio > backgroundAspectRatio)
@@ -289,7 +325,7 @@ StartPageWidget::StartPageWidget(Window *parent) : QScrollArea(parent),
 	m_listView(new QListView(this)),
 	m_searchWidget(nullptr),
 	m_deleteTimer(0),
-	m_ignoreEnter(false)
+	m_isIgnoringEnter(false)
 {
 	if (!m_model)
 	{
@@ -465,7 +501,7 @@ void StartPageWidget::addTile()
 	OpenAddressDialog dialog(ActionExecutor::Object(), this);
 	dialog.setWindowTitle(tr("Add Tile"));
 
-	m_ignoreEnter = true;
+	m_isIgnoringEnter = true;
 
 	if (dialog.exec() == QDialog::Accepted && dialog.getResult().isValid())
 	{
@@ -718,13 +754,13 @@ void StartPageWidget::handleIsReloadingTileChanged(const QModelIndex &index)
 
 void StartPageWidget::updateSize()
 {
-	const qreal zoom(SettingsManager::getOption(SettingsManager::StartPage_ZoomLevelOption).toInt() / qreal(100));
-	const int tileHeight((SettingsManager::getOption(SettingsManager::StartPage_TileHeightOption).toInt() + 6) * zoom);
-	const int tileWidth((SettingsManager::getOption(SettingsManager::StartPage_TileWidthOption).toInt() + 6) * zoom);
+	const qreal zoom(SettingsManager::getOption(SettingsManager::StartPage_ZoomLevelOption).toInt() / static_cast<qreal>(100));
+	const int tileHeight(qRound((SettingsManager::getOption(SettingsManager::StartPage_TileHeightOption).toInt() + 6) * zoom));
+	const int tileWidth(qRound((SettingsManager::getOption(SettingsManager::StartPage_TileWidthOption).toInt() + 6) * zoom));
 	const int tilesPerRow(SettingsManager::getOption(SettingsManager::StartPage_TilesPerRowOption).toInt());
 	const int amount(m_model->rowCount());
-	const int columns((tilesPerRow > 0) ? tilesPerRow : qMax(1, int((width() - 50) / tileWidth)));
-	const int rows(qCeil(amount / qreal(columns)));
+	const int columns((tilesPerRow > 0) ? tilesPerRow : qMax(1, ((width() - 50) / tileWidth)));
+	const int rows(qCeil(amount / static_cast<qreal>(columns)));
 
 	m_listView->setGridSize(QSize(tileWidth, tileHeight));
 	m_listView->setFixedSize(((qMin(amount, columns) * tileWidth) + 2), ((rows * tileHeight) + 20));
@@ -746,23 +782,31 @@ void StartPageWidget::showContextMenu(const QPoint &position)
 
 	if (index.isValid() && index.data(Qt::AccessibleDescriptionRole).toString() != QLatin1String("add"))
 	{
-		menu.addAction(ThemesManager::createIcon(QLatin1String("document-open")), tr("Open"), this, SLOT(openTile()));
+		connect(menu.addAction(ThemesManager::createIcon(QLatin1String("document-open")), tr("Open")), &QAction::triggered, this, &StartPageWidget::openTile);
+
 		menu.addSeparator();
-		menu.addAction(tr("Edit…"), this, SLOT(editTile()));
+
+		connect(menu.addAction(tr("Edit…")), &QAction::triggered, this, &StartPageWidget::editTile);
 
 		if (SettingsManager::getOption(SettingsManager::StartPage_TileBackgroundModeOption) == QLatin1String("thumbnail"))
 		{
-			menu.addAction(tr("Reload"), this, SLOT(reloadTile()))->setEnabled(static_cast<BookmarksModel::BookmarkType>(index.data(BookmarksModel::TypeRole).toInt()) == BookmarksModel::UrlBookmark);
+			QAction *reloadAction(menu.addAction(tr("Reload")));
+			reloadAction->setEnabled(static_cast<BookmarksModel::BookmarkType>(index.data(BookmarksModel::TypeRole).toInt()) == BookmarksModel::UrlBookmark);
+
+			connect(reloadAction, &QAction::triggered, this, &StartPageWidget::reloadTile);
 		}
 
 		menu.addSeparator();
-		menu.addAction(ThemesManager::createIcon(QLatin1String("edit-delete")), tr("Delete"), this, SLOT(removeTile()));
+
+		connect(menu.addAction(ThemesManager::createIcon(QLatin1String("edit-delete")), tr("Delete")), &QAction::triggered, this, &StartPageWidget::removeTile);
 	}
 	else
 	{
-		menu.addAction(tr("Configure…"), this, SLOT(configure()));
+		connect(menu.addAction(tr("Configure…")), &QAction::triggered, this, &StartPageWidget::configure);
+
 		menu.addSeparator();
-		menu.addAction(ThemesManager::createIcon(QLatin1String("list-add")), tr("Add Tile…"), this, SLOT(addTile()));
+
+		connect(menu.addAction(ThemesManager::createIcon(QLatin1String("list-add")), tr("Add Tile…")), &QAction::triggered, this, &StartPageWidget::addTile);
 	}
 
 	menu.exec(hitPosition);
@@ -846,9 +890,9 @@ bool StartPageWidget::eventFilter(QObject *object, QEvent *event)
 
 		if (keyEvent)
 		{
-			if (m_ignoreEnter)
+			if (m_isIgnoringEnter)
 			{
-				m_ignoreEnter = false;
+				m_isIgnoringEnter = false;
 
 				if (keyEvent->key() == Qt::Key_Enter || keyEvent->key() == Qt::Key_Return)
 				{
@@ -860,41 +904,49 @@ bool StartPageWidget::eventFilter(QObject *object, QEvent *event)
 
 			if (keyEvent->key() == Qt::Key_Enter || keyEvent->key() == Qt::Key_Return)
 			{
-				const BookmarksModel::BookmarkType type(static_cast<BookmarksModel::BookmarkType>(m_currentIndex.data(BookmarksModel::TypeRole).toInt()));
-
-				if (type == BookmarksModel::FolderBookmark)
+				switch (static_cast<BookmarksModel::BookmarkType>(m_currentIndex.data(BookmarksModel::TypeRole).toInt()))
 				{
-					const BookmarksItem *bookmark(BookmarksManager::getModel()->getBookmark(m_currentIndex));
+					case BookmarksModel::FolderBookmark:
+						{
+							const BookmarksItem *bookmark(BookmarksManager::getModel()->getBookmark(m_currentIndex));
 
-					if (bookmark && bookmark->rowCount() > 0)
-					{
-						m_ignoreEnter = true;
+							if (bookmark && bookmark->rowCount() > 0)
+							{
+								m_isIgnoringEnter = true;
 
-						Menu menu(Menu::BookmarksMenuRole, this);
-						menu.setMenuOptions({{QLatin1String("bookmark"), bookmark->getIdentifier()}});
-						menu.exec(m_listView->mapToGlobal(m_listView->visualRect(m_currentIndex).center()));
-					}
-				}
-				else if (type == BookmarksModel::UrlBookmark)
-				{
-					const QUrl url(m_currentIndex.data(BookmarksModel::UrlRole).toUrl());
+								Menu menu(Menu::BookmarksMenuRole, this);
+								menu.setMenuOptions({{QLatin1String("bookmark"), bookmark->getIdentifier()}});
+								menu.exec(m_listView->mapToGlobal(m_listView->visualRect(m_currentIndex).center()));
+							}
+						}
 
-					if (keyEvent->modifiers() != Qt::NoModifier)
-					{
-						m_urlOpenTime = QTime::currentTime();
+						break;
+					case BookmarksModel::UrlBookmark:
+						{
+							const QUrl url(m_currentIndex.data(BookmarksModel::UrlRole).toUrl());
 
-						Application::triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}, {QLatin1String("hints"), QVariant(SessionsManager::calculateOpenHints((m_window->isPrivate() ? SessionsManager::PrivateOpen : SessionsManager::DefaultOpen), Qt::LeftButton, keyEvent->modifiers()))}}, parentWidget());
-					}
-					else
-					{
-						m_urlOpenTime = QTime::currentTime();
+							if (keyEvent->modifiers() != Qt::NoModifier)
+							{
+								m_urlOpenTime = QTime::currentTime();
 
-						m_window->setUrl(url);
-					}
-				}
-				else if (m_currentIndex.data(Qt::AccessibleDescriptionRole).toString() == QLatin1String("add"))
-				{
-					addTile();
+								Application::triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}, {QLatin1String("hints"), QVariant(SessionsManager::calculateOpenHints((m_window->isPrivate() ? SessionsManager::PrivateOpen : SessionsManager::DefaultOpen), Qt::LeftButton, keyEvent->modifiers()))}}, parentWidget());
+							}
+							else
+							{
+								m_urlOpenTime = QTime::currentTime();
+
+								m_window->setUrl(url);
+							}
+						}
+
+						break;
+					default:
+						if (m_currentIndex.data(Qt::AccessibleDescriptionRole).toString() == QLatin1String("add"))
+						{
+							addTile();
+						}
+
+						break;
 				}
 
 				return true;
@@ -921,11 +973,11 @@ bool StartPageWidget::eventFilter(QObject *object, QEvent *event)
 	}
 	else if (object == m_listView->viewport() && event->type() == QEvent::MouseButtonRelease)
 	{
-		QMouseEvent *mouseEvent(static_cast<QMouseEvent*>(event));
+		const QMouseEvent *mouseEvent(static_cast<QMouseEvent*>(event));
 
-		if (m_ignoreEnter)
+		if (m_isIgnoringEnter)
 		{
-			m_ignoreEnter = false;
+			m_isIgnoringEnter = false;
 		}
 
 		if (mouseEvent && m_listView->indexAt(mouseEvent->pos()) == m_currentIndex)
@@ -942,7 +994,7 @@ bool StartPageWidget::eventFilter(QObject *object, QEvent *event)
 
 					if (bookmark && bookmark->rowCount() > 0)
 					{
-						m_ignoreEnter = true;
+						m_isIgnoringEnter = true;
 
 						Menu menu(Menu::BookmarksMenuRole, this);
 						menu.setMenuOptions({{QLatin1String("bookmark"), bookmark->getIdentifier()}});
@@ -961,7 +1013,7 @@ bool StartPageWidget::eventFilter(QObject *object, QEvent *event)
 						return true;
 					}
 
-					mouseEvent->ignore();
+					event->ignore();
 
 					return true;
 				}
@@ -993,7 +1045,7 @@ bool StartPageWidget::eventFilter(QObject *object, QEvent *event)
 			}
 			else
 			{
-				mouseEvent->ignore();
+				event->ignore();
 			}
 
 			return true;

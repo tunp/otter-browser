@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2015 Piotr Wójcik <chocimier@tlen.pl>
 * Copyright (C) 2016 - 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
@@ -22,7 +22,6 @@
 #ifndef OTTER_WINDOW_H
 #define OTTER_WINDOW_H
 
-#include "ContentsWidget.h"
 #include "ToolBarWidget.h"
 #include "WebWidget.h"
 #include "../core/SessionsManager.h"
@@ -35,7 +34,6 @@ namespace Otter
 {
 
 class AddressWidget;
-class BookmarksItem;
 class ContentsWidget;
 class SearchWidget;
 
@@ -111,7 +109,6 @@ protected slots:
 	void handleSearchRequest(const QString &query, const QString &searchEngine, SessionsManager::OpenHints hints = SessionsManager::DefaultOpen);
 	void handleGeometryChangeRequest(const QRect &geometry);
 	void handleToolBarStateChanged(int identifier, const ToolBarState &state);
-	void notifyRequestedCloseWindow();
 	void updateNavigationBar();
 
 private:
@@ -136,7 +133,7 @@ signals:
 	void aboutToNavigate();
 	void needsAttention();
 	void requestedSearch(const QString &query, const QString &searchEngine, SessionsManager::OpenHints hints = SessionsManager::DefaultOpen);
-	void requestedNewWindow(ContentsWidget *widget, SessionsManager::OpenHints hints);
+	void requestedNewWindow(ContentsWidget *widget, SessionsManager::OpenHints hints, const QVariantMap &parameters);
 	void requestedCloseWindow(Window *window);
 	void statusMessageChanged(const QString &message);
 	void titleChanged(const QString &title);

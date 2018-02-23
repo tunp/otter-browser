@@ -1,7 +1,7 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
 * Copyright (C) 2014 - 2015 Piotr Wójcik <chocimier@tlen.pl>
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -21,11 +21,13 @@
 #include "SidebarWidget.h"
 #include "ContentsWidget.h"
 #include "MainWindow.h"
+#include "OpenAddressDialog.h"
 #include "ResizerWidget.h"
 #include "ToolBarWidget.h"
 #include "WidgetFactory.h"
 #include "../core/ActionsManager.h"
 #include "../core/AddonsManager.h"
+#include "../core/BookmarksModel.h"
 #include "../core/HistoryManager.h"
 #include "../core/ThemesManager.h"
 #include "../modules/widgets/action/ActionWidget.h"
@@ -33,7 +35,6 @@
 
 #include "ui_SidebarWidget.h"
 
-#include <QtWidgets/QInputDialog>
 #include <QtWidgets/QMenu>
 
 namespace Otter
@@ -101,7 +102,9 @@ void SidebarWidget::changeEvent(QEvent *event)
 
 				for (iterator = m_buttons.begin(); iterator != m_buttons.end(); ++iterator)
 				{
-					iterator.value()->setToolTip(getPanelTitle(iterator.key()));
+					const QKeySequence shortcut(ActionsManager::getActionShortcut(ActionsManager::ShowPanelAction, {{QLatin1String("panel"), iterator.key()}}));
+
+					iterator.value()->setToolTip(getPanelTitle(iterator.key()) + (shortcut.isEmpty() ? QString() : QLatin1String(" (") + shortcut.toString(QKeySequence::NativeText) + QLatin1Char(')')));
 				}
 
 				if (m_ui->panelsButton->menu())
@@ -110,9 +113,18 @@ void SidebarWidget::changeEvent(QEvent *event)
 
 					for (int i = 0; i < actions.count(); ++i)
 					{
-						if (!actions[i]->data().toString().isEmpty())
+						if (!actions.at(i)->data().toString().isEmpty())
 						{
-							actions[i]->setText(getPanelTitle(actions[i]->data().toString()));
+							const QString panel(actions.at(i)->data().toString());
+
+							if (panel.startsWith(QLatin1String("web:")))
+							{
+								actions[i]->setText(Utils::elideText(getPanelTitle(panel), nullptr, 300));
+							}
+							else
+							{
+								actions[i]->setText(getPanelTitle(panel));
+							}
 						}
 					}
 				}
@@ -144,19 +156,37 @@ void SidebarWidget::reload()
 void SidebarWidget::addWebPanel()
 {
 	const MainWindow *mainWindow(MainWindow::findMainWindow(this));
-	QString url;
+	OpenAddressDialog dialog(ActionExecutor::Object(), this);
+	dialog.setWindowTitle(tr("Add web panel"));
 
 	if (mainWindow)
 	{
-		url = mainWindow->getUrl().toString(QUrl::RemovePassword);
+		dialog.setText(mainWindow->getUrl().toString(QUrl::RemovePassword));
 	}
 
-	url = QInputDialog::getText(this, tr("Add web panel"), tr("Input address of web page to be shown in panel:"), QLineEdit::Normal, url);
+	QUrl url;
+
+	if (dialog.exec() == QDialog::Accepted && dialog.getResult().isValid())
+	{
+		switch (dialog.getResult().type)
+		{
+			case InputInterpreter::InterpreterResult::BookmarkType:
+				url = dialog.getResult().bookmark->getUrl();
+
+				break;
+			case InputInterpreter::InterpreterResult::UrlType:
+				url = dialog.getResult().url;
+
+				break;
+			default:
+				break;
+		}
+	}
 
 	if (!url.isEmpty())
 	{
 		ToolBarsManager::ToolBarDefinition definition(m_toolBarWidget->getDefinition());
-		definition.panels.append(QLatin1String("web:") + url);
+		definition.panels.append(QLatin1String("web:") + url.toString());
 
 		ToolBarsManager::setToolBar(definition);
 	}
@@ -200,10 +230,7 @@ void SidebarWidget::selectPanel(const QString &identifier)
 	if (contentsWidget && mainWindow)
 	{
 		connect(contentsWidget, &ContentsWidget::requestedSearch, mainWindow, &MainWindow::search);
-		connect(contentsWidget, &ContentsWidget::requestedNewWindow, [=](ContentsWidget *widget, SessionsManager::OpenHints hints)
-		{
-			mainWindow->openWindow(widget, hints);
-		});
+		connect(contentsWidget, &ContentsWidget::requestedNewWindow, mainWindow, &MainWindow::openWindow);
 	}
 
 	if (m_panels.contains(m_currentPanel) && m_panels[m_currentPanel])
@@ -323,31 +350,28 @@ void SidebarWidget::updatePanels()
 
 	m_buttons.clear();
 
-	QHash<QString, ContentsWidget*>::iterator iterator(m_panels.begin());
+	const QStringList currentPanels(m_panels.keys());
 
-	while (iterator != m_panels.end())
+	for (int i = 0; i < currentPanels.count(); ++i)
 	{
-		if (!panels.contains(iterator.key()))
-		{
-			iterator.value()->hide();
+		const QString panel(currentPanels.at(i));
 
-			if (iterator.key() == m_currentPanel)
+		if (!panels.contains(panel))
+		{
+			ContentsWidget *widget(m_panels[panel]);
+			widget->hide();
+
+			if (panel == m_currentPanel)
 			{
 				m_currentPanel.clear();
 
-				m_ui->panelLayout->removeWidget(iterator.value());
+				m_ui->panelLayout->removeWidget(widget);
 				m_ui->containerWidget->hide();
 
 				m_resizerWidget->hide();
 			}
 
-			iterator.value()->deleteLater();
-
-			iterator = m_panels.erase(iterator);
-		}
-		else
-		{
-			++iterator;
+			widget->deleteLater();
 		}
 	}
 
@@ -372,6 +396,8 @@ void SidebarWidget::updatePanels()
 		action->setCheckable(true);
 		action->setChecked(panels.contains(specialPages.at(i)));
 		action->setData(specialPages.at(i));
+		action->setShortcut(ActionsManager::getActionShortcut(ActionsManager::ShowPanelAction, {{QLatin1String("panel"), specialPages.at(i)}}));
+		action->setShortcutContext(Qt::WidgetShortcut);
 
 		connect(action, &QAction::toggled, this, &SidebarWidget::choosePanel);
 	}
@@ -387,12 +413,13 @@ void SidebarWidget::updatePanels()
 			continue;
 		}
 
+		const QKeySequence shortcut(ActionsManager::getActionShortcut(ActionsManager::ShowPanelAction, {{QLatin1String("panel"), panels.at(i)}}));
 		const QString title(getPanelTitle(panels.at(i)));
 		QToolButton *button(new QToolButton(this));
 		QAction *selectPanelButtonAction(new QAction(button));
 		selectPanelButtonAction->setData(panels.at(i));
 		selectPanelButtonAction->setIcon(getPanelIcon(panels.at(i)));
-		selectPanelButtonAction->setToolTip(title);
+		selectPanelButtonAction->setToolTip(title + (shortcut.isEmpty() ? QString() : QLatin1String(" (") + shortcut.toString(QKeySequence::NativeText) + QLatin1Char(')')));
 
 		button->setDefaultAction(selectPanelButtonAction);
 		button->setAutoRaise(true);
@@ -400,7 +427,7 @@ void SidebarWidget::updatePanels()
 
 		if (isWebPanel)
 		{
-			QAction *selectPanelMenuAction(menu->addAction(title));
+			QAction *selectPanelMenuAction(menu->addAction(Utils::elideText(title, nullptr, 300)));
 			selectPanelMenuAction->setCheckable(true);
 			selectPanelMenuAction->setChecked(true);
 			selectPanelMenuAction->setData(panels.at(i));
@@ -425,11 +452,9 @@ void SidebarWidget::updatePanels()
 
 	menu->addSeparator();
 
-	const QAction *addWebPanelAction(menu->addAction(tr("Add Web Panel…")));
+	connect(menu->addAction(tr("Add Web Panel…")), &QAction::triggered, this, &SidebarWidget::addWebPanel);
 
 	selectPanel(definition.currentPanel);
-
-	connect(addWebPanelAction, &QAction::triggered, this, &SidebarWidget::addWebPanel);
 }
 
 QString SidebarWidget::getPanelTitle(const QString &identifier)

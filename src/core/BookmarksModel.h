@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -50,6 +50,7 @@ public:
 	QVector<QUrl> getUrls() const;
 	quint64 getIdentifier() const;
 	int getType() const;
+	int getVisits() const;
 	bool isAncestorOf(BookmarksItem *child) const;
 	bool operator<(const QStandardItem &other) const override;
 

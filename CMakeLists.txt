@@ -12,18 +12,15 @@ project(otter-browser)
 
 set(MAJOR_VERSION "0")
 set(MINOR_VERSION "9")
-set(PATCH_VERSION "94")
+set(PATCH_VERSION "96")
 set(WEEKLY_VERSION "" CACHE STRING "")
 
-add_definitions(-DOTTER_VERSION_MAIN="${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION}")
-add_definitions(-DOTTER_INSTALL_PREFIX="${CMAKE_INSTALL_PREFIX}")
+add_definitions(-DOTTER_VERSION_MAIN="${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION}" -DOTTER_INSTALL_PREFIX="${CMAKE_INSTALL_PREFIX}")
 
 if ("${WEEKLY_VERSION}" STREQUAL "")
-	add_definitions(-DOTTER_VERSION_CONTEXT="-dev")
-	add_definitions(-DOTTER_VERSION_WEEKLY=" ")
+	add_definitions(-DOTTER_VERSION_CONTEXT="-dev" -DOTTER_VERSION_WEEKLY=" ")
 else ("${WEEKLY_VERSION}" STREQUAL "")
-	add_definitions(-DOTTER_VERSION_CONTEXT=" weekly ${WEEKLY_VERSION}")
-	add_definitions(-DOTTER_VERSION_WEEKLY="${WEEKLY_VERSION}")
+	add_definitions(-DOTTER_VERSION_CONTEXT=" weekly ${WEEKLY_VERSION}" -DOTTER_VERSION_WEEKLY="${WEEKLY_VERSION}")
 endif ("${WEEKLY_VERSION}" STREQUAL "")
 
 if (EXISTS "${CMAKE_ROOT}/Modules/CPack.cmake")
@@ -77,12 +74,12 @@ set(CMAKE_CXX_STANDARD 11)
 include(FeatureSummary)
 include(GNUInstallDirs)
 
-option(ENABLE_QTWEBENGINE "Enable QtWebEngine backend (requires Qt 5.6)" ON)
+option(ENABLE_QTWEBENGINE "Enable QtWebEngine backend (requires Qt 5.9)" ON)
 option(ENABLE_QTWEBKIT "Enable QtWebKit backend (requires Qt 5.4)" ON)
 option(ENABLE_CRASHREPORTS "Enable built-in crash reporting (only for official builds)" OFF)
 
 find_package(Qt5 5.4.0 REQUIRED COMPONENTS Core DBus Gui Multimedia Network PrintSupport Qml Svg Widgets XmlPatterns)
-find_package(Qt5WebEngineWidgets 5.6.0 QUIET)
+find_package(Qt5WebEngineWidgets 5.9.0 QUIET)
 find_package(Qt5WebKitWidgets 5.4.0 QUIET)
 find_package(Hunspell 1.3.0 QUIET)
 
@@ -230,7 +227,6 @@ set(otter_src
 	src/modules/importers/opera/OperaSearchEnginesImporter.cpp
 	src/modules/importers/opera/OperaSessionImporter.cpp
 	src/modules/widgets/action/ActionWidget.cpp
-	src/modules/widgets/action/NavigationActionWidget.cpp
 	src/modules/widgets/address/AddressWidget.cpp
 	src/modules/widgets/bookmark/BookmarkWidget.cpp
 	src/modules/widgets/configurationOption/ConfigurationOptionWidget.cpp
@@ -242,6 +238,7 @@ set(otter_src
 	src/modules/widgets/progressInformation/ProgressInformationWidget.cpp
 	src/modules/widgets/search/SearchWidget.cpp
 	src/modules/widgets/statusMessage/StatusMessageWidget.cpp
+	src/modules/widgets/transfers/TransfersWidget.cpp
 	src/modules/widgets/zoom/ZoomWidget.cpp
 	src/modules/windows/addons/AddonsContentsWidget.cpp
 	src/modules/windows/bookmarks/BookmarksContentsWidget.cpp
@@ -264,6 +261,7 @@ set(otter_src
 	src/modules/windows/web/StartPageWidget.cpp
 	src/modules/windows/web/WebContentsWidget.cpp
 	src/modules/windows/windows/WindowsContentsWidget.cpp
+	3rdparty/columnresizer/ColumnResizer.cpp
 	3rdparty/mousegestures/MouseGestures.cpp
 )
 
@@ -381,6 +379,15 @@ if (Qt5WebKitWidgets_FOUND AND ENABLE_QTWEBKIT)
 		src/modules/backends/web/qtwebkit/3rdparty/qtftp/qurlinfo.cpp
 	)
 
+	if (HUNSPELL_FOUND)
+		set(otter_src
+			${otter_src}
+			src/modules/backends/web/qtwebkit/qwebkitplatformplugin.h
+			src/modules/backends/web/qtwebkit/QtWebKitPlugin.cpp
+			src/modules/backends/web/qtwebkit/QtWebKitSpellChecker.cpp
+		)
+	endif (HUNSPELL_FOUND)
+
 	qt5_add_resources(otter_res
 		src/modules/backends/web/qtwebkit/QtWebKitResources.qrc
 	)
@@ -427,8 +434,7 @@ if (ENABLE_CRASHREPORTS)
 endif (ENABLE_CRASHREPORTS)
 
 if (HUNSPELL_FOUND)
-	add_definitions(-DOTTER_ENABLE_SPELLCHECK)
-	add_definitions(-DQT_STATICPLUGIN)
+	add_definitions(-DOTTER_ENABLE_SPELLCHECK -DQT_STATICPLUGIN)
 	include_directories(${HUNSPELL_INCLUDE_DIR})
 
 	set(otter_src
@@ -445,15 +451,6 @@ if (HUNSPELL_FOUND)
 		3rdparty/sonnet/src/plugins/hunspell/hunspelldebug.cpp
 		3rdparty/sonnet/src/plugins/hunspell/hunspelldict.cpp
 	)
-
-	if (Qt5WebKitWidgets_FOUND AND ENABLE_QTWEBKIT)
-		set(otter_src
-			${otter_src}
-			src/modules/backends/web/qtwebkit/qwebkitplatformplugin.h
-			src/modules/backends/web/qtwebkit/QtWebKitPlugin.cpp
-			src/modules/backends/web/qtwebkit/QtWebKitSpellChecker.cpp
-		)
-	endif (Qt5WebKitWidgets_FOUND AND ENABLE_QTWEBKIT)
 endif (HUNSPELL_FOUND)
 
 if (WIN32)
@@ -490,7 +487,7 @@ elseif (APPLE)
 	set(MACOSX_BUNDLE_SHORT_VERSION_STRING ${MAJOR_VERSION}.${MINOR_VERSION})
 	set(MACOSX_BUNDLE_ICON_FILE otter-browser.icns)
 	set(MACOSX_BUNDLE_GUI_IDENTIFIER "org.otter-browser.otter-browser")
-	set(MACOSX_BUNDLE_COPYRIGHT "Copyright (C) 2013-2017 Otter Browser Team. All rights reserved.")
+	set(MACOSX_BUNDLE_COPYRIGHT "Copyright (C) 2013-2018 Otter Browser Team. All rights reserved.")
 	set(otter_src
 		${otter_src}
 		src/modules/platforms/mac/MacPlatformIntegration.mm

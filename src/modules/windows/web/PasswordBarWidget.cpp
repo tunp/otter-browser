@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -19,6 +19,7 @@
 
 #include "PasswordBarWidget.h"
 #include "../../../core/ThemesManager.h"
+#include "../../../core/Utils.h"
 
 #include "ui_PasswordBarWidget.h"
 
@@ -28,14 +29,15 @@ namespace Otter
 PasswordBarWidget::PasswordBarWidget(const PasswordsManager::PasswordInformation &password, bool isUpdate, QWidget *parent) : QWidget(parent),
 	m_created(QDateTime::currentDateTime()),
 	m_password(password),
+	m_isUpdate(isUpdate),
 	m_ui(new Ui::PasswordBarWidget)
 {
 	m_ui->setupUi(this);
 	m_ui->iconLabel->setPixmap(ThemesManager::createIcon(QLatin1String("dialog-password"), false).pixmap(m_ui->iconLabel->size()));
-	m_ui->messageLabel->setText((isUpdate ? tr("Do you want to update login data for %1?") : tr("Do you want to save login data for %1?")).arg(password.url.host().isEmpty() ? QLatin1String("localhost") : password.url.host()));
+	m_ui->messageLabel->setText((isUpdate ? tr("Do you want to update login data for %1?") : tr("Do you want to save login data for %1?")).arg(Utils::extractHost(password.url)));
 
-	connect(m_ui->okButton, &QToolButton::clicked, this, &PasswordBarWidget::accepted);
-	connect(m_ui->cancelButton, &QToolButton::clicked, this, &PasswordBarWidget::rejected);
+	connect(m_ui->okButton, &QToolButton::clicked, this, &PasswordBarWidget::handleAccepted);
+	connect(m_ui->cancelButton, &QToolButton::clicked, this, &PasswordBarWidget::handleRejected);
 }
 
 PasswordBarWidget::~PasswordBarWidget()
@@ -50,10 +52,11 @@ void PasswordBarWidget::changeEvent(QEvent *event)
 	if (event->type() == QEvent::LanguageChange)
 	{
 		m_ui->retranslateUi(this);
+		m_ui->messageLabel->setText((m_isUpdate ? tr("Do you want to update login data for %1?") : tr("Do you want to save login data for %1?")).arg(Utils::extractHost(m_password.url)));
 	}
 }
 
-void PasswordBarWidget::accepted()
+void PasswordBarWidget::handleAccepted()
 {
 	hide();
 
@@ -62,7 +65,7 @@ void PasswordBarWidget::accepted()
 	PasswordsManager::addPassword(m_password);
 }
 
-void PasswordBarWidget::rejected()
+void PasswordBarWidget::handleRejected()
 {
 	hide();
 

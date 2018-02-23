@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2014 - 2016 Piotr Wójcik <chocimier@tlen.pl>
 * Copyright (C) 2015 - 2016 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
@@ -26,19 +26,16 @@
 #include "../core/ContentBlockingProfile.h"
 #include "../core/NetworkManagerFactory.h"
 #include "../core/SettingsManager.h"
-#include "../core/SessionsManager.h"
 #include "../core/Utils.h"
 
 #include "ui_WebsitePreferencesDialog.h"
 
-#include <QtCore/QDateTime>
-#include <QtCore/QSettings>
 #include <QtCore/QTextCodec>
 
 namespace Otter
 {
 
-WebsitePreferencesDialog::WebsitePreferencesDialog(const QUrl &url, const QVector<QNetworkCookie> &cookies, QWidget *parent) : Dialog(parent),
+WebsitePreferencesDialog::WebsitePreferencesDialog(const QString &host, const QVector<QNetworkCookie> &cookies, QWidget *parent) : Dialog(parent),
 	m_updateOverride(true),
 	m_ui(new Ui::WebsitePreferencesDialog)
 {
@@ -65,7 +62,7 @@ WebsitePreferencesDialog::WebsitePreferencesDialog(const QUrl &url, const QVecto
 	connect(m_ui->enableJavaScriptCheckBox, &QCheckBox::toggled, m_ui->enableFullScreenLabel, &QCheckBox::setEnabled);
 	connect(m_ui->enableJavaScriptCheckBox, &QCheckBox::toggled, m_ui->enableFullScreenComboBox, &QCheckBox::setEnabled);
 
-	m_ui->websiteLineEditWidget->setText(url.isLocalFile() ? QLatin1String("localhost") : url.host());
+	m_ui->websiteLineEditWidget->setText(host);
 
 	m_ui->encodingComboBox->addItem(tr("Auto Detect"), QLatin1String("auto"));
 
@@ -133,27 +130,27 @@ WebsitePreferencesDialog::WebsitePreferencesDialog(const QUrl &url, const QVecto
 	m_ui->userAgentComboBox->setModel(new UserAgentsModel(QString(), false, this));
 	m_ui->proxyComboBox->setModel(new ProxiesModel(QString(), false, this));
 
-	m_ui->encodingOverrideCheckBox->setChecked(SettingsManager::hasOverride(url, SettingsManager::Content_DefaultCharacterEncodingOption));
-	m_ui->popupsPolicyOverrideCheckBox->setChecked(SettingsManager::hasOverride(url, SettingsManager::Permissions_ScriptsCanOpenWindowsOption));
-	m_ui->enableImagesOverrideCheckBox->setChecked(SettingsManager::hasOverride(url, SettingsManager::Permissions_EnableImagesOption));
-	m_ui->enablePluginsOverrideCheckBox->setChecked(SettingsManager::hasOverride(url, SettingsManager::Permissions_EnablePluginsOption));
-	m_ui->userStyleSheetOverrideCheckBox->setChecked(SettingsManager::hasOverride(url, SettingsManager::Content_UserStyleSheetOption));
-	m_ui->doNotTrackOverrideCheckBox->setChecked(SettingsManager::hasOverride(url, SettingsManager::Network_DoNotTrackPolicyOption));
-	m_ui->rememberBrowsingHistoryOverrideCheckBox->setChecked(SettingsManager::hasOverride(url, SettingsManager::History_RememberBrowsingOption));
-	m_ui->enableCookiesOverrideCheckBox->setChecked(SettingsManager::hasOverride(url, SettingsManager::Network_CookiesPolicyOption));
-	m_ui->cookiesPolicyOverrideCheckBox->setChecked(SettingsManager::hasOverride(url, SettingsManager::Network_CookiesPolicyOption));
-	m_ui->keepCookiesModeOverrideCheckBox->setChecked(SettingsManager::hasOverride(url, SettingsManager::Network_CookiesKeepModeOption));
-	m_ui->thirdPartyCookiesPolicyOverrideCheckBox->setChecked(SettingsManager::hasOverride(url, SettingsManager::Network_ThirdPartyCookiesPolicyOption));
-	m_ui->enableJavaScriptOverrideCheckBox->setChecked(SettingsManager::hasOverride(url, SettingsManager::Permissions_EnableJavaScriptOption));
-	m_ui->canChangeWindowGeometryOverrideCheckBox->setChecked(SettingsManager::hasOverride(url, SettingsManager::Permissions_ScriptsCanChangeWindowGeometryOption));
-	m_ui->canShowStatusMessagesOverrideCheckBox->setChecked(SettingsManager::hasOverride(url, SettingsManager::Permissions_ScriptsCanShowStatusMessagesOption));
-	m_ui->canAccessClipboardOverrideCheckBox->setChecked(SettingsManager::hasOverride(url, SettingsManager::Permissions_ScriptsCanAccessClipboardOption));
-	m_ui->canReceiveRightClicksOverrideCheckBox->setChecked(SettingsManager::hasOverride(url, SettingsManager::Permissions_ScriptsCanReceiveRightClicksOption));
-	m_ui->canCloseWindowsOverrideCheckBox->setChecked(SettingsManager::hasOverride(url, SettingsManager::Permissions_ScriptsCanCloseWindowsOption));
-	m_ui->enableFullScreenOverrideCheckBox->setChecked(SettingsManager::hasOverride(url, SettingsManager::Permissions_EnableFullScreenOption));
-	m_ui->sendReferrerOverrideCheckBox->setChecked(SettingsManager::hasOverride(url, SettingsManager::Network_EnableReferrerOption));
-	m_ui->userAgentOverrideCheckBox->setChecked(SettingsManager::hasOverride(url, SettingsManager::Network_UserAgentOption));
-	m_ui->contentBlockingProfilesOverrideCheckBox->setChecked(SettingsManager::hasOverride(url, SettingsManager::ContentBlocking_ProfilesOption));
+	m_ui->encodingOverrideCheckBox->setChecked(SettingsManager::hasOverride(host, SettingsManager::Content_DefaultCharacterEncodingOption));
+	m_ui->popupsPolicyOverrideCheckBox->setChecked(SettingsManager::hasOverride(host, SettingsManager::Permissions_ScriptsCanOpenWindowsOption));
+	m_ui->enableImagesOverrideCheckBox->setChecked(SettingsManager::hasOverride(host, SettingsManager::Permissions_EnableImagesOption));
+	m_ui->enablePluginsOverrideCheckBox->setChecked(SettingsManager::hasOverride(host, SettingsManager::Permissions_EnablePluginsOption));
+	m_ui->userStyleSheetOverrideCheckBox->setChecked(SettingsManager::hasOverride(host, SettingsManager::Content_UserStyleSheetOption));
+	m_ui->doNotTrackOverrideCheckBox->setChecked(SettingsManager::hasOverride(host, SettingsManager::Network_DoNotTrackPolicyOption));
+	m_ui->rememberBrowsingHistoryOverrideCheckBox->setChecked(SettingsManager::hasOverride(host, SettingsManager::History_RememberBrowsingOption));
+	m_ui->enableCookiesOverrideCheckBox->setChecked(SettingsManager::hasOverride(host, SettingsManager::Network_CookiesPolicyOption));
+	m_ui->cookiesPolicyOverrideCheckBox->setChecked(SettingsManager::hasOverride(host, SettingsManager::Network_CookiesPolicyOption));
+	m_ui->keepCookiesModeOverrideCheckBox->setChecked(SettingsManager::hasOverride(host, SettingsManager::Network_CookiesKeepModeOption));
+	m_ui->thirdPartyCookiesPolicyOverrideCheckBox->setChecked(SettingsManager::hasOverride(host, SettingsManager::Network_ThirdPartyCookiesPolicyOption));
+	m_ui->enableJavaScriptOverrideCheckBox->setChecked(SettingsManager::hasOverride(host, SettingsManager::Permissions_EnableJavaScriptOption));
+	m_ui->canChangeWindowGeometryOverrideCheckBox->setChecked(SettingsManager::hasOverride(host, SettingsManager::Permissions_ScriptsCanChangeWindowGeometryOption));
+	m_ui->canShowStatusMessagesOverrideCheckBox->setChecked(SettingsManager::hasOverride(host, SettingsManager::Permissions_ScriptsCanShowStatusMessagesOption));
+	m_ui->canAccessClipboardOverrideCheckBox->setChecked(SettingsManager::hasOverride(host, SettingsManager::Permissions_ScriptsCanAccessClipboardOption));
+	m_ui->canReceiveRightClicksOverrideCheckBox->setChecked(SettingsManager::hasOverride(host, SettingsManager::Permissions_ScriptsCanReceiveRightClicksOption));
+	m_ui->canCloseWindowsOverrideCheckBox->setChecked(SettingsManager::hasOverride(host, SettingsManager::Permissions_ScriptsCanCloseWindowsOption));
+	m_ui->enableFullScreenOverrideCheckBox->setChecked(SettingsManager::hasOverride(host, SettingsManager::Permissions_EnableFullScreenOption));
+	m_ui->sendReferrerOverrideCheckBox->setChecked(SettingsManager::hasOverride(host, SettingsManager::Network_EnableReferrerOption));
+	m_ui->userAgentOverrideCheckBox->setChecked(SettingsManager::hasOverride(host, SettingsManager::Network_UserAgentOption));
+	m_ui->contentBlockingProfilesOverrideCheckBox->setChecked(SettingsManager::hasOverride(host, SettingsManager::ContentBlocking_ProfilesOption));
 
 	updateValues();
 
@@ -201,6 +198,7 @@ void WebsitePreferencesDialog::changeEvent(QEvent *event)
 	if (event->type() == QEvent::LanguageChange)
 	{
 		m_ui->retranslateUi(this);
+		m_ui->cookiesViewWidget->getSourceModel()->setHorizontalHeaderLabels({tr("Domain"), tr("Name"), tr("Path"), tr("Value"), tr("Expiration date")});
 	}
 }
 
@@ -208,20 +206,20 @@ void WebsitePreferencesDialog::addCookie(const QNetworkCookie &cookie)
 {
 	QList<QStandardItem*> items({new QStandardItem(cookie.domain()), new QStandardItem(QString(cookie.name())), new QStandardItem(cookie.path()), new QStandardItem(QString(cookie.value())), new QStandardItem(cookie.isSessionCookie() ? tr("this session only") : Utils::formatDateTime(cookie.expirationDate()))});
 	items[0]->setData(cookie.toRawForm(), Qt::UserRole);
-	items[0]->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);
-	items[1]->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);
-	items[2]->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);
-	items[3]->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);
-	items[4]->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled);
+	items[0]->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled | Qt::ItemNeverHasChildren);
+	items[1]->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled | Qt::ItemNeverHasChildren);
+	items[2]->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled | Qt::ItemNeverHasChildren);
+	items[3]->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled | Qt::ItemNeverHasChildren);
+	items[4]->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled | Qt::ItemNeverHasChildren);
 
 	m_ui->cookiesViewWidget->getSourceModel()->appendRow(items);
 }
 
 void WebsitePreferencesDialog::addNewCookie()
 {
-	const QString domain(m_ui->websiteLineEditWidget->text());
+	const QString host(getHost());
 	QNetworkCookie cookie;
-	cookie.setDomain(domain.startsWith(QLatin1String("*.")) ? domain.mid(1) : domain);
+	cookie.setDomain(host.startsWith(QLatin1String("*.")) ? host.mid(1) : host);
 
 	CookiePropertiesDialog dialog(cookie, this);
 
@@ -262,33 +260,38 @@ void WebsitePreferencesDialog::cookieProperties()
 
 void WebsitePreferencesDialog::handleButtonClicked(QAbstractButton *button)
 {
+	const QString host(getHost());
+
+	if (host.isEmpty())
+	{
+		return;
+	}
+
 	QStringList contentBlockingProfiles;
-	QUrl url;
-	url.setHost(m_ui->websiteLineEditWidget->text());
 
 	switch (m_ui->buttonBox->buttonRole(button))
 	{
 		case QDialogButtonBox::AcceptRole:
-			SettingsManager::setOption(SettingsManager::Content_DefaultCharacterEncodingOption, (m_ui->encodingOverrideCheckBox->isChecked() ? m_ui->encodingComboBox->currentData(Qt::UserRole).toString() : QVariant()), url);
-			SettingsManager::setOption(SettingsManager::Permissions_ScriptsCanOpenWindowsOption, (m_ui->popupsPolicyOverrideCheckBox->isChecked() ? m_ui->popupsPolicyComboBox->currentData(Qt::UserRole).toString() : QVariant()), url);
-			SettingsManager::setOption(SettingsManager::Permissions_EnableImagesOption, (m_ui->enableImagesOverrideCheckBox->isChecked() ? m_ui->enableImagesComboBox->currentData(Qt::UserRole).toString() : QVariant()), url);
-			SettingsManager::setOption(SettingsManager::Permissions_EnablePluginsOption, (m_ui->enablePluginsOverrideCheckBox->isChecked() ? m_ui->enablePluginsComboBox->currentData(Qt::UserRole).toString() : QVariant()), url);
-			SettingsManager::setOption(SettingsManager::Content_UserStyleSheetOption, (m_ui->userStyleSheetOverrideCheckBox->isChecked() ? m_ui->userStyleSheetFilePathWidget->getPath() : QVariant()), url);
-			SettingsManager::setOption(SettingsManager::Network_DoNotTrackPolicyOption, (m_ui->doNotTrackOverrideCheckBox->isChecked() ? m_ui->doNotTrackComboBox->currentData().toString() : QVariant()), url);
-			SettingsManager::setOption(SettingsManager::History_RememberBrowsingOption, (m_ui->rememberBrowsingHistoryOverrideCheckBox->isChecked() ? m_ui->rememberBrowsingHistoryCheckBox->isChecked() : QVariant()), url);
-			SettingsManager::setOption(SettingsManager::Network_CookiesPolicyOption, (m_ui->enableCookiesOverrideCheckBox->isChecked() ? (m_ui->enableCookiesCheckBox->isChecked() ? m_ui->cookiesPolicyComboBox->currentData().toString() : QLatin1String("ignore")) : QVariant()), url);
-			SettingsManager::setOption(SettingsManager::Network_CookiesKeepModeOption, (m_ui->keepCookiesModeOverrideCheckBox->isChecked() ? m_ui->keepCookiesModeComboBox->currentData().toString() : QVariant()), url);
-			SettingsManager::setOption(SettingsManager::Network_ThirdPartyCookiesPolicyOption, (m_ui->thirdPartyCookiesPolicyOverrideCheckBox->isChecked() ? m_ui->thirdPartyCookiesPolicyComboBox->currentData().toString() : QVariant()), url);
-			SettingsManager::setOption(SettingsManager::Permissions_EnableJavaScriptOption, (m_ui->enableJavaScriptOverrideCheckBox->isChecked() ? m_ui->enableJavaScriptCheckBox->isChecked() : QVariant()), url);
-			SettingsManager::setOption(SettingsManager::Permissions_ScriptsCanChangeWindowGeometryOption, (m_ui->canChangeWindowGeometryOverrideCheckBox->isChecked() ? m_ui->canChangeWindowGeometryCheckBox->isChecked() : QVariant()), url);
-			SettingsManager::setOption(SettingsManager::Permissions_ScriptsCanShowStatusMessagesOption, (m_ui->canShowStatusMessagesOverrideCheckBox->isChecked() ? m_ui->canShowStatusMessagesCheckBox->isChecked() : QVariant()), url);
-			SettingsManager::setOption(SettingsManager::Permissions_ScriptsCanAccessClipboardOption, (m_ui->canAccessClipboardOverrideCheckBox->isChecked() ? m_ui->canAccessClipboardCheckBox->isChecked() : QVariant()), url);
-			SettingsManager::setOption(SettingsManager::Permissions_ScriptsCanReceiveRightClicksOption, (m_ui->canReceiveRightClicksOverrideCheckBox->isChecked() ? m_ui->canReceiveRightClicksCheckBox->isChecked() : QVariant()), url);
-			SettingsManager::setOption(SettingsManager::Permissions_ScriptsCanCloseWindowsOption, (m_ui->canCloseWindowsOverrideCheckBox->isChecked() ? m_ui->canCloseWindowsComboBox->currentData().toString() : QVariant()), url);
-			SettingsManager::setOption(SettingsManager::Permissions_EnableFullScreenOption, (m_ui->enableFullScreenOverrideCheckBox->isChecked() ? m_ui->enableFullScreenComboBox->currentData().toString() : QVariant()), url);
-			SettingsManager::setOption(SettingsManager::Network_EnableReferrerOption, (m_ui->sendReferrerOverrideCheckBox->isChecked() ? m_ui->sendReferrerCheckBox->isChecked() : QVariant()), url);
-			SettingsManager::setOption(SettingsManager::Network_UserAgentOption, (m_ui->userAgentOverrideCheckBox->isChecked() ? m_ui->userAgentComboBox->currentData(UserAgentsModel::IdentifierRole).toString() : QVariant()), url);
-			SettingsManager::setOption(SettingsManager::Network_ProxyOption, (m_ui->proxyOverrideCheckBox->isChecked() ? m_ui->proxyComboBox->currentData(ProxiesModel::IdentifierRole).toString() : QVariant()), url);
+			SettingsManager::setOption(SettingsManager::Content_DefaultCharacterEncodingOption, (m_ui->encodingOverrideCheckBox->isChecked() ? m_ui->encodingComboBox->currentData(Qt::UserRole).toString() : QVariant()), host);
+			SettingsManager::setOption(SettingsManager::Permissions_ScriptsCanOpenWindowsOption, (m_ui->popupsPolicyOverrideCheckBox->isChecked() ? m_ui->popupsPolicyComboBox->currentData(Qt::UserRole).toString() : QVariant()), host);
+			SettingsManager::setOption(SettingsManager::Permissions_EnableImagesOption, (m_ui->enableImagesOverrideCheckBox->isChecked() ? m_ui->enableImagesComboBox->currentData(Qt::UserRole).toString() : QVariant()), host);
+			SettingsManager::setOption(SettingsManager::Permissions_EnablePluginsOption, (m_ui->enablePluginsOverrideCheckBox->isChecked() ? m_ui->enablePluginsComboBox->currentData(Qt::UserRole).toString() : QVariant()), host);
+			SettingsManager::setOption(SettingsManager::Content_UserStyleSheetOption, (m_ui->userStyleSheetOverrideCheckBox->isChecked() ? m_ui->userStyleSheetFilePathWidget->getPath() : QVariant()), host);
+			SettingsManager::setOption(SettingsManager::Network_DoNotTrackPolicyOption, (m_ui->doNotTrackOverrideCheckBox->isChecked() ? m_ui->doNotTrackComboBox->currentData().toString() : QVariant()), host);
+			SettingsManager::setOption(SettingsManager::History_RememberBrowsingOption, (m_ui->rememberBrowsingHistoryOverrideCheckBox->isChecked() ? m_ui->rememberBrowsingHistoryCheckBox->isChecked() : QVariant()), host);
+			SettingsManager::setOption(SettingsManager::Network_CookiesPolicyOption, (m_ui->enableCookiesOverrideCheckBox->isChecked() ? (m_ui->enableCookiesCheckBox->isChecked() ? m_ui->cookiesPolicyComboBox->currentData().toString() : QLatin1String("ignore")) : QVariant()), host);
+			SettingsManager::setOption(SettingsManager::Network_CookiesKeepModeOption, (m_ui->keepCookiesModeOverrideCheckBox->isChecked() ? m_ui->keepCookiesModeComboBox->currentData().toString() : QVariant()), host);
+			SettingsManager::setOption(SettingsManager::Network_ThirdPartyCookiesPolicyOption, (m_ui->thirdPartyCookiesPolicyOverrideCheckBox->isChecked() ? m_ui->thirdPartyCookiesPolicyComboBox->currentData().toString() : QVariant()), host);
+			SettingsManager::setOption(SettingsManager::Permissions_EnableJavaScriptOption, (m_ui->enableJavaScriptOverrideCheckBox->isChecked() ? m_ui->enableJavaScriptCheckBox->isChecked() : QVariant()), host);
+			SettingsManager::setOption(SettingsManager::Permissions_ScriptsCanChangeWindowGeometryOption, (m_ui->canChangeWindowGeometryOverrideCheckBox->isChecked() ? m_ui->canChangeWindowGeometryCheckBox->isChecked() : QVariant()), host);
+			SettingsManager::setOption(SettingsManager::Permissions_ScriptsCanShowStatusMessagesOption, (m_ui->canShowStatusMessagesOverrideCheckBox->isChecked() ? m_ui->canShowStatusMessagesCheckBox->isChecked() : QVariant()), host);
+			SettingsManager::setOption(SettingsManager::Permissions_ScriptsCanAccessClipboardOption, (m_ui->canAccessClipboardOverrideCheckBox->isChecked() ? m_ui->canAccessClipboardCheckBox->isChecked() : QVariant()), host);
+			SettingsManager::setOption(SettingsManager::Permissions_ScriptsCanReceiveRightClicksOption, (m_ui->canReceiveRightClicksOverrideCheckBox->isChecked() ? m_ui->canReceiveRightClicksCheckBox->isChecked() : QVariant()), host);
+			SettingsManager::setOption(SettingsManager::Permissions_ScriptsCanCloseWindowsOption, (m_ui->canCloseWindowsOverrideCheckBox->isChecked() ? m_ui->canCloseWindowsComboBox->currentData().toString() : QVariant()), host);
+			SettingsManager::setOption(SettingsManager::Permissions_EnableFullScreenOption, (m_ui->enableFullScreenOverrideCheckBox->isChecked() ? m_ui->enableFullScreenComboBox->currentData().toString() : QVariant()), host);
+			SettingsManager::setOption(SettingsManager::Network_EnableReferrerOption, (m_ui->sendReferrerOverrideCheckBox->isChecked() ? m_ui->sendReferrerCheckBox->isChecked() : QVariant()), host);
+			SettingsManager::setOption(SettingsManager::Network_UserAgentOption, (m_ui->userAgentOverrideCheckBox->isChecked() ? m_ui->userAgentComboBox->currentData(UserAgentsModel::IdentifierRole).toString() : QVariant()), host);
+			SettingsManager::setOption(SettingsManager::Network_ProxyOption, (m_ui->proxyOverrideCheckBox->isChecked() ? m_ui->proxyComboBox->currentData(ProxiesModel::IdentifierRole).toString() : QVariant()), host);
 
 			if (m_ui->contentBlockingProfilesOverrideCheckBox->isChecked())
 			{
@@ -313,13 +316,13 @@ void WebsitePreferencesDialog::handleButtonClicked(QAbstractButton *button)
 				}
 			}
 
-			SettingsManager::setOption(SettingsManager::ContentBlocking_ProfilesOption, (contentBlockingProfiles.isEmpty() ? QVariant() : contentBlockingProfiles), url);
+			SettingsManager::setOption(SettingsManager::ContentBlocking_ProfilesOption, (contentBlockingProfiles.isEmpty() ? QVariant() : contentBlockingProfiles), host);
 
 			accept();
 
 			break;
 		case QDialogButtonBox::ResetRole:
-			SettingsManager::removeOverride(url);
+			SettingsManager::removeOverride(host);
 			accept();
 
 			break;
@@ -425,67 +428,66 @@ void WebsitePreferencesDialog::updateContentBlockingProfile(const QString &name)
 
 void WebsitePreferencesDialog::updateValues(bool isChecked)
 {
-	QUrl url;
-	url.setHost(m_ui->websiteLineEditWidget->text());
-
 	if (isChecked)
 	{
 		return;
 	}
 
+	const QString host(getHost());
+
 	m_updateOverride = false;
 
-	m_ui->encodingComboBox->setCurrentIndex(m_ui->encodingComboBox->findData(SettingsManager::getOption(SettingsManager::Content_DefaultCharacterEncodingOption, (m_ui->encodingOverrideCheckBox->isChecked() ? url : QUrl())).toString()));
+	m_ui->encodingComboBox->setCurrentIndex(m_ui->encodingComboBox->findData(SettingsManager::getOption(SettingsManager::Content_DefaultCharacterEncodingOption, (m_ui->encodingOverrideCheckBox->isChecked() ? host : QString())).toString()));
 
-	const int popupsPolicyIndex(m_ui->popupsPolicyComboBox->findData(SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanOpenWindowsOption, (m_ui->popupsPolicyOverrideCheckBox->isChecked() ? url : QUrl())).toString()));
+	const int popupsPolicyIndex(m_ui->popupsPolicyComboBox->findData(SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanOpenWindowsOption, (m_ui->popupsPolicyOverrideCheckBox->isChecked() ? host : QString())).toString()));
 
 	m_ui->popupsPolicyComboBox->setCurrentIndex((popupsPolicyIndex < 0) ? 0 : popupsPolicyIndex);
 
-	const int enableImagesIndex(m_ui->enableImagesComboBox->findData(SettingsManager::getOption(SettingsManager::Permissions_EnableImagesOption, (m_ui->enableImagesOverrideCheckBox->isChecked() ? url : QUrl())).toString()));
+	const int enableImagesIndex(m_ui->enableImagesComboBox->findData(SettingsManager::getOption(SettingsManager::Permissions_EnableImagesOption, (m_ui->enableImagesOverrideCheckBox->isChecked() ? host : QString())).toString()));
 
 	m_ui->enableImagesComboBox->setCurrentIndex((enableImagesIndex < 0) ? 0 : enableImagesIndex);
 
-	const int enablePluginsIndex(m_ui->enablePluginsComboBox->findData(SettingsManager::getOption(SettingsManager::Permissions_EnablePluginsOption, (m_ui->enablePluginsOverrideCheckBox->isChecked() ? url : QUrl())).toString()));
+	const int enablePluginsIndex(m_ui->enablePluginsComboBox->findData(SettingsManager::getOption(SettingsManager::Permissions_EnablePluginsOption, (m_ui->enablePluginsOverrideCheckBox->isChecked() ? host : QString())).toString()));
 
 	m_ui->enablePluginsComboBox->setCurrentIndex((enablePluginsIndex < 0) ? 1 : enablePluginsIndex);
-	m_ui->userStyleSheetFilePathWidget->setPath(SettingsManager::getOption(SettingsManager::Content_UserStyleSheetOption, (m_ui->userStyleSheetOverrideCheckBox->isChecked() ? url : QUrl())).toString());
+	m_ui->userStyleSheetFilePathWidget->setPath(SettingsManager::getOption(SettingsManager::Content_UserStyleSheetOption, (m_ui->userStyleSheetOverrideCheckBox->isChecked() ? host : QString())).toString());
 	m_ui->userStyleSheetFilePathWidget->setFilters({tr("Style sheets (*.css)")});
-	m_ui->enableJavaScriptCheckBox->setChecked(SettingsManager::getOption(SettingsManager::Permissions_EnableJavaScriptOption, (m_ui->enableJavaScriptOverrideCheckBox->isChecked() ? url : QUrl())).toBool());
-	m_ui->canChangeWindowGeometryCheckBox->setChecked(SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanChangeWindowGeometryOption, (m_ui->canChangeWindowGeometryOverrideCheckBox->isChecked() ? url : QUrl())).toBool());
-	m_ui->canShowStatusMessagesCheckBox->setChecked(SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanShowStatusMessagesOption, (m_ui->canShowStatusMessagesOverrideCheckBox->isChecked() ? url : QUrl())).toBool());
-	m_ui->canAccessClipboardCheckBox->setChecked(SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanAccessClipboardOption, (m_ui->canAccessClipboardOverrideCheckBox->isChecked() ? url : QUrl())).toBool());
-	m_ui->canReceiveRightClicksCheckBox->setChecked(SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanReceiveRightClicksOption, (m_ui->canReceiveRightClicksOverrideCheckBox->isChecked() ? url : QUrl())).toBool());
+	m_ui->enableJavaScriptCheckBox->setChecked(SettingsManager::getOption(SettingsManager::Permissions_EnableJavaScriptOption, (m_ui->enableJavaScriptOverrideCheckBox->isChecked() ? host : QString())).toBool());
+	m_ui->canChangeWindowGeometryCheckBox->setChecked(SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanChangeWindowGeometryOption, (m_ui->canChangeWindowGeometryOverrideCheckBox->isChecked() ? host : QString())).toBool());
+	m_ui->canShowStatusMessagesCheckBox->setChecked(SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanShowStatusMessagesOption, (m_ui->canShowStatusMessagesOverrideCheckBox->isChecked() ? host : QString())).toBool());
+	m_ui->canAccessClipboardCheckBox->setChecked(SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanAccessClipboardOption, (m_ui->canAccessClipboardOverrideCheckBox->isChecked() ? host : QString())).toBool());
+	m_ui->canReceiveRightClicksCheckBox->setChecked(SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanReceiveRightClicksOption, (m_ui->canReceiveRightClicksOverrideCheckBox->isChecked() ? host : QString())).toBool());
 
-	const int canCloseWindowsIndex(m_ui->canCloseWindowsComboBox->findData(SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanCloseWindowsOption, (m_ui->canCloseWindowsOverrideCheckBox->isChecked() ? url : QUrl())).toString()));
+	const int canCloseWindowsIndex(m_ui->canCloseWindowsComboBox->findData(SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanCloseWindowsOption, (m_ui->canCloseWindowsOverrideCheckBox->isChecked() ? host : QString())).toString()));
 
 	m_ui->canCloseWindowsComboBox->setCurrentIndex((canCloseWindowsIndex < 0) ? 0 : canCloseWindowsIndex);
 
-	const int enableFullScreenIndex(m_ui->enableFullScreenComboBox->findData(SettingsManager::getOption(SettingsManager::Permissions_EnableFullScreenOption, (m_ui->enableFullScreenOverrideCheckBox->isChecked() ? url : QUrl())).toString()));
+	const int enableFullScreenIndex(m_ui->enableFullScreenComboBox->findData(SettingsManager::getOption(SettingsManager::Permissions_EnableFullScreenOption, (m_ui->enableFullScreenOverrideCheckBox->isChecked() ? host : QString())).toString()));
 
 	m_ui->enableFullScreenComboBox->setCurrentIndex((enableFullScreenIndex < 0) ? 0 : enableFullScreenIndex);
 
-	const int doNotTrackPolicyIndex(m_ui->doNotTrackComboBox->findData(SettingsManager::getOption(SettingsManager::Network_DoNotTrackPolicyOption, (m_ui->doNotTrackOverrideCheckBox->isChecked() ? url : QUrl())).toString()));
+	const int doNotTrackPolicyIndex(m_ui->doNotTrackComboBox->findData(SettingsManager::getOption(SettingsManager::Network_DoNotTrackPolicyOption, (m_ui->doNotTrackOverrideCheckBox->isChecked() ? host : QString())).toString()));
 
 	m_ui->doNotTrackComboBox->setCurrentIndex((doNotTrackPolicyIndex < 0) ? 2 : doNotTrackPolicyIndex);
-	m_ui->rememberBrowsingHistoryCheckBox->setChecked(SettingsManager::getOption(SettingsManager::History_RememberBrowsingOption, (m_ui->rememberBrowsingHistoryOverrideCheckBox->isChecked() ? url : QUrl())).toBool());
-	m_ui->enableCookiesCheckBox->setChecked(SettingsManager::getOption(SettingsManager::Network_CookiesPolicyOption, (m_ui->enableCookiesOverrideCheckBox->isChecked() ? url : QUrl())).toString() != QLatin1String("ignore"));
+	m_ui->rememberBrowsingHistoryCheckBox->setChecked(SettingsManager::getOption(SettingsManager::History_RememberBrowsingOption, (m_ui->rememberBrowsingHistoryOverrideCheckBox->isChecked() ? host : QString())).toBool());
+	m_ui->enableCookiesCheckBox->setChecked(SettingsManager::getOption(SettingsManager::Network_CookiesPolicyOption, (m_ui->enableCookiesOverrideCheckBox->isChecked() ? host : QString())).toString() != QLatin1String("ignore"));
 
-	const int cookiesPolicyIndex(m_ui->cookiesPolicyComboBox->findData(SettingsManager::getOption(SettingsManager::Network_CookiesPolicyOption, (m_ui->cookiesPolicyOverrideCheckBox->isChecked() ? url : QUrl())).toString()));
+	const int cookiesPolicyIndex(m_ui->cookiesPolicyComboBox->findData(SettingsManager::getOption(SettingsManager::Network_CookiesPolicyOption, (m_ui->cookiesPolicyOverrideCheckBox->isChecked() ? host : QString())).toString()));
 
 	m_ui->cookiesPolicyComboBox->setCurrentIndex((cookiesPolicyIndex < 0) ? 0 : cookiesPolicyIndex);
 
-	const int cookiesKeepModeIndex(m_ui->keepCookiesModeComboBox->findData(SettingsManager::getOption(SettingsManager::Network_CookiesKeepModeOption, (m_ui->keepCookiesModeOverrideCheckBox->isChecked() ? url : QUrl())).toString()));
+	const int cookiesKeepModeIndex(m_ui->keepCookiesModeComboBox->findData(SettingsManager::getOption(SettingsManager::Network_CookiesKeepModeOption, (m_ui->keepCookiesModeOverrideCheckBox->isChecked() ? host : QString())).toString()));
 
 	m_ui->keepCookiesModeComboBox->setCurrentIndex((cookiesKeepModeIndex < 0) ? 0 : cookiesKeepModeIndex);
 
-	const int thirdPartyCookiesPolicyIndex(m_ui->thirdPartyCookiesPolicyComboBox->findData(SettingsManager::getOption(SettingsManager::Network_ThirdPartyCookiesPolicyOption, (m_ui->thirdPartyCookiesPolicyOverrideCheckBox->isChecked() ? url : QUrl())).toString()));
+	const int thirdPartyCookiesPolicyIndex(m_ui->thirdPartyCookiesPolicyComboBox->findData(SettingsManager::getOption(SettingsManager::Network_ThirdPartyCookiesPolicyOption, (m_ui->thirdPartyCookiesPolicyOverrideCheckBox->isChecked() ? host : QString())).toString()));
 
 	m_ui->thirdPartyCookiesPolicyComboBox->setCurrentIndex((thirdPartyCookiesPolicyIndex < 0) ? 0 : thirdPartyCookiesPolicyIndex);
-	m_ui->sendReferrerCheckBox->setChecked(SettingsManager::getOption(SettingsManager::Network_EnableReferrerOption, (m_ui->sendReferrerOverrideCheckBox->isChecked() ? url : QUrl())).toBool());
-	m_ui->userAgentComboBox->setCurrentIndex(m_ui->userAgentComboBox->model()->match(m_ui->userAgentComboBox->model()->index(0, 0), UserAgentsModel::IdentifierRole, SettingsManager::getOption(SettingsManager::Network_UserAgentOption, (m_ui->userAgentOverrideCheckBox->isChecked() ? url : QUrl())).toString(), 1, Qt::MatchRecursive).value(0));
-	m_ui->proxyComboBox->setCurrentIndex(m_ui->proxyComboBox->model()->match(m_ui->proxyComboBox->model()->index(0, 0), ProxiesModel::IdentifierRole, SettingsManager::getOption(SettingsManager::Network_ProxyOption, (m_ui->proxyOverrideCheckBox->isChecked() ? url : QUrl())).toString(), 1, Qt::MatchRecursive).value(0));
+	m_ui->sendReferrerCheckBox->setChecked(SettingsManager::getOption(SettingsManager::Network_EnableReferrerOption, (m_ui->sendReferrerOverrideCheckBox->isChecked() ? host : QString())).toBool());
+	m_ui->userAgentComboBox->setCurrentIndex(m_ui->userAgentComboBox->model()->match(m_ui->userAgentComboBox->model()->index(0, 0), UserAgentsModel::IdentifierRole, SettingsManager::getOption(SettingsManager::Network_UserAgentOption, (m_ui->userAgentOverrideCheckBox->isChecked() ? host : QString())).toString(), 1, Qt::MatchRecursive).value(0));
+	m_ui->proxyComboBox->setCurrentIndex(m_ui->proxyComboBox->model()->match(m_ui->proxyComboBox->model()->index(0, 0), ProxiesModel::IdentifierRole, SettingsManager::getOption(SettingsManager::Network_ProxyOption, (m_ui->proxyOverrideCheckBox->isChecked() ? host : QString())).toString(), 1, Qt::MatchRecursive).value(0));
 
-	const QStringList contentBlockingProfiles(SettingsManager::getOption(SettingsManager::ContentBlocking_ProfilesOption, url).toStringList());
+	const QStringList contentBlockingProfiles(SettingsManager::getOption(SettingsManager::ContentBlocking_ProfilesOption, host).toStringList());
 
 	m_ui->contentBlockingProfilesViewWidget->setModel(ContentBlockingManager::createModel(this, contentBlockingProfiles));
 	m_ui->contentBlockingProfilesViewWidget->setItemDelegateForColumn(1, new ContentBlockingIntervalDelegate(this));
@@ -506,6 +508,11 @@ QVector<QNetworkCookie> WebsitePreferencesDialog::getCookiesToDelete() const
 QVector<QNetworkCookie> WebsitePreferencesDialog::getCookiesToInsert() const
 {
 	return m_cookiesToInsert;
+}
+
+QString WebsitePreferencesDialog::getHost() const
+{
+	return m_ui->websiteLineEditWidget->text().simplified();
 }
 
 }

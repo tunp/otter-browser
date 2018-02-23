@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -35,7 +35,7 @@ class ClearHistoryDialog final : public Dialog
 	Q_OBJECT
 
 public:
-	explicit ClearHistoryDialog(const QStringList &clearSettings, bool configureMode, QWidget *parent = nullptr);
+	explicit ClearHistoryDialog(const QStringList &clearSettings, bool isConfiguring, QWidget *parent = nullptr);
 	~ClearHistoryDialog();
 
 	QStringList getClearSettings() const;
@@ -47,7 +47,7 @@ protected slots:
 	void clearHistory();
 
 private:
-	bool m_configureMode;
+	bool m_isConfiguring;
 	Ui::ClearHistoryDialog *m_ui;
 };
 

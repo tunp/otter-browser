@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -55,16 +55,21 @@ public slots:
 	void triggerAction(int identifier, const QVariantMap &parameters = {}) override;
 
 protected:
+	struct BookmarkLocation final
+	{
+		BookmarksItem *folder = nullptr;
+		int row = -1;
+	};
+
 	void changeEvent(QEvent *event) override;
-	BookmarksItem* findFolder(const QModelIndex &index);
+	BookmarkLocation getBookmarkCreationLocation();
 
 protected slots:
 	void addBookmark();
 	void addFolder();
 	void addSeparator();
 	void removeBookmark();
-	void restoreBookmark();
-	void openBookmark(const QModelIndex &index = {});
+	void openBookmark();
 	void bookmarkProperties();
 	void showContextMenu(const QPoint &position);
 	void updateActions();

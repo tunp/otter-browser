@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2015 Piotr Wójcik <chocimier@tlen.pl>
 * Copyright (C) 2016 - 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
@@ -310,7 +310,10 @@ void Window::requestClose()
 
 		emit aboutToClose();
 
-		QTimer::singleShot(50, this, &Window::notifyRequestedCloseWindow);
+		QTimer::singleShot(50, this, [&]()
+		{
+			emit requestedCloseWindow(this);
+		});
 	}
 }
 
@@ -407,11 +410,6 @@ void Window::handleToolBarStateChanged(int identifier, const ToolBarState &state
 	{
 		m_addressBar->setState(state);
 	}
-}
-
-void Window::notifyRequestedCloseWindow()
-{
-	emit requestedCloseWindow(this);
 }
 
 void Window::updateNavigationBar()
@@ -820,7 +818,7 @@ SessionWindow Window::getSession() const
 
 		if (m_contentsWidget->getType() == QLatin1String("web"))
 		{
-			WebContentsWidget *webWidget(qobject_cast<WebContentsWidget*>(m_contentsWidget));
+			const WebContentsWidget *webWidget(qobject_cast<WebContentsWidget*>(m_contentsWidget));
 
 			if (webWidget)
 			{
@@ -925,7 +923,7 @@ bool Window::event(QEvent *event)
 {
 	if (event->type() == QEvent::ParentChange)
 	{
-		QMdiSubWindow *subWindow(qobject_cast<QMdiSubWindow*>(parentWidget()));
+		const QMdiSubWindow *subWindow(qobject_cast<QMdiSubWindow*>(parentWidget()));
 
 		if (subWindow)
 		{

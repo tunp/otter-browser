@@ -120,9 +120,37 @@
 					"title": "Frame",
 					"actions":
 					[
-						"OpenFrameInCurrentTab",
-						"OpenFrameInNewTab",
-						"OpenFrameInNewTabBackground",
+						{
+							"type": "action",
+							"identifier": "OpenFrame",
+							"parameters":
+							{
+								"hints": [
+									"CurrentTab"
+								]
+							}
+						},
+						{
+							"type": "action",
+							"identifier": "OpenFrame",
+							"parameters":
+							{
+								"hints": [
+									"NewTab"
+								]
+							}
+						},
+						{
+							"type": "action",
+							"identifier": "OpenFrame",
+							"parameters":
+							{
+								"hints": [
+									"NewTab",
+									"Background"
+								]
+							}
+						},
 						"separator",
 						"ViewFrameSource",
 						"ReloadFrame",
@@ -234,11 +262,49 @@
 			"actions":
 			[
 				"OpenLink",
-				"OpenLinkInNewTab",
-				"OpenLinkInNewTabBackground",
+				{
+					"type": "action",
+					"identifier": "OpenLink",
+					"parameters":
+					{
+						"hints": [
+							"NewTab"
+						]
+					}
+				},
+				{
+					"type": "action",
+					"identifier": "OpenLink",
+					"parameters":
+					{
+						"hints": [
+							"NewTab",
+							"Background"
+						]
+					}
+				},
 				"separator",
-				"OpenLinkInNewWindow",
-				"OpenLinkInNewWindowBackground",
+				{
+					"type": "action",
+					"identifier": "OpenLink",
+					"parameters":
+					{
+						"hints": [
+							"NewWindow"
+						]
+					}
+				},
+				{
+					"type": "action",
+					"identifier": "OpenLink",
+					"parameters":
+					{
+						"hints": [
+							"NewWindow",
+							"Background"
+						]
+					}
+				},
 				"separator",
 				"BookmarkLink",
 				"CopyLinkToClipboard",
@@ -255,8 +321,27 @@
 			"includeIn": "image",
 			"actions":
 			[
-				"OpenImageInNewTab",
-				"OpenImageInNewTabBackground",
+				{
+					"type": "action",
+					"identifier": "OpenImage",
+					"parameters":
+					{
+						"hints": [
+							"NewTab"
+						]
+					}
+				},
+				{
+					"type": "action",
+					"identifier": "OpenImage",
+					"parameters":
+					{
+						"hints": [
+							"NewTab",
+							"Background"
+						]
+					}
+				},
 				"ReloadImage",
 				"CopyImageUrlToClipboard",
 				"separator",

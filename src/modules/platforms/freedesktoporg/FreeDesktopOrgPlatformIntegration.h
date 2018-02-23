@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2010 David Sansome <me@davidsansome.com>
 * Copyright (C) 2015 Piotr Wójcik <chocimier@tlen.pl>
 *
@@ -22,7 +22,6 @@
 #ifndef OTTER_FREEDESKTOPORGPLATFORMINTEGRATION_H
 #define OTTER_FREEDESKTOPORGPLATFORMINTEGRATION_H
 
-#include "../../../core/Utils.h"
 #include "../../../core/PlatformIntegration.h"
 
 #include <QtDBus/QDBusArgument>
@@ -51,12 +50,14 @@ public:
 public slots:
 	void showNotification(Notification *notification) override;
 
+protected:
+	void setTransfersProgress(qint64 bytesTotal, qint64 bytesReceived, qint64 transferAmount);
+
 protected slots:
-	void createApplicationsCache();
 	void handleNotificationCallFinished(QDBusPendingCallWatcher *watcher);
 	void handleNotificationIgnored(quint32 identifier, quint32 reason);
 	void handleNotificationClicked(quint32 identifier, const QString &action);
-	void updateTransfersProgress(bool clear = false);
+	void updateTransfersProgress();
 
 private:
 	QDBusInterface *m_notificationsInterface;

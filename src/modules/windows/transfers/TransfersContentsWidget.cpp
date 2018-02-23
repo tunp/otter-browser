@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -28,7 +28,6 @@
 #include <QtCore/QDir>
 #include <QtCore/QFileInfo>
 #include <QtCore/QtMath>
-#include <QtCore/QQueue>
 #include <QtGui/QClipboard>
 #include <QtGui/QKeyEvent>
 #include <QtWidgets/QApplication>
@@ -129,6 +128,10 @@ void TransfersContentsWidget::changeEvent(QEvent *event)
 	if (event->type() == QEvent::LanguageChange)
 	{
 		m_ui->retranslateUi(this);
+
+		m_model->setHorizontalHeaderLabels({tr("Status"), tr("Filename"), tr("Size"), tr("Progress"), tr("Time"), tr("Speed"), tr("Started"), tr("Finished")});
+
+		updateActions();
 	}
 }
 
@@ -138,12 +141,10 @@ void TransfersContentsWidget::removeTransfer()
 
 	if (transfer)
 	{
-		if (transfer->getState() == Transfer::RunningState && QMessageBox::warning(this, tr("Warning"), tr("This transfer is still running.\nDo you really want to remove it?"), (QMessageBox::Yes | QMessageBox::Cancel)) == QMessageBox::Cancel)
+		if (transfer->getState() == Transfer::RunningState && QMessageBox::warning(this, tr("Warning"), tr("This file is still being downloaded.\nDo you really want to remove it?"), (QMessageBox::Yes | QMessageBox::Cancel)) == QMessageBox::Cancel)
 		{
 			return;
 		}
-
-		m_speeds.remove(transfer);
 
 		m_model->removeRow(m_ui->transfersViewWidget->currentIndex().row());
 
@@ -151,9 +152,9 @@ void TransfersContentsWidget::removeTransfer()
 	}
 }
 
-void TransfersContentsWidget::openTransfer(const QModelIndex &index)
+void TransfersContentsWidget::openTransfer()
 {
-	const Transfer *transfer(getTransfer(index.isValid() ? index : m_ui->transfersViewWidget->currentIndex()));
+	const Transfer *transfer(getTransfer(m_ui->transfersViewWidget->currentIndex()));
 
 	if (transfer)
 	{
@@ -161,9 +162,9 @@ void TransfersContentsWidget::openTransfer(const QModelIndex &index)
 	}
 }
 
-void TransfersContentsWidget::openTransferFolder(const QModelIndex &index)
+void TransfersContentsWidget::openTransferFolder()
 {
-	const Transfer *transfer(getTransfer(index.isValid() ? index : m_ui->transfersViewWidget->currentIndex()));
+	const Transfer *transfer(getTransfer(m_ui->transfersViewWidget->currentIndex()));
 
 	if (transfer)
 	{
@@ -173,11 +174,11 @@ void TransfersContentsWidget::openTransferFolder(const QModelIndex &index)
 
 void TransfersContentsWidget::copyTransferInformation()
 {
-	const QStandardItem *item(m_model->itemFromIndex(m_ui->transfersViewWidget->currentIndex()));
+	const QModelIndex index(m_ui->transfersViewWidget->currentIndex());
 
-	if (item)
+	if (index.isValid() && index.data(Qt::ToolTipRole).isValid())
 	{
-		QApplication::clipboard()->setText(item->toolTip().remove(QRegularExpression(QLatin1String("<[^>]*>"))));
+		QApplication::clipboard()->setText(index.data(Qt::ToolTipRole).toString().remove(QRegularExpression(QLatin1String("<[^>]*>"))));
 	}
 }
 
@@ -225,7 +226,7 @@ void TransfersContentsWidget::clearFinishedTransfers()
 void TransfersContentsWidget::handleTransferAdded(Transfer *transfer)
 {
 	QList<QStandardItem*> items({new QStandardItem(), new QStandardItem(QFileInfo(transfer->getTarget()).fileName())});
-	items[0]->setData(qVariantFromValue(static_cast<void*>(transfer)), Qt::UserRole);
+	items[0]->setData(qVariantFromValue(static_cast<void*>(transfer)), InstanceRole);
 	items[0]->setFlags(items[0]->flags() | Qt::ItemNeverHasChildren);
 	items[1]->setFlags(items[1]->flags() | Qt::ItemNeverHasChildren);
 
@@ -241,11 +242,6 @@ void TransfersContentsWidget::handleTransferAdded(Transfer *transfer)
 
 	m_ui->transfersViewWidget->openPersistentEditor(items[3]->index());
 
-	if (transfer->getState() == Transfer::RunningState)
-	{
-		m_speeds[transfer] = QQueue<qint64>();
-	}
-
 	handleTransferChanged(transfer);
 }
 
@@ -258,44 +254,8 @@ void TransfersContentsWidget::handleTransferChanged(Transfer *transfer)
 		return;
 	}
 
-	QString remainingTime;
-	const bool isIndeterminate(transfer->getBytesTotal() <= 0);
-
-	if (transfer->getState() == Transfer::RunningState)
-	{
-		if (!m_speeds.contains(transfer))
-		{
-			m_speeds[transfer] = QQueue<qint64>();
-		}
-
-		m_speeds[transfer].enqueue(transfer->getSpeed());
-
-		if (m_speeds[transfer].count() > 10)
-		{
-			m_speeds[transfer].dequeue();
-		}
-
-		if (!isIndeterminate)
-		{
-			qint64 speedSum(0);
-			const QQueue<qint64> speeds(m_speeds[transfer]);
-
-			for (int i = 0; i < speeds.count(); ++i)
-			{
-				speedSum += speeds.at(i);
-			}
-
-			speedSum /= (speeds.count());
-
-			remainingTime = Utils::formatElapsedTime(qreal(transfer->getBytesTotal() - transfer->getBytesReceived()) / speedSum);
-		}
-	}
-	else
-	{
-		m_speeds.remove(transfer);
-	}
-
 	QIcon icon;
+	const bool isIndeterminate(transfer->getBytesTotal() <= 0);
 
 	switch (transfer->getState())
 	{
@@ -313,7 +273,7 @@ void TransfersContentsWidget::handleTransferChanged(Transfer *transfer)
 			break;
 	}
 
-	const QString toolTip(tr("<div style=\"white-space:pre;\">Source: %1\nTarget: %2\nSize: %3\nDownloaded: %4\nProgress: %5</div>").arg(transfer->getSource().toDisplayString().toHtmlEscaped()).arg(transfer->getTarget().toHtmlEscaped()).arg(isIndeterminate ? tr("Unknown") : Utils::formatUnit(transfer->getBytesTotal(), false, 1, true)).arg(Utils::formatUnit(transfer->getBytesReceived(), false, 1, true)).arg(isIndeterminate ? tr("Unknown") : QStringLiteral("%1%").arg(((static_cast<qreal>(transfer->getBytesReceived()) / transfer->getBytesTotal()) * 100), 0, 'f', 1)));
+	const QString toolTip(tr("<div style=\"white-space:pre;\">Source: %1\nTarget: %2\nSize: %3\nDownloaded: %4\nProgress: %5</div>").arg(transfer->getSource().toDisplayString().toHtmlEscaped()).arg(transfer->getTarget().toHtmlEscaped()).arg(isIndeterminate ? tr("Unknown") : Utils::formatUnit(transfer->getBytesTotal(), false, 1, true)).arg(Utils::formatUnit(transfer->getBytesReceived(), false, 1, true)).arg(isIndeterminate ? tr("Unknown") : QStringLiteral("%1%").arg(Utils::calculatePercent(transfer->getBytesReceived(), transfer->getBytesTotal()), 0, 'f', 1)));
 
 	for (int i = 0; i < m_model->columnCount(); ++i)
 	{
@@ -340,12 +300,12 @@ void TransfersContentsWidget::handleTransferChanged(Transfer *transfer)
 			case 3:
 				m_model->setData(index, transfer->getBytesReceived(), BytesReceivedRole);
 				m_model->setData(index, transfer->getBytesTotal(), BytesTotalRole);
-				m_model->setData(index, ((transfer->getBytesTotal() > 0) ? qFloor((static_cast<qreal>(transfer->getBytesReceived()) / transfer->getBytesTotal()) * 100) : -1), ProgressRole);
+				m_model->setData(index, ((transfer->getBytesTotal() > 0) ? qFloor(Utils::calculatePercent(transfer->getBytesReceived(), transfer->getBytesTotal())) : -1), ProgressRole);
 				m_model->setData(index, transfer->getState(), StateRole);
 
 				break;
 			case 4:
-				m_model->setData(index, remainingTime, Qt::DisplayRole);
+				m_model->setData(index, ((isIndeterminate || transfer->getRemainingTime() <= 0) ? QString() : Utils::formatElapsedTime(transfer->getRemainingTime())), Qt::DisplayRole);
 
 				break;
 			case 5:
@@ -415,8 +375,6 @@ void TransfersContentsWidget::handleTransferRemoved(Transfer *transfer)
 	{
 		m_model->removeRow(row);
 	}
-
-	m_speeds.remove(transfer);
 }
 
 void TransfersContentsWidget::showContextMenu(const QPoint &position)
@@ -426,9 +384,9 @@ void TransfersContentsWidget::showContextMenu(const QPoint &position)
 
 	if (transfer)
 	{
-		const bool canOpen(QFileInfo(transfer->getTarget()).exists());
-
-		menu.addAction(tr("Open"), this, SLOT(openTransfer()))->setEnabled(canOpen);
+		const bool canOpen(QFile::exists(transfer->getTarget()));
+		QAction *openAction(menu.addAction(tr("Open")));
+		openAction->setEnabled(canOpen);
 
 		Menu *openWithMenu(new Menu(Menu::OpenInApplicationMenuRole, this));
 		openWithMenu->setEnabled(canOpen);
@@ -437,14 +395,27 @@ void TransfersContentsWidget::showContextMenu(const QPoint &position)
 		openWithMenu->setMenuOptions({{QLatin1String("mimeType"), transfer->getMimeType().name()}});
 
 		menu.addMenu(openWithMenu);
-		menu.addAction(tr("Open Folder"), this, SLOT(openTransferFolder()))->setEnabled(canOpen || QFileInfo(transfer->getTarget()).dir().exists());
+
+		QAction *openFolderAction(menu.addAction(tr("Open Folder")));
+		openFolderAction->setEnabled(canOpen || QFileInfo(transfer->getTarget()).dir().exists());
+
 		menu.addSeparator();
-		menu.addAction(((transfer->getState() == Transfer::ErrorState) ? tr("Resume") : tr("Stop")), this, SLOT(stopResumeTransfer()))->setEnabled(transfer->getState() == Transfer::RunningState || transfer->getState() == Transfer::ErrorState);
-		menu.addAction(tr("Redownload"), this, SLOT(redownloadTransfer()));
+
+		QAction *stopResumeAction(menu.addAction((transfer->getState() == Transfer::ErrorState) ? tr("Resume") : tr("Stop")));
+		stopResumeAction->setEnabled(transfer->getState() == Transfer::RunningState || transfer->getState() == Transfer::ErrorState);
+
+		connect(menu.addAction(tr("Redownload")), &QAction::triggered, this, &TransfersContentsWidget::redownloadTransfer);
+
 		menu.addSeparator();
-		menu.addAction(tr("Copy Transfer Information"), this, SLOT(copyTransferInformation()));
+
+		connect(menu.addAction(tr("Copy Transfer Information")), &QAction::triggered, this, &TransfersContentsWidget::copyTransferInformation);
+
 		menu.addSeparator();
-		menu.addAction(tr("Remove"), this, SLOT(removeTransfer()));
+
+		connect(menu.addAction(tr("Remove")), &QAction::triggered, this, &TransfersContentsWidget::removeTransfer);
+		connect(openAction, &QAction::triggered, this, &TransfersContentsWidget::openTransfer);
+		connect(openFolderAction, &QAction::triggered, this, &TransfersContentsWidget::openTransferFolder);
+		connect(stopResumeAction, &QAction::triggered, this, &TransfersContentsWidget::stopResumeTransfer);
 	}
 
 	const QVector<Transfer*> transfers(TransfersManager::getTransfers());
@@ -458,7 +429,11 @@ void TransfersContentsWidget::showContextMenu(const QPoint &position)
 		}
 	}
 
-	menu.addAction(tr("Clear Finished Transfers"), this, SLOT(clearFinishedTransfers()))->setEnabled(finishedTransfers > 0);
+	QAction *clearFinishedAction(menu.addAction(tr("Clear Finished Transfers")));
+	clearFinishedAction->setEnabled(finishedTransfers > 0);
+
+	connect(clearFinishedAction, &QAction::triggered, this, &TransfersContentsWidget::clearFinishedTransfers);
+
 	menu.exec(m_ui->transfersViewWidget->mapToGlobal(position));
 }
 
@@ -490,7 +465,7 @@ void TransfersContentsWidget::updateActions()
 		m_ui->targetLabelWidget->setUrl(QUrl(transfer->getTarget()));
 		m_ui->sizeLabelWidget->setText(isIndeterminate ? tr("Unknown") : Utils::formatUnit(transfer->getBytesTotal(), false, 1, true));
 		m_ui->downloadedLabelWidget->setText(Utils::formatUnit(transfer->getBytesReceived(), false, 1, true));
-		m_ui->progressLabelWidget->setText(isIndeterminate ? tr("Unknown") : QStringLiteral("%1%").arg(((static_cast<qreal>(transfer->getBytesReceived()) / transfer->getBytesTotal()) * 100), 0, 'f', 1));
+		m_ui->progressLabelWidget->setText(isIndeterminate ? tr("Unknown") : QStringLiteral("%1%").arg(Utils::calculatePercent(transfer->getBytesReceived(), transfer->getBytesTotal()), 0, 'f', 1));
 	}
 	else
 	{
@@ -559,7 +534,7 @@ Transfer* TransfersContentsWidget::getTransfer(const QModelIndex &index) const
 {
 	if (index.isValid())
 	{
-		return static_cast<Transfer*>(index.sibling(index.row(), 0).data(Qt::UserRole).value<void*>());
+		return static_cast<Transfer*>(index.sibling(index.row(), 0).data(InstanceRole).value<void*>());
 	}
 
 	return nullptr;
@@ -567,7 +542,7 @@ Transfer* TransfersContentsWidget::getTransfer(const QModelIndex &index) const
 
 QString TransfersContentsWidget::getTitle() const
 {
-	return tr("Transfers");
+	return tr("Downloads");
 }
 
 QLatin1String TransfersContentsWidget::getType() const
@@ -592,9 +567,8 @@ ActionsManager::ActionDefinition::State TransfersContentsWidget::getActionState(
 		case ActionsManager::CopyAction:
 		case ActionsManager::DeleteAction:
 			{
-				const Transfer *transfer(getTransfer(m_ui->transfersViewWidget->getCurrentIndex()));
 				ActionsManager::ActionDefinition::State state(ActionsManager::getActionDefinition(identifier).getDefaultState());
-				state.isEnabled = (transfer != nullptr);
+				state.isEnabled = (getTransfer(m_ui->transfersViewWidget->getCurrentIndex()) != nullptr);
 
 				return state;
 			}
@@ -621,7 +595,7 @@ int TransfersContentsWidget::findTransfer(Transfer *transfer) const
 
 	for (int i = 0; i < m_model->rowCount(); ++i)
 	{
-		if (transfer == static_cast<Transfer*>(m_model->index(i, 0).data(Qt::UserRole).value<void*>()))
+		if (transfer == getTransfer(m_model->index(i, 0)))
 		{
 			return i;
 		}
@@ -636,18 +610,22 @@ bool TransfersContentsWidget::eventFilter(QObject *object, QEvent *event)
 	{
 		const QKeyEvent *keyEvent(static_cast<QKeyEvent*>(event));
 
-		if (keyEvent && (keyEvent->key() == Qt::Key_Enter || keyEvent->key() == Qt::Key_Return))
+		if (keyEvent)
 		{
-			openTransfer();
+			switch (keyEvent->key())
+			{
+				case Qt::Key_Delete:
+					removeTransfer();
 
-			return true;
-		}
+					return true;
+				case Qt::Key_Enter:
+				case Qt::Key_Return:
+					openTransfer();
 
-		if (keyEvent && keyEvent->key() == Qt::Key_Delete)
-		{
-			removeTransfer();
-
-			return true;
+					return true;
+				default:
+					break;
+			}
 		}
 	}
 	else if (object == m_ui->downloadLineEditWidget && event->type() == QEvent::KeyPress)

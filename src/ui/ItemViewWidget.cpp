@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2015 - 2016 Jan Bajer aka bajasoft <jbajer@gmail.com>
 * Copyright (C) 2015 - 2016 Piotr Wójcik <chocimier@tlen.pl>
 *
@@ -390,10 +390,9 @@ void ItemViewWidget::ensureInitialized()
 		return;
 	}
 
-	const QString suffix(QLatin1String("ViewWidget"));
-	const QString type(objectName().endsWith(suffix) ? objectName().left(objectName().length() - suffix.length()) : objectName());
+	const QString name(normalizeViewName(objectName()));
 
-	if (type.isEmpty())
+	if (name.isEmpty())
 	{
 		return;
 	}
@@ -444,7 +443,7 @@ void ItemViewWidget::ensureInitialized()
 	}
 
 	IniSettings settings(SessionsManager::getReadableDataPath(QLatin1String("views.ini")));
-	settings.beginGroup(type);
+	settings.beginGroup(name);
 
 	setSort(settings.getValue(QLatin1String("sortColumn"), -1).toInt(), ((settings.getValue(QLatin1String("sortOrder"), QLatin1String("ascending")).toString() == QLatin1String("ascending")) ? Qt::AscendingOrder : Qt::DescendingOrder));
 
@@ -462,7 +461,7 @@ void ItemViewWidget::ensureInitialized()
 
 		for (int i = 0; i < columns.count(); ++i)
 		{
-			const int column(columns[i].toInt());
+			const int column(columns.at(i).toInt());
 
 			setColumnHidden(column, false);
 
@@ -614,16 +613,15 @@ void ItemViewWidget::saveState()
 		return;
 	}
 
-	const QString suffix(QLatin1String("ViewWidget"));
-	const QString type(objectName().endsWith(suffix) ? objectName().left(objectName().length() - suffix.length()) : objectName());
+	const QString name(normalizeViewName(objectName()));
 
-	if (type.isEmpty())
+	if (name.isEmpty())
 	{
 		return;
 	}
 
 	IniSettings settings(SessionsManager::getWritableDataPath(QLatin1String("views.ini")));
-	settings.beginGroup(type);
+	settings.beginGroup(name);
 
 	QStringList columns;
 
@@ -784,7 +782,7 @@ void ItemViewWidget::setModel(QAbstractItemModel *model)
 
 void ItemViewWidget::setModel(QAbstractItemModel *model, bool useSortProxy)
 {
-	QAbstractItemModel *usedModel(model);
+	QAbstractItemModel *activeModel(model);
 
 	if (model && useSortProxy)
 	{
@@ -792,7 +790,7 @@ void ItemViewWidget::setModel(QAbstractItemModel *model, bool useSortProxy)
 		m_proxyModel->setSourceModel(model);
 		m_proxyModel->setDynamicSortFilter(true);
 
-		usedModel = m_proxyModel;
+		activeModel = m_proxyModel;
 	}
 	else if (m_proxyModel)
 	{
@@ -802,7 +800,7 @@ void ItemViewWidget::setModel(QAbstractItemModel *model, bool useSortProxy)
 
 	m_sourceModel = qobject_cast<QStandardItemModel*>(model);
 
-	QTreeView::setModel(usedModel);
+	QTreeView::setModel(activeModel);
 
 	if (!model)
 	{
@@ -877,6 +875,18 @@ QStandardItem* ItemViewWidget::getItem(const QModelIndex &index) const
 QStandardItem* ItemViewWidget::getItem(int row, int column, const QModelIndex &parent) const
 {
 	return(m_sourceModel ? m_sourceModel->itemFromIndex(getIndex(row, column, parent)) : nullptr);
+}
+
+QString ItemViewWidget::normalizeViewName(QString name)
+{
+	name.remove(QLatin1String("Otter__"));
+
+	if (name.endsWith(QLatin1String("ViewWidget")))
+	{
+		name.remove((name.length() - 10), 10);
+	}
+
+	return name;
 }
 
 QModelIndex ItemViewWidget::getCheckedIndex(const QModelIndex &parent) const
@@ -988,7 +998,7 @@ bool ItemViewWidget::isExclusive() const
 
 bool ItemViewWidget::applyFilter(const QModelIndex &index)
 {
-	bool hasFound(m_filterString.isEmpty());
+	bool hasMatch(m_filterString.isEmpty());
 	const bool isFolder(!index.flags().testFlag(Qt::ItemNeverHasChildren));
 
 	if (isFolder)
@@ -1004,7 +1014,7 @@ bool ItemViewWidget::applyFilter(const QModelIndex &index)
 		{
 			if (applyFilter(index.child(i, 0)))
 			{
-				hasFound = true;
+				hasMatch = true;
 			}
 		}
 	}
@@ -1029,27 +1039,27 @@ bool ItemViewWidget::applyFilter(const QModelIndex &index)
 
 				if (!roleData.isNull() && roleData.toString().contains(m_filterString, Qt::CaseInsensitive))
 				{
-					hasFound = true;
+					hasMatch = true;
 
 					break;
 				}
 			}
 
-			if (hasFound)
+			if (hasMatch)
 			{
 				break;
 			}
 		}
 	}
 
-	setRowHidden(index.row(), index.parent(), (!hasFound || (isFolder && getRowCount(index) == 0)));
+	setRowHidden(index.row(), index.parent(), (!hasMatch || (isFolder && getRowCount(index) == 0)));
 
 	if (isFolder)
 	{
-		setExpanded(index, ((hasFound && !m_filterString.isEmpty()) || (m_filterString.isEmpty() && m_expandedBranches.contains(index))));
+		setExpanded(index, ((hasMatch && !m_filterString.isEmpty()) || (m_filterString.isEmpty() && m_expandedBranches.contains(index))));
 	}
 
-	return hasFound;
+	return hasMatch;
 }
 
 bool ItemViewWidget::isModified() const

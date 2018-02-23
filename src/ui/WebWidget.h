@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2015 Piotr Wójcik <chocimier@tlen.pl>
 * Copyright (C) 2015 Jan Bajer aka bajasoft <jbajer@gmail.com>
 * Copyright (C) 2017 Piktas Zuikis <piktas.zuikis@inbox.lt>
@@ -160,8 +160,8 @@ public:
 		QUrl imageUrl;
 		QUrl linkUrl;
 		QUrl mediaUrl;
-		QPoint position;
-		QRect geometry;
+		QPoint hitPosition;
+		QRect elementGeometry;
 		qreal playbackRate = 1;
 		HitTestFlags flags = NoFlagsTest;
 	};
@@ -175,9 +175,15 @@ public:
 
 	struct SslInformation final
 	{
+		struct SslError final
+		{
+			QSslError error;
+			QUrl url;
+		};
+
 		QSslCipher cipher;
 		QVector<QSslCertificate> certificates;
-		QVector<QPair<QUrl, QSslError> > errors;
+		QVector<SslError> errors;
 	};
 
 	virtual void search(const QString &query, const QString &searchEngine);
@@ -209,6 +215,7 @@ public:
 	virtual LinkUrl getActiveFrame() const;
 	virtual LinkUrl getActiveImage() const;
 	virtual LinkUrl getActiveLink() const;
+	virtual LinkUrl getActiveMedia() const;
 	virtual SslInformation getSslInformation() const;
 	virtual WindowHistoryInformation getHistory() const = 0;
 	virtual HitTestResult getHitTestResult(const QPoint &position);
@@ -259,6 +266,7 @@ protected:
 	void updateHitTestResult(const QPoint &position);
 	void setClickPosition(const QPoint &position);
 	QString suggestSaveFileName(SaveFormat format) const;
+	QString getOpenActionText(SessionsManager::OpenHints hints) const;
 	static QString getFastForwardScript(bool isSelectingTheBestLink);
 	HitTestResult getCurrentHitTestResult() const;
 	PermissionPolicy getPermission(FeaturePermission feature, const QUrl &url) const;
@@ -305,7 +313,7 @@ signals:
 	void aboutToReload();
 	void needsAttention();
 	void requestedCloseWindow();
-	void requestedNewWindow(WebWidget *widget, SessionsManager::OpenHints hints);
+	void requestedNewWindow(WebWidget *widget, SessionsManager::OpenHints hints, const QVariantMap &parameters);
 	void requestedPopupWindow(const QUrl &parentUrl, const QUrl &popupUrl);
 	void requestedPermission(WebWidget::FeaturePermission feature, const QUrl &url, bool isCancellation);
 	void requestedSavePassword(const PasswordsManager::PasswordInformation &password, bool isUpdate);

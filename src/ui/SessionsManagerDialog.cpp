@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -25,7 +25,6 @@
 #include "ui_SessionsManagerDialog.h"
 
 #include <QtWidgets/QMessageBox>
-#include <QtWidgets/QTableWidgetItem>
 
 namespace Otter
 {
@@ -96,6 +95,7 @@ void SessionsManagerDialog::changeEvent(QEvent *event)
 	if (event->type() == QEvent::LanguageChange)
 	{
 		m_ui->retranslateUi(this);
+		m_ui->sessionsViewWidget->getSourceModel()->setHorizontalHeaderLabels({tr("Title"), tr("Identifier"), tr("Windows")});
 	}
 }
 

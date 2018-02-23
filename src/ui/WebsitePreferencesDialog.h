@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2014 - 2016 Piotr Wójcik <chocimier@tlen.pl>
 * Copyright (C) 2015 - 2016 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
@@ -40,11 +40,12 @@ class WebsitePreferencesDialog final : public Dialog
 	Q_OBJECT
 
 public:
-	explicit WebsitePreferencesDialog(const QUrl &url, const QVector<QNetworkCookie> &cookies, QWidget *parent = nullptr);
+	explicit WebsitePreferencesDialog(const QString &host, const QVector<QNetworkCookie> &cookies, QWidget *parent = nullptr);
 	~WebsitePreferencesDialog();
 
 	QVector<QNetworkCookie> getCookiesToDelete() const;
 	QVector<QNetworkCookie> getCookiesToInsert() const;
+	QString getHost() const;
 
 protected:
 	void changeEvent(QEvent *event) override;

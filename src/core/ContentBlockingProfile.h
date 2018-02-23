@@ -2,7 +2,7 @@
 * Otter Browser: Web browser controlled by the user, not vice-versa.
 * Copyright (C) 2010 - 2014 David Rosca <nowrep@gmail.com>
 * Copyright (C) 2014 - 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -65,9 +65,7 @@ public:
 	QUrl getUpdateUrl() const;
 	QDateTime getLastUpdate() const;
 	ContentBlockingManager::CheckResult checkUrl(const QUrl &baseUrl, const QUrl &requestUrl, NetworkManager::ResourceType resourceType);
-	QStringList getStyleSheet();
-	QStringList getStyleSheetBlackList(const QString &domain);
-	QStringList getStyleSheetWhiteList(const QString &domain);
+	ContentBlockingManager::CosmeticFiltersResult getCosmeticFilters(const QStringList &domains, bool isDomainOnly);
 	QVector<QLocale::Language> getLanguages() const;
 	ProfileCategory getCategory() const;
 	ProfileFlags getFlags() const;
@@ -159,10 +157,10 @@ private:
 	QUrl m_updateUrl;
 	QDateTime m_lastUpdate;
 	QRegularExpression m_domainExpression;
-	QStringList m_styleSheet;
+	QStringList m_cosmeticFiltersRules;
 	QVector<QLocale::Language> m_languages;
-	QMultiHash<QString, QString> m_styleSheetBlackList;
-	QMultiHash<QString, QString> m_styleSheetWhiteList;
+	QMultiHash<QString, QString> m_cosmeticFiltersDomainRules;
+	QMultiHash<QString, QString> m_cosmeticFiltersDomainExceptions;
 	ProfileCategory m_category;
 	ProfileFlags m_flags;
 	int m_updateInterval;

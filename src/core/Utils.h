@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2014 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -84,7 +84,7 @@ struct SaveInformation final
 {
 	QString path;
 	QString filter;
-	bool canOverwriteExisting = false;
+	bool canSave = false;
 };
 
 namespace Utils
@@ -97,18 +97,21 @@ QString createIdentifier(const QString &source, const QStringList &exclude, bool
 QString createErrorPage(const ErrorPageInformation &information);
 QString elideText(const QString &text, QWidget *widget = nullptr, int width = -1);
 QString savePixmapAsDataUri(const QPixmap &pixmap);
+QString extractHost(const QUrl &url);
 QString formatElapsedTime(int value);
 QString formatDateTime(const QDateTime &dateTime, QString format = {}, bool allowFancy = true);
 QString formatUnit(qint64 value, bool isSpeed = false, int precision = 1, bool appendRaw = false);
 QString formatFileTypes(const QStringList &filters = {});
 QString normalizePath(const QString &path);
+QUrl expandUrl(const QUrl &url);
 QUrl normalizeUrl(QUrl url);
 QLocale createLocale(const QString &name);
 QPixmap loadPixmapFromDataUri(const QString &data);
-SaveInformation getSavePath(const QString &fileName, QString path = {}, QStringList filters = {}, bool forceAsk = false);
+SaveInformation getSavePath(const QString &fileName, const QString &directory = {}, QStringList filters = {}, bool forceAsk = false);
 QStringList getOpenPaths(const QStringList &fileNames = {}, QStringList filters = {}, bool selectMultiple = false);
 QVector<QUrl> extractUrls(const QMimeData *mimeData);
 QVector<ApplicationInformation> getApplicationsForMimeType(const QMimeType &mimeType);
+qreal calculatePercent(qint64 amount, qint64 total, int multiplier = 100);
 bool isUrlEmpty(const QUrl &url);
 
 }

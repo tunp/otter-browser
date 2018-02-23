@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2014 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -186,11 +186,11 @@ QString createErrorPage(const ErrorPageInformation &information)
 
 			break;
 		case ErrorPageInformation::ConnectionInsecureError:
-			introduction = QCoreApplication::translate("utils", "The owner of <strong>%1</strong> has configured their page improperly. To protect your information from being stolen, connection to this website was aborted.").arg(information.url.host().isEmpty() ? QLatin1String("localhost") : information.url.host());
+			introduction = QCoreApplication::translate("utils", "The owner of <strong>%1</strong> has configured their page improperly. To protect your information from being stolen, connection to this website was aborted.").arg(extractHost(information.url));
 
 			break;
 		case ErrorPageInformation::FraudAttemptError:
-			introduction = QCoreApplication::translate("utils", "This web page at <strong>%1</strong> has been reported as a web forgery. To protect your information from being stolen, connection to this website was aborted.").arg(information.url.host().isEmpty() ? QLatin1String("localhost") : information.url.host());
+			introduction = QCoreApplication::translate("utils", "This web page at <strong>%1</strong> has been reported as a web forgery. To protect your information from being stolen, connection to this website was aborted.").arg(extractHost(information.url));
 
 			break;
 		default:
@@ -252,12 +252,6 @@ QString createErrorPage(const ErrorPageInformation &information)
 
 	QTextStream stream(&file);
 	stream.setCodec("UTF-8");
-
-	QHash<QString, QString> variables;
-	variables[QLatin1String("dir")] = (QGuiApplication::isLeftToRight() ? QLatin1String("ltr") : QLatin1String("rtl"));
-	variables[QLatin1String("title")] = QCoreApplication::translate("utils", "Error");
-	variables[QLatin1String("header")] = title;
-	variables[QLatin1String("introduction")] = introduction;
 
 	QString mainTemplate(stream.readAll());
 	const QRegularExpression advancedActionsExpression(QLatin1String("<!--advancedActions:begin-->(.*)<!--advancedActions:end-->"), (QRegularExpression::DotMatchesEverythingOption | QRegularExpression::MultilineOption));
@@ -325,6 +319,8 @@ QString createErrorPage(const ErrorPageInformation &information)
 		}
 	}
 
+	QHash<QString, QString> variables({{QLatin1String("dir"), (QGuiApplication::isLeftToRight() ? QLatin1String("ltr") : QLatin1String("rtl"))}, {QLatin1String("title"), QCoreApplication::translate("utils", "Error")}, {QLatin1String("header"), title}, {QLatin1String("introduction"), introduction}});
+
 	if (information.description.isEmpty())
 	{
 		mainTemplate.remove(descriptionExpression);
@@ -359,7 +355,7 @@ QString createErrorPage(const ErrorPageInformation &information)
 
 	for (iterator = variables.begin(); iterator != variables.end(); ++iterator)
 	{
-		mainTemplate.replace(QStringLiteral("{%1}").arg(iterator.key()), iterator.value());
+		mainTemplate.replace(QLatin1Char('{') + iterator.key() + QLatin1Char('}'), iterator.value());
 	}
 
 	return mainTemplate;
@@ -386,8 +382,18 @@ QString savePixmapAsDataUri(const QPixmap &pixmap)
 	return QStringLiteral("data:image/png;base64,%1").arg(QString(data.toBase64()));
 }
 
+QString extractHost(const QUrl &url)
+{
+	return (url.isLocalFile() ? QLatin1String("localhost") : url.host());
+}
+
 QString formatElapsedTime(int value)
 {
+	if (value < 0)
+	{
+		return {};
+	}
+
 	QTime time(0, 0);
 	time = time.addSecs(value);
 
@@ -447,13 +453,13 @@ QString formatUnit(qint64 value, bool isSpeed, int precision, bool appendRaw)
 		{
 			if (value > 1073741824)
 			{
-				return QCoreApplication::translate("utils", (isSpeed ? "%1 GB/s" : "%1 GB")).arg((value / 1073741824.0), 0, 'f', precision) + (appendRaw ? QString(isSpeed ? QLatin1String(" (%1 B/s)") : QLatin1String(" (%1 B)")).arg(value) : QString());
+				return QCoreApplication::translate("utils", (isSpeed ? "%1 GB/s" : "%1 GB")).arg((static_cast<qreal>(value) / static_cast<qreal>(1073741824)), 0, 'f', precision) + (appendRaw ? QString(isSpeed ? QLatin1String(" (%1 B/s)") : QLatin1String(" (%1 B)")).arg(value) : QString());
 			}
 
-			return QCoreApplication::translate("utils", (isSpeed ? "%1 MB/s" : "%1 MB")).arg((value / 1048576.0), 0, 'f', precision) + (appendRaw ? QString(isSpeed ? QLatin1String(" (%1 B/s)") : QLatin1String(" (%1 B)")).arg(value) : QString());
+			return QCoreApplication::translate("utils", (isSpeed ? "%1 MB/s" : "%1 MB")).arg((static_cast<qreal>(value) / static_cast<qreal>(1048576)), 0, 'f', precision) + (appendRaw ? QString(isSpeed ? QLatin1String(" (%1 B/s)") : QLatin1String(" (%1 B)")).arg(value) : QString());
 		}
 
-		return QCoreApplication::translate("utils", (isSpeed ? "%1 KB/s" : "%1 KB")).arg((value / 1024.0), 0, 'f', precision) + (appendRaw ? QString(isSpeed ? QLatin1String(" (%1 B/s)") : QLatin1String(" (%1 B)")).arg(value) : QString());
+		return QCoreApplication::translate("utils", (isSpeed ? "%1 KB/s" : "%1 KB")).arg((static_cast<qreal>(value) / static_cast<qreal>(1024)), 0, 'f', precision) + (appendRaw ? QString(isSpeed ? QLatin1String(" (%1 B/s)") : QLatin1String(" (%1 B)")).arg(value) : QString());
 	}
 
 	return QCoreApplication::translate("utils", (isSpeed ? "%1 B/s" : "%1 B")).arg(value);
@@ -489,6 +495,27 @@ QString normalizePath(const QString &path)
 	}
 
 	return path;
+}
+
+QUrl expandUrl(const QUrl &url)
+{
+	if (url.isValid() && url.scheme().isEmpty() && !url.path().startsWith(QLatin1Char('/')))
+	{
+		QUrl httpUrl(url);
+		httpUrl.setScheme(QLatin1String("http"));
+
+		return httpUrl;
+	}
+
+	if (url.isValid() && (url.scheme().isEmpty() || url.scheme() == QLatin1String("file")))
+	{
+		QUrl localUrl(url);
+		localUrl.setScheme(QLatin1String("file"));
+
+		return localUrl;
+	}
+
+	return url;
 }
 
 QUrl normalizeUrl(QUrl url)
@@ -570,14 +597,10 @@ QVector<ApplicationInformation> getApplicationsForMimeType(const QMimeType &mime
 	return {};
 }
 
-SaveInformation getSavePath(const QString &fileName, QString path, QStringList filters, bool forceAsk)
+SaveInformation getSavePath(const QString &fileName, const QString &directory, QStringList filters, bool forceAsk)
 {
 	SaveInformation information;
-
-	if (!path.isEmpty())
-	{
-		path.append(QDir::separator() + fileName);
-	}
+	QString path(directory.isEmpty() ? QString() : directory + QDir::separator() + fileName);
 
 	if (filters.isEmpty())
 	{
@@ -611,7 +634,7 @@ SaveInformation getSavePath(const QString &fileName, QString path, QStringList f
 			}
 
 			information.filter = dialog.selectedNameFilter();
-			information.canOverwriteExisting = true;
+			information.canSave = true;
 
 			path = dialog.selectedFiles().value(0);
 		}
@@ -643,7 +666,11 @@ SaveInformation getSavePath(const QString &fileName, QString path, QStringList f
 	}
 	while (true);
 
-	if (!path.isEmpty())
+	if (path.isEmpty())
+	{
+		information.canSave = false;
+	}
+	else
 	{
 		SettingsManager::setOption(SettingsManager::Paths_SaveFileOption, QFileInfo(path).dir().canonicalPath());
 	}
@@ -651,6 +678,11 @@ SaveInformation getSavePath(const QString &fileName, QString path, QStringList f
 	information.path = path;
 
 	return information;
+}
+
+qreal calculatePercent(qint64 amount, qint64 total, int multiplier)
+{
+	return ((static_cast<qreal>(amount) / static_cast<qreal>(total)) * multiplier);
 }
 
 bool isUrlEmpty(const QUrl &url)

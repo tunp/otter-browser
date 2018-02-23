@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2014 Piotr Wójcik <chocimier@tlen.pl>
 * Copyright (C) 2015 - 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
@@ -107,9 +107,10 @@ QtWebKitNetworkManager::QtWebKitNetworkManager(bool isPrivate, QtWebKitCookieJar
 
 void QtWebKitNetworkManager::timerEvent(QTimerEvent *event)
 {
-	Q_UNUSED(event)
-
-	updateLoadingSpeed();
+	if (event->timerId() == m_loadingSpeedTimer)
+	{
+		updateLoadingSpeed();
+	}
 }
 
 void QtWebKitNetworkManager::addContentBlockingException(const QUrl &url, NetworkManager::ResourceType resourceType)
@@ -184,7 +185,7 @@ void QtWebKitNetworkManager::handleDownloadProgress(qint64 bytesReceived, qint64
 		{
 			setPageInformation(WebWidget::DocumentBytesReceivedInformation, bytesReceived);
 			setPageInformation(WebWidget::DocumentBytesTotalInformation, bytesTotal);
-			setPageInformation(WebWidget::DocumentLoadingProgressInformation, ((bytesTotal > 0) ? (((bytesReceived * 1.0) / bytesTotal) * 100) : -1));
+			setPageInformation(WebWidget::DocumentLoadingProgressInformation, ((bytesTotal > 0) ? Utils::calculatePercent(bytesReceived, bytesTotal) : -1));
 		}
 	}
 
@@ -197,7 +198,7 @@ void QtWebKitNetworkManager::handleDownloadProgress(qint64 bytesReceived, qint64
 
 	if (url.isValid() && url.scheme() != QLatin1String("data"))
 	{
-		setPageInformation(WebWidget::LoadingMessageInformation, tr("Receiving data from %1…").arg(reply->url().host().isEmpty() ? QLatin1String("localhost") : reply->url().host()));
+		setPageInformation(WebWidget::LoadingMessageInformation, tr("Receiving data from %1…").arg(Utils::extractHost(reply->url())));
 	}
 
 	const qint64 difference(bytesReceived - m_replies[reply].first);
@@ -238,8 +239,8 @@ void QtWebKitNetworkManager::handleRequestFinished(QNetworkReply *reply)
 	{
 		if (reply->sslConfiguration().isNull())
 		{
-			m_sslInformation.certificates = QVector<QSslCertificate>();
-			m_sslInformation.cipher = QSslCipher();
+			m_sslInformation.certificates = {};
+			m_sslInformation.cipher = {};
 		}
 		else
 		{
@@ -269,7 +270,7 @@ void QtWebKitNetworkManager::handleRequestFinished(QNetworkReply *reply)
 
 	if (url.isValid() && url.scheme() != QLatin1String("data"))
 	{
-		setPageInformation(WebWidget::LoadingMessageInformation, tr("Completed request to %1").arg(url.host().isEmpty() ? QLatin1String("localhost") : reply->url().host()));
+		setPageInformation(WebWidget::LoadingMessageInformation, tr("Completed request to %1").arg(Utils::extractHost(url)));
 	}
 
 	disconnect(reply, &QNetworkReply::downloadProgress, this, &QtWebKitNetworkManager::handleDownloadProgress);
@@ -373,7 +374,7 @@ void QtWebKitNetworkManager::handleSslErrors(QNetworkReply *reply, const QList<Q
 	{
 		if (errors.at(i).error() != QSslError::NoError)
 		{
-			m_sslInformation.errors.append({reply->url(), errors.at(i)});
+			m_sslInformation.errors.append({errors.at(i), reply->url()});
 
 			if (exceptions.contains(errors.at(i).certificate().digest().toBase64()))
 			{
@@ -514,21 +515,21 @@ void QtWebKitNetworkManager::updateOptions(const QUrl &url)
 		thirdPartyCookiesPolicy = CookieJar::AcceptExistingCookies;
 	}
 
-	const QString keepModeValue(getOption(SettingsManager::Network_CookiesKeepModeOption, url).toString());
-	CookieJar::KeepMode keepMode(CookieJar::KeepUntilExpiresMode);
+	const QString keepCookiesModeValue(getOption(SettingsManager::Network_CookiesKeepModeOption, url).toString());
+	CookieJar::KeepMode keepCookiesMode(CookieJar::KeepUntilExpiresMode);
 
-	if (keepModeValue == QLatin1String("keepUntilExit"))
+	if (keepCookiesModeValue == QLatin1String("keepUntilExit"))
 	{
-		keepMode = CookieJar::KeepUntilExitMode;
+		keepCookiesMode = CookieJar::KeepUntilExitMode;
 	}
-	else if (keepModeValue == QLatin1String("ask"))
+	else if (keepCookiesModeValue == QLatin1String("ask"))
 	{
-		keepMode = CookieJar::AskIfKeepMode;
+		keepCookiesMode = CookieJar::AskIfKeepMode;
 	}
 
-	m_cookieJarProxy->setup(getOption(SettingsManager::Network_ThirdPartyCookiesAcceptedHostsOption, url).toStringList(), getOption(SettingsManager::Network_ThirdPartyCookiesRejectedHostsOption, url).toStringList(), generalCookiesPolicy, thirdPartyCookiesPolicy, keepMode);
+	m_cookieJarProxy->setup(getOption(SettingsManager::Network_ThirdPartyCookiesAcceptedHostsOption, url).toStringList(), getOption(SettingsManager::Network_ThirdPartyCookiesRejectedHostsOption, url).toStringList(), generalCookiesPolicy, thirdPartyCookiesPolicy, keepCookiesMode);
 
-	if (!m_proxyFactory && ((m_widget && m_widget->hasOption(SettingsManager::Network_ProxyOption)) || SettingsManager::hasOverride(url, SettingsManager::Network_ProxyOption)))
+	if (!m_proxyFactory && ((m_widget && m_widget->hasOption(SettingsManager::Network_ProxyOption)) || SettingsManager::hasOverride(Utils::extractHost(url), SettingsManager::Network_ProxyOption)))
 	{
 		m_proxyFactory = new NetworkProxyFactory(this);
 
@@ -606,13 +607,13 @@ QNetworkReply* QtWebKitNetworkManager::createRequest(QNetworkAccessManager::Oper
 				{
 					exceptions.append(digest);
 
-					SettingsManager::setOption(SettingsManager::Security_IgnoreSslErrorsOption, exceptions, url);
+					SettingsManager::setOption(SettingsManager::Security_IgnoreSslErrorsOption, exceptions, Utils::extractHost(url));
 				}
 			}
 			else if (type == QLatin1String("add-content-blocking-exception"))
 			{
 				const QUrl url(m_widget->getUrl());
-				const QString host(url.host().isEmpty() ? QLatin1String("localhost") : url.host());
+				const QString host(Utils::extractHost(url));
 				QStringList ignoredHosts;
 
 				if (m_widget->hasOption(SettingsManager::ContentBlocking_IgnoreHostsOption))
@@ -677,7 +678,7 @@ QNetworkReply* QtWebKitNetworkManager::createRequest(QNetworkAccessManager::Oper
 
 		const QUrl baseUrl(m_widget->isNavigating() ? request.url() : m_widget->getUrl());
 
-		if (!m_contentBlockingProfiles.isEmpty() && (m_unblockedHosts.isEmpty() || !m_unblockedHosts.contains(baseUrl.host().isEmpty() ? QLatin1String("localhost") : baseUrl.host())))
+		if (!m_contentBlockingProfiles.isEmpty() && (m_unblockedHosts.isEmpty() || !m_unblockedHosts.contains(Utils::extractHost(baseUrl))))
 		{
 			const QByteArray acceptHeader(request.rawHeader(QByteArray("Accept")));
 			const QString path(request.url().path());
@@ -883,7 +884,7 @@ QString QtWebKitNetworkManager::getUserAgent() const
 
 QVariant QtWebKitNetworkManager::getOption(int identifier, const QUrl &url) const
 {
-	return (m_widget ? m_widget->getOption(identifier, url) : SettingsManager::getOption(identifier, url));
+	return (m_widget ? m_widget->getOption(identifier, url) : SettingsManager::getOption(identifier, Utils::extractHost(url)));
 }
 
 QStringList QtWebKitNetworkManager::getBlockedElements() const

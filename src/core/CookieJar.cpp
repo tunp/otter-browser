@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -49,11 +49,13 @@ CookieJar::CookieJar(bool isPrivate, QObject *parent) : QNetworkCookieJar(parent
 		return;
 	}
 
-	QList<QNetworkCookie> allCookies;
 	QDataStream stream(&file);
 	quint32 amount;
 
 	stream >> amount;
+
+	QList<QNetworkCookie> allCookies;
+	allCookies.reserve(static_cast<int>(amount));
 
 	for (quint32 i = 0; i < amount; ++i)
 	{
@@ -179,7 +181,7 @@ void CookieJar::save()
 
 	const QList<QNetworkCookie> cookies(allCookies());
 	QDataStream stream(&file);
-	stream << quint32(cookies.count());
+	stream << static_cast<quint32>(cookies.count());
 
 	for (int i = 0; i < cookies.count(); ++i)
 	{

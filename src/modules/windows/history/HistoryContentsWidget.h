@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -43,7 +43,8 @@ public:
 	enum DataRole
 	{
 		IdentifierRole = Qt::UserRole,
-		TimeVisitedRole
+		TimeVisitedRole,
+		GroupDateRole
 	};
 
 	explicit HistoryContentsWidget(const QVariantMap &parameters, Window *window, QWidget *parent);
@@ -69,7 +70,7 @@ protected slots:
 	void populateEntries();
 	void removeEntry();
 	void removeDomainEntries();
-	void openEntry(const QModelIndex &index = {});
+	void openEntry();
 	void bookmarkEntry();
 	void copyEntryLink();
 	void handleEntryAdded(HistoryEntryItem *entry);

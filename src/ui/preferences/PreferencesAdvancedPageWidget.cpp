@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2014 - 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 * Copyright (C) 2016 - 2017 Piotr Wójcik <chocimier@tlen.pl>
 *
@@ -26,6 +26,8 @@
 #include "ProxyPropertiesDialog.h"
 #include "UserAgentPropertiesDialog.h"
 #include "../Style.h"
+#include "../WebsitePreferencesDialog.h"
+#include "../../../3rdparty/columnresizer/ColumnResizer.h"
 #include "../../core/ActionsManager.h"
 #include "../../core/Application.h"
 #include "../../core/GesturesManager.h"
@@ -165,6 +167,20 @@ PreferencesAdvancedPageWidget::PreferencesAdvancedPageWidget(QWidget *parent) : 
 	m_ui->userStyleSheetFilePathWidget->setPath(SettingsManager::getOption(SettingsManager::Content_UserStyleSheetOption).toString());
 	m_ui->userStyleSheetFilePathWidget->setFilters({tr("Style sheets (*.css)")});
 
+	QStandardItemModel *overridesModel(new QStandardItemModel(this));
+	const QStringList overrideHosts(SettingsManager::getOverrideHosts());
+
+	for (int i = 0; i < overrideHosts.count(); ++i)
+	{
+		QStandardItem *item(new QStandardItem(overrideHosts.at(i)));
+		item->setFlags(item->flags() | Qt::ItemNeverHasChildren);
+
+		overridesModel->appendRow(item);
+	}
+
+	m_ui->contentOverridesFilterLineEditWidget->setClearOnEscape(true);
+	m_ui->contentOverridesItemView->setModel(overridesModel);
+
 	QStandardItemModel *downloadsModel(new QStandardItemModel(this));
 	downloadsModel->setHorizontalHeaderLabels({tr("Name")});
 
@@ -281,15 +297,14 @@ PreferencesAdvancedPageWidget::PreferencesAdvancedPageWidget(QWidget *parent) : 
 
 	QStandardItemModel *updateChannelsModel(new QStandardItemModel(this));
 	const QStringList activeUpdateChannels(SettingsManager::getOption(SettingsManager::Updates_ActiveChannelsOption).toStringList());
-	const QMap<QString, QString> updateChannels({{QLatin1String("release"), tr("Stable version")}, {QLatin1String("beta"), tr("Beta version")}, {QLatin1String("weekly"), tr("Weekly development version")}});
-	QMap<QString, QString>::const_iterator iterator;
+	const QVector<QPair<QString, QString> > updateChannels({{QLatin1String("release"), tr("Stable version")}, {QLatin1String("beta"), tr("Beta version")}, {QLatin1String("weekly"), tr("Weekly development version")}});
 
-	for (iterator = updateChannels.constBegin(); iterator != updateChannels.constEnd(); ++iterator)
+	for (int i = 0; i < updateChannels.count(); ++i)
 	{
-		QStandardItem *item(new QStandardItem(iterator.value()));
+		QStandardItem *item(new QStandardItem(updateChannels.at(i).second));
 		item->setCheckable(true);
-		item->setCheckState(activeUpdateChannels.contains(iterator.key()) ? Qt::Checked : Qt::Unchecked);
-		item->setData(iterator.key(), Qt::UserRole);
+		item->setCheckState(activeUpdateChannels.contains(updateChannels.at(i).first) ? Qt::Checked : Qt::Unchecked);
+		item->setData(updateChannels.at(i).first, Qt::UserRole);
 		item->setFlags(item->flags() | Qt::ItemNeverHasChildren);
 
 		updateChannelsModel->appendRow(item);
@@ -374,11 +389,20 @@ PreferencesAdvancedPageWidget::PreferencesAdvancedPageWidget(QWidget *parent) : 
 
 	updateReaddMouseProfileMenu();
 
+	ColumnResizer *columnResizer(new ColumnResizer(this));
+	columnResizer->addWidgetsFromFormLayout(m_ui->enableImagesLayout, QFormLayout::LabelRole);
+	columnResizer->addWidgetsFromFormLayout(m_ui->contentGeneralLayout, QFormLayout::LabelRole);
+
 	connect(m_ui->advancedViewWidget, &ItemViewWidget::needsActionsUpdate, this, &PreferencesAdvancedPageWidget::changeCurrentPage);
 	connect(m_ui->notificationsItemView, &ItemViewWidget::needsActionsUpdate, this, &PreferencesAdvancedPageWidget::updateNotificationsActions);
 	connect(m_ui->notificationsPlaySoundButton, &QToolButton::clicked, this, &PreferencesAdvancedPageWidget::playNotificationSound);
 	connect(m_ui->enableJavaScriptCheckBox, &QCheckBox::toggled, m_ui->javaScriptOptionsButton, &QPushButton::setEnabled);
 	connect(m_ui->javaScriptOptionsButton, &QPushButton::clicked, this, &PreferencesAdvancedPageWidget::updateJavaScriptOptions);
+	connect(m_ui->contentOverridesFilterLineEditWidget, &LineEditWidget::textChanged, m_ui->contentOverridesItemView, &ItemViewWidget::setFilterString);
+	connect(m_ui->contentOverridesItemView, &ItemViewWidget::needsActionsUpdate, this, &PreferencesAdvancedPageWidget::updateOverridesActions);
+	connect(m_ui->contentOverridesAddButton, &QPushButton::clicked, this, &PreferencesAdvancedPageWidget::addOverride);
+	connect(m_ui->contentOverridesEditButton, &QPushButton::clicked, this, &PreferencesAdvancedPageWidget::editOverride);
+	connect(m_ui->contentOverridesRemoveButton, &QPushButton::clicked, this, &PreferencesAdvancedPageWidget::removeOverride);
 	connect(m_ui->downloadsItemView, &ItemViewWidget::needsActionsUpdate, this, &PreferencesAdvancedPageWidget::updateDownloadsActions);
 	connect(m_ui->downloadsAddMimeTypeButton, &QPushButton::clicked, this, &PreferencesAdvancedPageWidget::addDownloadsMimeType);
 	connect(m_ui->downloadsRemoveMimeTypeButton, &QPushButton::clicked, this, &PreferencesAdvancedPageWidget::removeDownloadsMimeType);
@@ -435,7 +459,17 @@ void PreferencesAdvancedPageWidget::changeEvent(QEvent *event)
 
 	if (event->type() == QEvent::LanguageChange)
 	{
+		const QStringList navigationTitles({tr("Browsing"), tr("Notifications"), tr("Appearance"), tr("Content"), {}, tr("Downloads"), tr("Programs"), {}, tr("History"), tr("Network"), tr("Security"), tr("Updates"), {}, tr("Keyboard"), tr("Mouse")});
+
 		m_ui->retranslateUi(this);
+
+		for (int i = 0; i < navigationTitles.count(); ++i)
+		{
+			if (!navigationTitles.at(i).isEmpty())
+			{
+				m_ui->advancedViewWidget->setData(m_ui->advancedViewWidget->getIndex(i), navigationTitles.at(i), Qt::DisplayRole);
+			}
+		}
 
 		updatePageSwitcher();
 	}
@@ -510,6 +544,58 @@ void PreferencesAdvancedPageWidget::updateNotificationsOptions()
 
 		connect(m_ui->notificationsItemView, &ItemViewWidget::needsActionsUpdate, this, &PreferencesAdvancedPageWidget::updateNotificationsActions);
 	}
+}
+
+void PreferencesAdvancedPageWidget::addOverride()
+{
+	WebsitePreferencesDialog dialog({}, {}, this);
+
+	if (dialog.exec() == QDialog::Rejected)
+	{
+		return;
+	}
+
+	const QString host(dialog.getHost());
+
+	if (!host.isEmpty())
+	{
+		const QModelIndexList indexes(m_ui->contentOverridesItemView->getSourceModel()->match(m_ui->contentOverridesItemView->getSourceModel()->index(0, 0), Qt::DisplayRole, host));
+
+		if (indexes.isEmpty())
+		{
+			QStandardItem *item(new QStandardItem(host));
+			item->setFlags(item->flags() | Qt::ItemNeverHasChildren);
+
+			m_ui->contentOverridesItemView->insertRow({item});
+			m_ui->contentOverridesItemView->sortByColumn(0, Qt::AscendingOrder);
+		}
+	}
+}
+
+void PreferencesAdvancedPageWidget::editOverride()
+{
+	WebsitePreferencesDialog dialog(m_ui->contentOverridesItemView->getCurrentIndex().data(Qt::DisplayRole).toString(), {}, this);
+	dialog.exec();
+}
+
+void PreferencesAdvancedPageWidget::removeOverride()
+{
+	const QString host(m_ui->contentOverridesItemView->getCurrentIndex().data(Qt::DisplayRole).toString());
+
+	if (!host.isEmpty() && QMessageBox::question(this, tr("Question"), tr("Do you really want to remove preferences for this website?"), (QMessageBox::Ok | QMessageBox::Cancel)) == QMessageBox::Ok)
+	{
+		SettingsManager::removeOverride(host);
+
+		m_ui->contentOverridesItemView->removeRow();
+	}
+}
+
+void PreferencesAdvancedPageWidget::updateOverridesActions()
+{
+	const QModelIndex index(m_ui->contentOverridesItemView->getCurrentIndex());
+
+	m_ui->contentOverridesEditButton->setEnabled(index.isValid());
+	m_ui->contentOverridesRemoveButton->setEnabled(index.isValid());
 }
 
 void PreferencesAdvancedPageWidget::addDownloadsMimeType()

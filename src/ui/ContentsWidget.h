@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -23,7 +23,6 @@
 #include "WebWidget.h"
 
 #include <QtCore/QPointer>
-#include <QtWidgets/QWidget>
 
 namespace Otter
 {
@@ -96,7 +95,7 @@ private:
 signals:
 	void aboutToNavigate();
 	void needsAttention();
-	void requestedNewWindow(ContentsWidget *widget, SessionsManager::OpenHints hints);
+	void requestedNewWindow(ContentsWidget *widget, SessionsManager::OpenHints hints, const QVariantMap &parameters);
 	void requestedSearch(const QString &query, const QString &search, SessionsManager::OpenHints hints);
 	void requestedGeometryChange(const QRect &geometry);
 	void webWidgetChanged();

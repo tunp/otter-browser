@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2015 Piotr Wójcik <chocimier@tlen.pl>
 * Copyright (C) 2015 Jan Bajer aka bajasoft <jbajer@gmail.com>
 * Copyright (C) 2017 Piktas Zuikis <piktas.zuikis@inbox.lt>
@@ -189,14 +189,14 @@ void WebWidget::startTransfer(Transfer *transfer)
 
 void WebWidget::clearOptions()
 {
-	const QUrl url(getUrl());
+	const QString host(Utils::extractHost(getUrl()));
 	const QList<int> identifiers(m_options.keys());
 
 	m_options.clear();
 
 	for (int i = 0; i < identifiers.count(); ++i)
 	{
-		emit optionChanged(identifiers.at(i), SettingsManager::getOption(identifiers.at(i), url));
+		emit optionChanged(identifiers.at(i), SettingsManager::getOption(identifiers.at(i), host));
 	}
 
 	emit arbitraryActionsStateChanged({ActionsManager::ResetQuickPreferencesAction});
@@ -209,10 +209,23 @@ void WebWidget::fillPassword(const PasswordsManager::PasswordInformation &passwo
 
 void WebWidget::openUrl(const QUrl &url, SessionsManager::OpenHints hints)
 {
-	WebWidget *widget(clone(false, hints.testFlag(SessionsManager::PrivateOpen), SettingsManager::getOption(SettingsManager::Sessions_OptionsExludedFromInheritingOption).toStringList()));
-	widget->setRequestedUrl(url, false);
+	switch (hints)
+	{
+		case SessionsManager::CurrentTabOpen:
+		case SessionsManager::DefaultOpen:
+			setUrl(url, false);
 
-	emit requestedNewWindow(widget, hints);
+			break;
+		default:
+			{
+				WebWidget *widget(clone(false, hints.testFlag(SessionsManager::PrivateOpen), SettingsManager::getOption(SettingsManager::Sessions_OptionsExludedFromInheritingOption).toStringList()));
+				widget->setRequestedUrl(url, false);
+
+				emit requestedNewWindow(widget, hints, {});
+			}
+
+			break;
+	}
 }
 
 void WebWidget::handleLoadingStateChange(LoadingState state)
@@ -273,14 +286,16 @@ void WebWidget::handleToolTipEvent(QHelpEvent *event, QWidget *widget)
 
 void WebWidget::handleWindowCloseRequest()
 {
-	if (isPopup() && SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanCloseSelfOpenedWindowsOption, getUrl()).toBool())
+	const QString host(Utils::extractHost(getUrl()));
+
+	if (isPopup() && SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanCloseSelfOpenedWindowsOption, host).toBool())
 	{
 		emit requestedCloseWindow();
 
 		return;
 	}
 
-	const QString mode(SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanCloseWindowsOption, getUrl()).toString());
+	const QString mode(SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanCloseWindowsOption, host).toString());
 
 	if (mode != QLatin1String("ask"))
 	{
@@ -492,40 +507,41 @@ void WebWidget::setPermission(FeaturePermission feature, const QUrl &url, Permis
 	}
 
 	const QString value(policies.testFlag(GrantedPermission) ? QLatin1String("allow") : QLatin1String("disallow"));
+	const QString host(Utils::extractHost(url));
 
 	switch (feature)
 	{
 		case FullScreenFeature:
-			SettingsManager::setOption(SettingsManager::Permissions_EnableFullScreenOption, value, url);
+			SettingsManager::setOption(SettingsManager::Permissions_EnableFullScreenOption, value, host);
 
 			return;
 		case GeolocationFeature:
-			SettingsManager::setOption(SettingsManager::Permissions_EnableGeolocationOption, value, url);
+			SettingsManager::setOption(SettingsManager::Permissions_EnableGeolocationOption, value, host);
 
 			return;
 		case NotificationsFeature:
-			SettingsManager::setOption(SettingsManager::Permissions_EnableNotificationsOption, value, url);
+			SettingsManager::setOption(SettingsManager::Permissions_EnableNotificationsOption, value, host);
 
 			return;
 		case PointerLockFeature:
-			SettingsManager::setOption(SettingsManager::Permissions_EnablePointerLockOption, value, url);
+			SettingsManager::setOption(SettingsManager::Permissions_EnablePointerLockOption, value, host);
 
 			return;
 		case CaptureAudioFeature:
-			SettingsManager::setOption(SettingsManager::Permissions_EnableMediaCaptureAudioOption, value, url);
+			SettingsManager::setOption(SettingsManager::Permissions_EnableMediaCaptureAudioOption, value, host);
 
 			return;
 		case CaptureVideoFeature:
-			SettingsManager::setOption(SettingsManager::Permissions_EnableMediaCaptureVideoOption, value, url);
+			SettingsManager::setOption(SettingsManager::Permissions_EnableMediaCaptureVideoOption, value, host);
 
 			return;
 		case CaptureAudioVideoFeature:
-			SettingsManager::setOption(SettingsManager::Permissions_EnableMediaCaptureAudioOption, value, url);
-			SettingsManager::setOption(SettingsManager::Permissions_EnableMediaCaptureVideoOption, value, url);
+			SettingsManager::setOption(SettingsManager::Permissions_EnableMediaCaptureAudioOption, value, host);
+			SettingsManager::setOption(SettingsManager::Permissions_EnableMediaCaptureVideoOption, value, host);
 
 			return;
 		case PlaybackAudioFeature:
-			SettingsManager::setOption(SettingsManager::Permissions_EnableMediaPlaybackAudioOption, value, url);
+			SettingsManager::setOption(SettingsManager::Permissions_EnableMediaPlaybackAudioOption, value, host);
 
 			return;
 		default:
@@ -608,7 +624,7 @@ void WebWidget::setOptions(const QHash<int, QVariant> &options, const QStringLis
 		}
 	}
 
-	const QUrl url(getUrl());
+	const QString host(Utils::extractHost(getUrl()));
 
 	for (int i = 0; i < identifiers.count(); ++i)
 	{
@@ -618,7 +634,7 @@ void WebWidget::setOptions(const QHash<int, QVariant> &options, const QStringLis
 		}
 		else
 		{
-			emit optionChanged(identifiers.at(i), SettingsManager::getOption(identifiers.at(i), url));
+			emit optionChanged(identifiers.at(i), SettingsManager::getOption(identifiers.at(i), host));
 		}
 	}
 
@@ -703,8 +719,60 @@ QString WebWidget::suggestSaveFileName(SaveFormat format) const
 	return fileName;
 }
 
+QString WebWidget::getOpenActionText(SessionsManager::OpenHints hints) const
+{
+	if (hints == SessionsManager::CurrentTabOpen)
+	{
+		return QCoreApplication::translate("actions", "Open in This Tab");
+	}
+
+	if (hints == SessionsManager::NewTabOpen)
+	{
+		return QCoreApplication::translate("actions", "Open in New Tab");
+	}
+
+	if (hints == (SessionsManager::NewTabOpen | SessionsManager::BackgroundOpen))
+	{
+		return QCoreApplication::translate("actions", "Open in New Background Tab");
+	}
+
+	if (hints == SessionsManager::NewWindowOpen)
+	{
+		return QCoreApplication::translate("actions", "Open in New Window");
+	}
+
+	if (hints == (SessionsManager::NewWindowOpen | SessionsManager::BackgroundOpen))
+	{
+		return QCoreApplication::translate("actions", "Open in New Background Window");
+	}
+
+	if (hints == (SessionsManager::NewTabOpen | SessionsManager::PrivateOpen))
+	{
+		return QCoreApplication::translate("actions", "Open in New Private Tab");
+	}
+
+	if (hints == (SessionsManager::NewTabOpen | SessionsManager::BackgroundOpen | SessionsManager::PrivateOpen))
+	{
+		return QCoreApplication::translate("actions", "Open in New Private Background Tab");
+	}
+
+	if (hints == (SessionsManager::NewWindowOpen | SessionsManager::PrivateOpen))
+	{
+		return QCoreApplication::translate("actions", "Open in New Private Window");
+	}
+
+	if (hints == (SessionsManager::NewWindowOpen | SessionsManager::BackgroundOpen | SessionsManager::PrivateOpen))
+	{
+		return QCoreApplication::translate("actions", "Open in New Private Background Window");
+	}
+
+	return QCoreApplication::translate("actions", "Open");
+}
+
 QString WebWidget::getFastForwardScript(bool isSelectingTheBestLink)
 {
+	QString script(m_fastForwardScript);
+
 	if (m_fastForwardScript.isEmpty())
 	{
 		IniSettings settings(SessionsManager::getReadableDataPath(QLatin1String("fastforward.ini")));
@@ -715,7 +783,7 @@ QString WebWidget::getFastForwardScript(bool isSelectingTheBestLink)
 			return {};
 		}
 
-		QString script(file.readAll());
+		script = file.readAll();
 
 		file.close();
 
@@ -728,24 +796,20 @@ QString WebWidget::getFastForwardScript(bool isSelectingTheBestLink)
 			const QStringList keys(settings.getKeys());
 			QJsonArray tokensArray;
 
-			for (int j = 0; j < keys.length(); ++j)
+			for (int j = 0; j < keys.count(); ++j)
 			{
-				QJsonObject tokenObject;
-				tokenObject.insert(QLatin1Literal("value"), keys.at(j).toUpper());
-				tokenObject.insert(QLatin1Literal("score"), settings.getValue(keys.at(j)).toInt());
-
-				tokensArray.append(tokenObject);
+				tokensArray.append(QJsonObject({{QLatin1Literal("value"), keys.at(j).toUpper()}, {QLatin1Literal("score"), settings.getValue(keys.at(j)).toInt()}}));
 			}
 
 			settings.endGroup();
 
-			script.replace(QStringLiteral("{%1Tokens}").arg(categories.at(i).toLower()), QString::fromUtf8(QJsonDocument(tokensArray).toJson(QJsonDocument::Compact)));
+			script.replace(QLatin1Char('{') + categories.at(i).toLower() + QLatin1String("Tokens}"), QString::fromUtf8(QJsonDocument(tokensArray).toJson(QJsonDocument::Compact)));
 		}
 
 		m_fastForwardScript = script;
 	}
 
-	return QString(m_fastForwardScript).replace(QLatin1String("{isSelectingTheBestLink}"), (isSelectingTheBestLink ? QLatin1String("true") : QLatin1String("false")));
+	return script.replace(QLatin1String("{isSelectingTheBestLink}"), (isSelectingTheBestLink ? QLatin1String("true") : QLatin1String("false")));
 }
 
 QString WebWidget::getActiveStyleSheet() const
@@ -775,7 +839,7 @@ QVariant WebWidget::getOption(int identifier, const QUrl &url) const
 		return m_options[identifier];
 	}
 
-	return SettingsManager::getOption(identifier, (url.isEmpty() ? getUrl() : url));
+	return SettingsManager::getOption(identifier, Utils::extractHost(url.isEmpty() ? getUrl() : url));
 }
 
 QVariant WebWidget::getPageInformation(PageInformation key) const
@@ -846,12 +910,25 @@ ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier
 		case ActionsManager::SaveLinkToDownloadsAction:
 			state.isEnabled = m_hitResult.linkUrl.isValid();
 
+			if (identifier == ActionsManager::OpenLinkAction && parameters.contains(QLatin1String("hints")))
+			{
+				const SessionsManager::OpenHints hints(SessionsManager::calculateOpenHints(parameters));
+
+				state.text = getOpenActionText(hints);
+
+				if (hints != SessionsManager::DefaultOpen)
+				{
+					state.icon = {};
+				}
+			}
+
 			break;
 		case ActionsManager::BookmarkLinkAction:
 			state.text = (BookmarksManager::hasBookmark(m_hitResult.linkUrl) ? QCoreApplication::translate("actions", "Edit Link Bookmark…") : QCoreApplication::translate("actions", "Bookmark Link…"));
 			state.isEnabled = m_hitResult.linkUrl.isValid();
 
 			break;
+		case ActionsManager::OpenFrameAction:
 		case ActionsManager::OpenFrameInCurrentTabAction:
 		case ActionsManager::OpenFrameInNewTabAction:
 		case ActionsManager::OpenFrameInNewTabBackgroundAction:
@@ -860,18 +937,66 @@ ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier
 		case ActionsManager::ViewFrameSourceAction:
 			state.isEnabled = m_hitResult.frameUrl.isValid();
 
+			if (identifier == ActionsManager::OpenFrameAction && parameters.contains(QLatin1String("hints")))
+			{
+				state.text = getOpenActionText(SessionsManager::calculateOpenHints(parameters));
+			}
+
 			break;
+		case ActionsManager::OpenImageAction:
 		case ActionsManager::OpenImageInNewTabAction:
 		case ActionsManager::OpenImageInNewTabBackgroundAction:
-			if (m_hitResult.imageUrl.isEmpty())
-			{
-				state.isEnabled = false;
-			}
-			else
+			if (m_hitResult.imageUrl.isValid())
 			{
 				const QString fileName((m_hitResult.imageUrl.scheme() == QLatin1String("data")) ? QString() : fontMetrics().elidedText(m_hitResult.imageUrl.fileName(), Qt::ElideMiddle, 256));
 
-				if (!fileName.isEmpty())
+				if (identifier == ActionsManager::OpenImageAction)
+				{
+					const SessionsManager::OpenHints hints(SessionsManager::calculateOpenHints(parameters));
+
+					if (hints == SessionsManager::CurrentTabOpen)
+					{
+						state.text = QCoreApplication::translate("actions", "Open Image in This Tab");
+					}
+					else if (hints == SessionsManager::NewTabOpen)
+					{
+						state.text = QCoreApplication::translate("actions", "Open Image in New Tab");
+					}
+					else if (hints == (SessionsManager::NewTabOpen | SessionsManager::BackgroundOpen))
+					{
+						state.text = QCoreApplication::translate("actions", "Open Image in New Background Tab");
+					}
+					else if (hints == SessionsManager::NewWindowOpen)
+					{
+						state.text = QCoreApplication::translate("actions", "Open Image in New Window");
+					}
+					else if (hints == (SessionsManager::NewWindowOpen | SessionsManager::BackgroundOpen))
+					{
+						state.text = QCoreApplication::translate("actions", "Open Image in New Background Window");
+					}
+					else if (hints == (SessionsManager::NewTabOpen | SessionsManager::PrivateOpen))
+					{
+						state.text = QCoreApplication::translate("actions", "Open Image in New Private Tab");
+					}
+					else if (hints == (SessionsManager::NewTabOpen | SessionsManager::BackgroundOpen | SessionsManager::PrivateOpen))
+					{
+						state.text = QCoreApplication::translate("actions", "Open Image in New Private Background Tab");
+					}
+					else if (hints == (SessionsManager::NewWindowOpen | SessionsManager::PrivateOpen))
+					{
+						state.text = QCoreApplication::translate("actions", "Open Image in New Private Window");
+					}
+					else if (hints == (SessionsManager::NewWindowOpen | SessionsManager::BackgroundOpen | SessionsManager::PrivateOpen))
+					{
+						state.text = QCoreApplication::translate("actions", "Open Image in New Private Background Window");
+					}
+
+					if (!fileName.isEmpty())
+					{
+						state.text.append(QLatin1String(" (") + fileName + QLatin1Char(')'));
+					}
+				}
+				else if (!fileName.isEmpty())
 				{
 					if (identifier == ActionsManager::OpenImageInNewTabBackgroundAction)
 					{
@@ -885,6 +1010,10 @@ ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier
 
 				state.isEnabled = !getUrl().matches(m_hitResult.imageUrl, (QUrl::NormalizePathSegments | QUrl::RemoveFragment | QUrl::StripTrailingSlash));
 			}
+			else
+			{
+				state.isEnabled = false;
+			}
 
 			break;
 		case ActionsManager::SaveImageToDiskAction:
@@ -892,7 +1021,7 @@ ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier
 		case ActionsManager::CopyImageUrlToClipboardAction:
 		case ActionsManager::ReloadImageAction:
 		case ActionsManager::ImagePropertiesAction:
-			state.isEnabled = !m_hitResult.imageUrl.isEmpty();
+			state.isEnabled = m_hitResult.imageUrl.isValid();
 
 			break;
 		case ActionsManager::SaveMediaToDiskAction:
@@ -1139,6 +1268,11 @@ WebWidget::LinkUrl WebWidget::getActiveImage() const
 }
 
 WebWidget::LinkUrl WebWidget::getActiveLink() const
+{
+	return {};
+}
+
+WebWidget::LinkUrl WebWidget::getActiveMedia() const
 {
 	return {};
 }

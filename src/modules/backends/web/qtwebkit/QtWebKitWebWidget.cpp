@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2015 - 2016 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -248,7 +248,7 @@ void QtWebKitWebWidget::search(const QString &query, const QString &searchEngine
 
 void QtWebKitWebWidget::print(QPrinter *printer)
 {
-	m_webView->print(printer);
+	m_page->mainFrame()->print(printer);
 }
 
 void QtWebKitWebWidget::saveState(QWebFrame *frame, QWebHistoryItem *item)
@@ -279,7 +279,7 @@ void QtWebKitWebWidget::restoreState(QWebFrame *frame)
 
 		setZoom(state.value(ZoomEntryData, getZoom()).toInt());
 
-		if (m_page->mainFrame()->scrollPosition() == QPoint(0, 0))
+		if (m_page->mainFrame()->scrollPosition().isNull())
 		{
 			m_page->mainFrame()->setScrollPosition(state.value(PositionEntryData).toPoint());
 		}
@@ -331,11 +331,12 @@ void QtWebKitWebWidget::muteAudio(QWebFrame *frame, bool isMuted)
 		return;
 	}
 
+	const QString script(QLatin1String("this.muted = ") + (isMuted ? QLatin1String("true") : QLatin1String("false")));
 	const QWebElementCollection elements(frame->findAllElements(QLatin1String("audio, video")));
 
 	for (int i = 0; i < elements.count(); ++i)
 	{
-		elements.at(i).evaluateJavaScript(QLatin1String("this.muted = ") + (isMuted ? QLatin1String("true") : QLatin1String("false")));
+		elements.at(i).evaluateJavaScript(script);
 	}
 
 	const QList<QWebFrame*> frames(frame->childFrames());
@@ -418,16 +419,14 @@ void QtWebKitWebWidget::handleDownloadRequested(const QNetworkRequest &request)
 			const QString imageType(imageUrl.mid(11, (imageUrl.indexOf(QLatin1Char(';')) - 11)));
 			const QString path(Utils::getSavePath(tr("file") + QLatin1Char('.') + imageType).path);
 
-			if (path.isEmpty())
+			if (!path.isEmpty())
 			{
-				return;
-			}
+				QImageWriter writer(path);
 
-			QImageWriter writer(path);
-
-			if (!writer.write(QImage::fromData(QByteArray::fromBase64(imageUrl.mid(imageUrl.indexOf(QLatin1String(";base64,")) + 7).toUtf8()), imageType.toStdString().c_str())))
-			{
-				Console::addMessage(tr("Failed to save image: %1").arg(writer.errorString()), Console::OtherCategory, Console::ErrorLevel, path, -1, getWindowIdentifier());
+				if (!writer.write(QImage::fromData(QByteArray::fromBase64(imageUrl.mid(imageUrl.indexOf(QLatin1String(";base64,")) + 7).toUtf8()), imageType.toStdString().c_str())))
+				{
+					Console::addMessage(tr("Failed to save image: %1").arg(writer.errorString()), Console::OtherCategory, Console::ErrorLevel, path, -1, getWindowIdentifier());
+				}
 			}
 
 			return;
@@ -471,7 +470,7 @@ void QtWebKitWebWidget::handleOptionChanged(int identifier, const QVariant &valu
 		case SettingsManager::Permissions_ScriptsCanShowStatusMessagesOption:
 			disconnect(m_page, &QtWebKitPage::statusBarMessage, this, &QtWebKitWebWidget::setStatusMessage);
 
-			if (value.toBool() || SettingsManager::getOption(identifier, getUrl()).toBool())
+			if (value.toBool() || SettingsManager::getOption(identifier, Utils::extractHost(getUrl())).toBool())
 			{
 				connect(m_page, &QtWebKitPage::statusBarMessage, this, &QtWebKitWebWidget::setStatusMessage);
 			}
@@ -579,7 +578,7 @@ void QtWebKitWebWidget::handleHistory()
 		return;
 	}
 
-	const QUrl url(getUrl());
+	const QUrl url(m_page->history()->currentItem().url());
 	const quint64 identifier(m_page->history()->currentItem().userData().toList().value(IdentifierEntryData).toULongLong());
 
 	if (identifier == 0)
@@ -624,7 +623,7 @@ void QtWebKitWebWidget::handleFullScreenRequest(QWebFullScreenRequest request)
 
 	if (request.toggleOn())
 	{
-		const QString value(SettingsManager::getOption(SettingsManager::Permissions_EnableFullScreenOption, request.origin()).toString());
+		const QString value(SettingsManager::getOption(SettingsManager::Permissions_EnableFullScreenOption, Utils::extractHost(request.origin())).toString());
 
 		if (value == QLatin1String("allow"))
 		{
@@ -675,7 +674,7 @@ void QtWebKitWebWidget::openFormRequest(const QNetworkRequest &request, QNetwork
 	QtWebKitWebWidget *widget(qobject_cast<QtWebKitWebWidget*>(clone(false)));
 	widget->openRequest(request, operation, outgoingData);
 
-	emit requestedNewWindow(widget, SessionsManager::calculateOpenHints(SessionsManager::NewTabOpen));
+	emit requestedNewWindow(widget, SessionsManager::calculateOpenHints(SessionsManager::NewTabOpen), {});
 }
 
 void QtWebKitWebWidget::startDelayedTransfer(Transfer *transfer)
@@ -958,9 +957,20 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 			break;
 #endif
 		case ActionsManager::OpenLinkAction:
-			m_page->triggerAction(QWebPage::OpenLink);
+			{
+				const SessionsManager::OpenHints hints(SessionsManager::calculateOpenHints(parameters));
 
-			setClickPosition({});
+				if (hints == SessionsManager::DefaultOpen)
+				{
+					m_page->triggerAction(QWebPage::OpenLink);
+
+					setClickPosition({});
+				}
+				else if (getCurrentHitTestResult().linkUrl.isValid())
+				{
+					openUrl(getCurrentHitTestResult().linkUrl, hints);
+				}
+			}
 
 			break;
 		case ActionsManager::OpenLinkInCurrentTabAction:
@@ -1036,7 +1046,7 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 		case ActionsManager::BookmarkLinkAction:
 			if (getCurrentHitTestResult().linkUrl.isValid())
 			{
-				const QWebHitTestResult hitResult(m_page->mainFrame()->hitTestContent(getCurrentHitTestResult().position));
+				const QWebHitTestResult hitResult(m_page->mainFrame()->hitTestContent(getCurrentHitTestResult().hitPosition));
 				const QString title(getCurrentHitTestResult().title);
 
 				Application::triggerAction(ActionsManager::BookmarkPageAction, {{QLatin1String("url"), getCurrentHitTestResult().linkUrl}, {QLatin1String("title"), (title.isEmpty() ? hitResult.element().toPlainText() : title)}}, parentWidget());
@@ -1056,6 +1066,13 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 			break;
 		case ActionsManager::SaveLinkToDownloadsAction:
 			TransfersManager::addTransfer(new Transfer(getCurrentHitTestResult().linkUrl.toString(), {}, (Transfer::CanNotifyOption | Transfer::CanAskForPathOption | Transfer::IsQuickTransferOption | (isPrivate() ? Transfer::IsPrivateOption : Transfer::NoOption))));
+
+			break;
+		case ActionsManager::OpenFrameAction:
+			if (getCurrentHitTestResult().frameUrl.isValid())
+			{
+				openUrl(getCurrentHitTestResult().frameUrl, SessionsManager::calculateOpenHints(parameters));
+			}
 
 			break;
 		case ActionsManager::OpenFrameInCurrentTabAction:
@@ -1090,7 +1107,7 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 			if (getCurrentHitTestResult().frameUrl.isValid())
 			{
 				const QUrl url(getCurrentHitTestResult().frameUrl);
-				QWebHitTestResult hitResult(m_page->mainFrame()->hitTestContent(getCurrentHitTestResult().position));
+				QWebHitTestResult hitResult(m_page->mainFrame()->hitTestContent(getCurrentHitTestResult().hitPosition));
 
 				if (hitResult.frame())
 				{
@@ -1122,19 +1139,26 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 
 				connect(reply, &QNetworkReply::finished, this, &QtWebKitWebWidget::handleViewSourceReplyFinished);
 
-				emit requestedNewWindow(sourceViewer, SessionsManager::DefaultOpen);
+				emit requestedNewWindow(sourceViewer, SessionsManager::DefaultOpen, {});
+			}
+
+			break;
+		case ActionsManager::OpenImageAction:
+			if (getCurrentHitTestResult().imageUrl.isValid())
+			{
+				openUrl(getCurrentHitTestResult().imageUrl, SessionsManager::calculateOpenHints(parameters));
 			}
 
 			break;
 		case ActionsManager::OpenImageInNewTabAction:
-			if (!getCurrentHitTestResult().imageUrl.isEmpty())
+			if (getCurrentHitTestResult().imageUrl.isValid())
 			{
 				openUrl(getCurrentHitTestResult().imageUrl, SessionsManager::calculateOpenHints(SessionsManager::NewTabOpen));
 			}
 
 			break;
 		case ActionsManager::OpenImageInNewTabBackgroundAction:
-			if (!getCurrentHitTestResult().imageUrl.isEmpty())
+			if (getCurrentHitTestResult().imageUrl.isValid())
 			{
 				openUrl(getCurrentHitTestResult().imageUrl, (SessionsManager::NewTabOpen | SessionsManager::BackgroundOpen));
 			}
@@ -1149,7 +1173,7 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 			break;
 		case ActionsManager::CopyImageToClipboardAction:
 			{
-				const QWebHitTestResult hitResult(m_page->mainFrame()->hitTestContent(getCurrentHitTestResult().position));
+				const QWebHitTestResult hitResult(m_page->mainFrame()->hitTestContent(getCurrentHitTestResult().hitPosition));
 
 				if (!hitResult.pixmap().isNull())
 				{
@@ -1182,7 +1206,7 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 				}
 				else
 				{
-					const QWebHitTestResult hitResult(m_page->mainFrame()->hitTestContent(getCurrentHitTestResult().position));
+					const QWebHitTestResult hitResult(m_page->mainFrame()->hitTestContent(getCurrentHitTestResult().hitPosition));
 					const QUrl url(getCurrentHitTestResult().imageUrl);
 					const QString src(hitResult.element().attribute(QLatin1String("src")));
 					NetworkCache *cache(NetworkManagerFactory::getCache());
@@ -1204,7 +1228,7 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 		case ActionsManager::ImagePropertiesAction:
 			{
 				QVariantMap properties({{QLatin1String("alternativeText"), getCurrentHitTestResult().alternateText}, {QLatin1String("longDescription"), getCurrentHitTestResult().longDescription}});
-				const QWebHitTestResult hitResult(m_page->mainFrame()->hitTestContent(getCurrentHitTestResult().position));
+				const QWebHitTestResult hitResult(m_page->mainFrame()->hitTestContent(getCurrentHitTestResult().hitPosition));
 
 				if (!hitResult.pixmap().isNull())
 				{
@@ -1256,7 +1280,7 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 
 			break;
 		case ActionsManager::MediaPlaybackRateAction:
-			m_page->mainFrame()->hitTestContent(getCurrentHitTestResult().position).element().evaluateJavaScript(QStringLiteral("this.playbackRate = %1").arg(parameters.value(QLatin1String("rate"), 1).toReal()));
+			m_page->mainFrame()->hitTestContent(getCurrentHitTestResult().hitPosition).element().evaluateJavaScript(QStringLiteral("this.playbackRate = %1").arg(parameters.value(QLatin1String("rate"), 1).toReal()));
 
 			break;
 		case ActionsManager::GoBackAction:
@@ -1435,8 +1459,9 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 			{
 				const QWebFrame *frame(m_page->currentFrame() ? m_page->currentFrame() : m_page->mainFrame());
 				const QWebElement element(frame->findFirstElement(QLatin1String(":focus")));
+				const QString tagName(element.tagName().toLower());
 
-				if (element.tagName().toLower() == QLatin1String("textarea") || element.tagName().toLower() == QLatin1String("input"))
+				if (tagName == QLatin1String("textarea") || tagName == QLatin1String("input"))
 				{
 					m_page->triggerAction(QWebPage::MoveToPreviousChar);
 				}
@@ -1457,7 +1482,7 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 			break;
 		case ActionsManager::CheckSpellingAction:
 			{
-				QWebElement element(m_page->mainFrame()->hitTestContent(getCurrentHitTestResult().position).element());
+				QWebElement element(m_page->mainFrame()->hitTestContent(getCurrentHitTestResult().hitPosition).element());
 				element.evaluateJavaScript(QStringLiteral("this.spellcheck = %1").arg(parameters.value(QLatin1String("isChecked"), !getActionState(identifier, parameters).isChecked).toBool() ? QLatin1String("true") : QLatin1String("false")));
 
 				if (parameters.contains(QLatin1String("dictionary")))
@@ -1475,7 +1500,7 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 			break;
 		case ActionsManager::CreateSearchAction:
 			{
-				const QWebHitTestResult hitResult(m_page->mainFrame()->hitTestContent(getCurrentHitTestResult().position));
+				const QWebHitTestResult hitResult(m_page->mainFrame()->hitTestContent(getCurrentHitTestResult().hitPosition));
 				QWebElement parentElement(hitResult.element().parent());
 
 				while (!parentElement.isNull() && parentElement.tagName().toLower() != QLatin1String("form"))
@@ -1616,8 +1641,9 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 				m_page->mainFrame()->setFocus();
 
 				const QWebElement element(m_page->mainFrame()->findFirstElement(QLatin1String(":focus")));
+				const QString tagName(element.tagName().toLower());
 
-				if (element.tagName().toLower() == QLatin1String("textarea") || element.tagName().toLower() == QLatin1String("input"))
+				if (tagName == QLatin1String("textarea") || tagName == QLatin1String("input"))
 				{
 					m_page->mainFrame()->documentElement().evaluateJavaScript(QLatin1String("document.activeElement.blur()"));
 				}
@@ -1643,6 +1669,8 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 					frames.append(frame->childFrames());
 				}
 
+				m_amountOfDeferredPlugins = 0;
+
 				emit arbitraryActionsStateChanged({ActionsManager::LoadPluginsAction});
 			}
 
@@ -1667,18 +1695,22 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 
 				connect(reply, &QNetworkReply::finished, this, &QtWebKitWebWidget::handleViewSourceReplyFinished);
 
-				emit requestedNewWindow(sourceViewer, SessionsManager::DefaultOpen);
+				emit requestedNewWindow(sourceViewer, SessionsManager::DefaultOpen, {});
 			}
 
 			break;
 		case ActionsManager::InspectPageAction:
-			if (!m_inspector)
 			{
-				getInspector();
-			}
+				const bool showInspector(parameters.value(QLatin1String("isChecked"), !getActionState(identifier, parameters).isChecked).toBool());
 
-			emit arbitraryActionsStateChanged({ActionsManager::InspectPageAction});
-			emit requestedInspectorVisibilityChange(parameters.value(QLatin1String("isChecked"), !getActionState(identifier, parameters).isChecked).toBool());
+				if (showInspector && !m_inspector)
+				{
+					getInspector();
+				}
+
+				emit requestedInspectorVisibilityChange(showInspector);
+				emit arbitraryActionsStateChanged({ActionsManager::InspectPageAction});
+			}
 
 			break;
 		case ActionsManager::InspectElementAction:
@@ -1703,7 +1735,7 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 		case ActionsManager::WebsitePreferencesAction:
 			{
 				const QUrl url(getUrl());
-				WebsitePreferencesDialog dialog(url, (url.host().isEmpty() ? QVector<QNetworkCookie>() : m_networkManager->getCookieJar()->getCookies(url.host())), this);
+				WebsitePreferencesDialog dialog(Utils::extractHost(url), (url.host().isEmpty() ? QVector<QNetworkCookie>() : m_networkManager->getCookieJar()->getCookies(url.host())), this);
 
 				if (dialog.exec() == QDialog::Accepted)
 				{
@@ -1775,7 +1807,7 @@ void QtWebKitWebWidget::setHistory(const WindowHistoryInformation &history)
 
 	for (int i = 0; i < history.entries.count(); ++i)
 	{
-		stream << QString(QUrl::fromUserInput(history.entries.at(i).url).toEncoded()) << history.entries.at(i).title << history.entries.at(i).url << quint32(2) << quint64(0) << ++documentSequence << quint64(0) << QString() << false << ++itemSequence << QString() << qint32(history.entries.at(i).position.x()) << qint32(history.entries.at(i).position.y()) << qreal(1) << false << QString() << false;
+		stream << QString(QUrl::fromUserInput(history.entries.at(i).url).toEncoded()) << history.entries.at(i).title << history.entries.at(i).url << static_cast<quint32>(2) << static_cast<quint64>(0) << ++documentSequence << static_cast<quint64>(0) << QString() << false << ++itemSequence << QString() << static_cast<qint32>(history.entries.at(i).position.x()) << static_cast<qint32>(history.entries.at(i).position.y()) << static_cast<qreal>(1) << false << QString() << false;
 	}
 
 	stream.device()->reset();
@@ -1863,42 +1895,24 @@ void QtWebKitWebWidget::setUrl(const QUrl &url, bool isTyped)
 	if (url.scheme() == QLatin1String("javascript"))
 	{
 		m_page->mainFrame()->documentElement().evaluateJavaScript(url.toDisplayString(QUrl::RemoveScheme | QUrl::DecodeReserved));
-
-		return;
 	}
-
-	if (!url.fragment().isEmpty() && url.matches(getUrl(), (QUrl::RemoveFragment | QUrl::StripTrailingSlash | QUrl::NormalizePathSegments)))
+	else if (!url.fragment().isEmpty() && url.matches(getUrl(), (QUrl::RemoveFragment | QUrl::StripTrailingSlash | QUrl::NormalizePathSegments)))
 	{
 		m_page->mainFrame()->scrollToAnchor(url.fragment());
-
-		return;
 	}
-
-	m_isTyped = isTyped;
-
-	QUrl targetUrl(url);
-
-	if (url.isValid() && url.scheme().isEmpty() && !url.path().startsWith('/'))
+	else
 	{
-		QUrl httpUrl(url);
-		httpUrl.setScheme(QLatin1String("http"));
+		m_isTyped = isTyped;
 
-		targetUrl = httpUrl;
+		const QUrl targetUrl(Utils::expandUrl(url));
+
+		updateOptions(targetUrl);
+
+		m_page->mainFrame()->load(targetUrl);
+
+		notifyTitleChanged();
+		notifyIconChanged();
 	}
-	else if (url.isValid() && (url.scheme().isEmpty() || url.scheme() == "file"))
-	{
-		QUrl localUrl(url);
-		localUrl.setScheme(QLatin1String("file"));
-
-		targetUrl = localUrl;
-	}
-
-	updateOptions(targetUrl);
-
-	m_page->mainFrame()->load(targetUrl);
-
-	notifyTitleChanged();
-	notifyIconChanged();
 }
 
 void QtWebKitWebWidget::setPermission(FeaturePermission feature, const QUrl &url, PermissionPolicies policies)
@@ -1966,7 +1980,7 @@ void QtWebKitWebWidget::setOption(int identifier, const QVariant &value)
 		case SettingsManager::Browser_SpellCheckDictionaryOption:
 			emit widgetActivated(this);
 
-			resetSpellCheck(m_page->mainFrame()->hitTestContent(getCurrentHitTestResult().position).element());
+			resetSpellCheck(m_page->mainFrame()->hitTestContent(getCurrentHitTestResult().hitPosition).element());
 
 			break;
 		default:
@@ -2119,7 +2133,7 @@ QUrl QtWebKitWebWidget::getUrl() const
 {
 	const QUrl url(m_page->mainFrame()->url());
 
-	return (url.isEmpty() ? m_page->mainFrame()->requestedUrl() : url);
+	return (Utils::isUrlEmpty(url) ? m_page->mainFrame()->requestedUrl() : url);
 }
 
 QIcon QtWebKitWebWidget::getIcon() const
@@ -2158,7 +2172,7 @@ QPixmap QtWebKitWebWidget::createThumbnail(const QSize &size)
 		contentsSize.setWidth(2000);
 	}
 
-	contentsSize.setHeight(qRound(thumbnailSize.height() * (qreal(contentsSize.width()) / thumbnailSize.width())));
+	contentsSize.setHeight(qRound(thumbnailSize.height() * (static_cast<qreal>(contentsSize.width()) / thumbnailSize.width())));
 
 	m_page->setViewportSize(contentsSize);
 
@@ -2266,6 +2280,20 @@ WebWidget::LinkUrl QtWebKitWebWidget::getActiveLink() const
 	return link;
 }
 
+WebWidget::LinkUrl QtWebKitWebWidget::getActiveMedia() const
+{
+	const QWebHitTestResult result(m_page->mainFrame()->hitTestContent(getClickPosition()));
+	LinkUrl link;
+
+	if (!result.mediaUrl().isEmpty())
+	{
+		link.title = result.title();
+		link.url = result.mediaUrl();
+	}
+
+	return link;
+}
+
 WebWidget::SslInformation QtWebKitWebWidget::getSslInformation() const
 {
 	return m_networkManager->getSslInformation();
@@ -2288,11 +2316,11 @@ WindowHistoryInformation QtWebKitWebWidget::getHistory() const
 	m_page->history()->currentItem().setUserData(state);
 
 	const QWebHistory *history(m_page->history());
-	WindowHistoryInformation information;
-	information.index = history->currentItemIndex();
-
 	const QString requestedUrl(m_page->mainFrame()->requestedUrl().toString());
 	const int historyCount(history->count());
+	WindowHistoryInformation information;
+	information.entries.reserve(historyCount);
+	information.index = history->currentItemIndex();
 
 	for (int i = 0; i < historyCount; ++i)
 	{
@@ -2340,15 +2368,16 @@ WebWidget::HitTestResult QtWebKitWebWidget::getHitTestResult(const QPoint &posit
 	result.imageUrl = nativeResult.imageUrl();
 	result.linkUrl = nativeResult.linkUrl();
 	result.mediaUrl = nativeResult.mediaUrl();
-	result.position = position;
-	result.geometry = nativeResult.element().geometry();
+	result.hitPosition = position;
+	result.elementGeometry = nativeResult.element().geometry();
 
-	QWebElement parentElement(nativeResult.element().parent());
 	const QString type(nativeResult.element().attribute(QLatin1String("type")).toLower());
 	const bool isSubmit((result.tagName == QLatin1String("button") || result.tagName == QLatin1String("input")) && (type == QLatin1String("image") || type == QLatin1String("submit")));
 
 	if (isSubmit || result.tagName == QLatin1String("button") || result.tagName == QLatin1String("input") || result.tagName == QLatin1String("select") || result.tagName == QLatin1String("textarea"))
 	{
+		QWebElement parentElement(nativeResult.element().parent());
+
 		while (!parentElement.isNull() && parentElement.tagName().toLower() != QLatin1String("form"))
 		{
 			parentElement = parentElement.parent();
@@ -2432,8 +2461,9 @@ QStringList QtWebKitWebWidget::getBlockedElements() const
 
 QStringList QtWebKitWebWidget::getStyleSheets() const
 {
-	QStringList titles;
 	const QWebElementCollection styleSheets(m_page->mainFrame()->findAllElements(QLatin1String("link[rel=\"alternate stylesheet\"]")));
+	QStringList titles;
+	titles.reserve(styleSheets.count());
 
 	for (int i = 0; i < styleSheets.count(); ++i)
 	{
@@ -2451,8 +2481,9 @@ QStringList QtWebKitWebWidget::getStyleSheets() const
 QVector<WebWidget::LinkUrl> QtWebKitWebWidget::getFeeds() const
 {
 	const QWebElementCollection elements(m_page->mainFrame()->findAllElements(QLatin1String("a[type=\"application/atom+xml\"], a[type=\"application/rss+xml\"], link[type=\"application/atom+xml\"], link[type=\"application/rss+xml\"]")));
-	QVector<LinkUrl> links;
 	QSet<QUrl> urls;
+	QVector<LinkUrl> links;
+	links.reserve(elements.count());
 
 	for (int i = 0; i < elements.count(); ++i)
 	{
@@ -2472,6 +2503,8 @@ QVector<WebWidget::LinkUrl> QtWebKitWebWidget::getFeeds() const
 
 		links.append(link);
 	}
+
+	links.squeeze();
 
 	return links;
 }
@@ -2479,8 +2512,9 @@ QVector<WebWidget::LinkUrl> QtWebKitWebWidget::getFeeds() const
 QVector<WebWidget::LinkUrl> QtWebKitWebWidget::getSearchEngines() const
 {
 	const QWebElementCollection elements(m_page->mainFrame()->findAllElements(QLatin1String("link[type=\"application/opensearchdescription+xml\"]")));
-	QVector<LinkUrl> links;
 	QSet<QUrl> urls;
+	QVector<LinkUrl> links;
+	links.reserve(elements.count());
 
 	for (int i = 0; i < elements.count(); ++i)
 	{
@@ -2500,6 +2534,8 @@ QVector<WebWidget::LinkUrl> QtWebKitWebWidget::getSearchEngines() const
 
 		links.append(link);
 	}
+
+	links.squeeze();
 
 	return links;
 }
@@ -2689,7 +2725,7 @@ bool QtWebKitWebWidget::eventFilter(QObject *object, QEvent *event)
 	{
 		const QMouseEvent *mouseEvent(static_cast<QMouseEvent*>(event));
 
-		if (event->type() == QEvent::MouseButtonPress && mouseEvent && mouseEvent->button() == Qt::LeftButton && SettingsManager::getOption(SettingsManager::Permissions_EnablePluginsOption, getUrl()).toString() == QLatin1String("onDemand"))
+		if (event->type() == QEvent::MouseButtonPress && mouseEvent && mouseEvent->button() == Qt::LeftButton && SettingsManager::getOption(SettingsManager::Permissions_EnablePluginsOption, Utils::extractHost(getUrl())).toString() == QLatin1String("onDemand"))
 		{
 			const QWidget *widget(childAt(mouseEvent->pos()));
 			const QWebHitTestResult hitResult(m_page->mainFrame()->hitTestContent(mouseEvent->pos()));

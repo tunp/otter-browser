@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2017 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -35,9 +35,19 @@ PrivateWindowIndicatorWidget::PrivateWindowIndicatorWidget(const ToolBarsManager
 	setCheckable(true);
 	setChecked(true);
 
-	MainWindow *mainWindow(MainWindow::findMainWindow(parent));
+	const MainWindow *mainWindow(MainWindow::findMainWindow(parent));
 
 	m_isHidden = (mainWindow && !mainWindow->isPrivate());
+}
+
+void PrivateWindowIndicatorWidget::changeEvent(QEvent *event)
+{
+	QWidget::changeEvent(event);
+
+	if (event->type() == QEvent::LanguageChange)
+	{
+		setText(getOptions().value(QLatin1String("text"), tr("Private Window")).toString());
+	}
 }
 
 void PrivateWindowIndicatorWidget::mousePressEvent(QMouseEvent *event)

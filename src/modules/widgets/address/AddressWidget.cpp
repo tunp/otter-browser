@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2014 - 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 * Copyright (C) 2014 Piotr Wójcik <chocimier@tlen.pl>
 *
@@ -32,7 +32,6 @@
 #include "../../../ui/Action.h"
 #include "../../../ui/BookmarkPropertiesDialog.h"
 #include "../../../ui/ContentsWidget.h"
-#include "../../../ui/ItemViewWidget.h"
 #include "../../../ui/MainWindow.h"
 #include "../../../ui/ToolBarWidget.h"
 #include "../../../ui/Window.h"
@@ -44,9 +43,7 @@
 #include <QtGui/QPainter>
 #include <QtGui/QTextBlock>
 #include <QtGui/QTextDocument>
-#include <QtWidgets/QApplication>
 #include <QtWidgets/QMenu>
-#include <QtWidgets/QStyleOptionFrame>
 #include <QtWidgets/QToolTip>
 
 namespace Otter
@@ -96,7 +93,7 @@ void AddressDelegate::paint(QPainter *painter, const QStyleOptionViewItem &optio
 
 	QString url(index.data(Qt::DisplayRole).toString());
 	QString description((m_viewMode == HistoryMode) ? Utils::formatDateTime(index.data(AddressCompletionModel::TimeVisitedRole).toDateTime()) : index.data(AddressCompletionModel::TitleRole).toString());
-	const int topPosition(titleRectangle.top() - ((titleRectangle.height() - painter->clipBoundingRect().united(document.documentLayout()->blockBoundingRect(document.firstBlock())).height()) / 2));
+	const int topPosition(titleRectangle.top() - qRound((titleRectangle.height() - painter->clipBoundingRect().united(document.documentLayout()->blockBoundingRect(document.firstBlock())).height()) / 2));
 	const bool isSearchSuggestion(static_cast<AddressCompletionModel::CompletionEntry::EntryType>(index.data(AddressCompletionModel::TypeRole).toInt()) == AddressCompletionModel::CompletionEntry::SearchSuggestionType);
 
 	if (option.state.testFlag(QStyle::State_Selected))
@@ -263,7 +260,7 @@ void AddressDelegate::handleOptionChanged(int identifier, const QVariant &value)
 	}
 }
 
-QString AddressDelegate::highlightText(const QString &text, QString html) const
+QString AddressDelegate::highlightText(const QString &text, const QString &html) const
 {
 	const int index(text.indexOf(m_highlight, 0, Qt::CaseInsensitive));
 
@@ -272,10 +269,7 @@ QString AddressDelegate::highlightText(const QString &text, QString html) const
 		return (html + text);
 	}
 
-	html += text.left(index);
-	html += QStringLiteral("<b>%1</b>").arg(text.mid(index, m_highlight.length()));
-
-	return highlightText(text.mid(index + m_highlight.length()), html);
+	return highlightText(text.mid(index + m_highlight.length()), html + text.left(index) + QStringLiteral("<b>%1</b>").arg(text.mid(index, m_highlight.length())));
 }
 
 int AddressDelegate::calculateLength(const QStyleOptionViewItem &option, const QString &text, int length) const
@@ -303,11 +297,11 @@ QSize AddressDelegate::sizeHint(const QStyleOptionViewItem &option, const QModel
 
 	if (index.row() != 0 && static_cast<AddressCompletionModel::CompletionEntry::EntryType>(index.data(AddressCompletionModel::TypeRole).toInt()) == AddressCompletionModel::CompletionEntry::HeaderType)
 	{
-		size.setHeight(option.fontMetrics.lineSpacing() * 1.75);
+		size.setHeight(qRound(option.fontMetrics.lineSpacing() * 1.75));
 	}
 	else
 	{
-		size.setHeight(option.fontMetrics.lineSpacing() * 1.25);
+		size.setHeight(qRound(option.fontMetrics.lineSpacing() * 1.25));
 	}
 
 	return size;
@@ -345,7 +339,7 @@ AddressWidget::AddressWidget(Window *window, QWidget *parent) : LineEditWidget(p
 
 		connect(SettingsManager::getInstance(), &SettingsManager::optionChanged, this, &AddressWidget::handleOptionChanged);
 
-		if (toolBar->getIdentifier() != ToolBarsManager::AddressBar)
+		if (toolBar->getDefinition().isGlobal())
 		{
 			connect(toolBar, &ToolBarWidget::windowChanged, this, &AddressWidget::setWindow);
 		}
@@ -657,22 +651,23 @@ void AddressWidget::mouseReleaseEvent(QMouseEvent *event)
 						else
 						{
 							QMenu menu;
-							menu.addAction(tr("Add to Bookmarks"));
-							menu.addAction(tr("Add to Start Page"))->setData(SettingsManager::getOption(SettingsManager::StartPage_BookmarksFolderOption));
+							QAction *addBookmarkAction(menu.addAction(tr("Add to Bookmarks")));
+							addBookmarkAction->setShortcut(ActionsManager::getActionShortcut(ActionsManager::BookmarkPageAction));
+							addBookmarkAction->setShortcutContext(Qt::WidgetShortcut);
 
-							connect(&menu, &QMenu::triggered, this, [&](QAction *action)
+							connect(addBookmarkAction, &QAction::triggered, [&]()
 							{
-								if (action && m_window)
+								if (m_window)
 								{
-									if (action->data().isNull())
-									{
-										BookmarkPropertiesDialog dialog(getUrl().adjusted(QUrl::RemovePassword), m_window->getTitle(), QString(), nullptr, -1, true, this);
-										dialog.exec();
-									}
-									else
-									{
-										BookmarksManager::addBookmark(BookmarksModel::UrlBookmark, {{BookmarksModel::UrlRole, getUrl().adjusted(QUrl::RemovePassword)}, {BookmarksModel::TitleRole, m_window->getTitle()}}, BookmarksManager::getModel()->getItem(action->data().toString()));
-									}
+									BookmarkPropertiesDialog dialog(getUrl().adjusted(QUrl::RemovePassword), m_window->getTitle(), (m_window->getContentsWidget() ? m_window->getContentsWidget()->getDescription() : QString()), nullptr, -1, true, this);
+									dialog.exec();
+								}
+							});
+							connect(menu.addAction(tr("Add to Start Page")), &QAction::triggered, [&]()
+							{
+								if (m_window)
+								{
+									BookmarksManager::addBookmark(BookmarksModel::UrlBookmark, {{BookmarksModel::UrlRole, getUrl().adjusted(QUrl::RemovePassword)}, {BookmarksModel::TitleRole, m_window->getTitle()}}, BookmarksManager::getModel()->getItem(SettingsManager::getOption(SettingsManager::StartPage_BookmarksFolderOption).toString()));
 								}
 							});
 
@@ -1003,6 +998,7 @@ void AddressWidget::updateGeometries()
 	const int offset(qMax(((height() - 16) / 2), 2));
 	QMargins margins(offset, 0, offset, 0);
 	int availableWidth(width() - margins.left() - margins.right());
+	const bool hasValidWindow(m_window && !m_window->isAboutToClose() && m_window->getLoadingState() == WebWidget::FinishedLoadingState);
 	bool isLeading(true);
 	bool isRightToLeft(layoutDirection() == Qt::RightToLeft);
 
@@ -1077,13 +1073,11 @@ void AddressWidget::updateGeometries()
 
 				break;
 			case ListFeedsEntry:
-				if (!m_window || m_window->isAboutToClose() || m_window->getLoadingState() != WebWidget::FinishedLoadingState || !m_window->getWebWidget() || m_window->getWebWidget()->getFeeds().isEmpty())
+				if (hasValidWindow && m_window->getWebWidget() && !m_window->getWebWidget()->getFeeds().isEmpty())
 				{
-					continue;
+					definition.title = QT_TR_NOOP("Show feed list");
+					definition.icon = ThemesManager::createIcon(QLatin1String("application-rss+xml"), false);
 				}
-
-				definition.title = QT_TR_NOOP("Show feed list");
-				definition.icon = ThemesManager::createIcon(QLatin1String("application-rss+xml"), false);
 
 				break;
 			case BookmarkEntry:
@@ -1111,26 +1105,22 @@ void AddressWidget::updateGeometries()
 
 				break;
 			case LoadPluginsEntry:
-				if (!m_window || m_window->isAboutToClose() || m_window->getLoadingState() != WebWidget::FinishedLoadingState || !m_window->getActionState(ActionsManager::LoadPluginsAction).isEnabled)
+				if (hasValidWindow && m_window->getActionState(ActionsManager::LoadPluginsAction).isEnabled)
 				{
-					continue;
+					definition.title = QT_TR_NOOP("Load all plugins on the page");
+					definition.icon = ThemesManager::createIcon(QLatin1String("preferences-plugin"), false);
 				}
-
-				definition.title = QT_TR_NOOP("Load all plugins on the page");
-				definition.icon = ThemesManager::createIcon(QLatin1String("preferences-plugin"), false);
 
 				break;
 			case FillPasswordEntry:
 				{
 					const QUrl url(getUrl());
 
-					if (!m_window || m_window->isAboutToClose() || m_window->getLoadingState() != WebWidget::FinishedLoadingState || Utils::isUrlEmpty(url) || url.scheme() == QLatin1String("about") || !PasswordsManager::hasPasswords(url, PasswordsManager::FormPassword))
+					if (hasValidWindow && !Utils::isUrlEmpty(url) && url.scheme() != QLatin1String("about") && PasswordsManager::hasPasswords(url, PasswordsManager::FormPassword))
 					{
-						continue;
+						definition.title = QT_TR_NOOP("Log in");
+						definition.icon = ThemesManager::createIcon(QLatin1String("fill-password"), false);
 					}
-
-					definition.title = QT_TR_NOOP("Log in");
-					definition.icon = ThemesManager::createIcon(QLatin1String("fill-password"), false);
 				}
 
 				break;
@@ -1256,7 +1246,7 @@ void AddressWidget::setCompletion(const QString &filter)
 	{
 		hidePopup();
 
-		LineEditWidget::setCompletion(QString());
+		LineEditWidget::setCompletion({});
 
 		return;
 	}
@@ -1327,7 +1317,7 @@ void AddressWidget::setWindow(Window *window)
 
 		const ToolBarWidget *toolBar(qobject_cast<ToolBarWidget*>(parentWidget()));
 
-		if (!toolBar || toolBar->getIdentifier() != ToolBarsManager::AddressBar)
+		if (!toolBar || toolBar->getDefinition().isGlobal())
 		{
 			connect(window, &Window::aboutToClose, this, [&]()
 			{
@@ -1424,6 +1414,18 @@ bool AddressWidget::event(QEvent *event)
 
 				if (!title.isEmpty())
 				{
+					if (entry == WebsiteInformationEntry)
+					{
+						const QKeySequence shortcut(ActionsManager::getActionShortcut(ActionsManager::WebsiteInformationAction));
+
+						if (!shortcut.isEmpty())
+						{
+							QToolTip::showText(helpEvent->globalPos(), tr(title.toUtf8().constData()) + QLatin1String(" (") + shortcut.toString(QKeySequence::NativeText) + QLatin1Char(')'));
+
+							return true;
+						}
+					}
+
 					QToolTip::showText(helpEvent->globalPos(), tr(title.toUtf8().constData()));
 
 					return true;

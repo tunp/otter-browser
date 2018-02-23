@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -57,7 +57,6 @@ public slots:
 protected:
 	void changeEvent(QEvent *event) override;
 	QStandardItem* findDomain(const QString &domain);
-	QStandardItem* findEntry(const QUrl &entry);
 	QUrl getEntry(const QModelIndex &index) const;
 
 protected slots:
@@ -65,7 +64,7 @@ protected slots:
 	void removeEntry();
 	void removeDomainEntries();
 	void removeDomainEntriesOrEntry();
-	void openEntry(const QModelIndex &index = {});
+	void openEntry();
 	void copyEntryLink();
 	void handleEntryAdded(const QUrl &entry);
 	void handleEntryRemoved(const QUrl &entry);

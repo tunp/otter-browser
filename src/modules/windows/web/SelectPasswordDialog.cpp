@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2016 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2016 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -45,6 +45,8 @@ SelectPasswordDialog::SelectPasswordDialog(const QVector<PasswordsManager::Passw
 		for (int j = 0; j < passwords.at(i).fields.count(); ++j)
 		{
 			QList<QStandardItem*> fieldItems({new QStandardItem(passwords.at(i).fields.at(j).name), new QStandardItem((passwords.at(i).fields.at(j).type == PasswordsManager::PasswordField) ? QLatin1String("*****") : passwords.at(i).fields.at(j).value)});
+			fieldItems[0]->setFlags(fieldItems[0]->flags() | Qt::ItemNeverHasChildren);
+			fieldItems[1]->setFlags(fieldItems[1]->flags() | Qt::ItemNeverHasChildren);
 
 			setItem->appendRow(fieldItems);
 		}
@@ -74,6 +76,7 @@ void SelectPasswordDialog::changeEvent(QEvent *event)
 	if (event->type() == QEvent::LanguageChange)
 	{
 		m_ui->retranslateUi(this);
+		m_ui->passwordsViewWidget->getSourceModel()->setHorizontalHeaderLabels({tr("Name"), tr("Value")});
 	}
 }
 

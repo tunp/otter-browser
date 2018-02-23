@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2014 - 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -40,7 +40,6 @@
 #include <QtGui/QWheelEvent>
 #include <QtWebKit/QWebHistory>
 #include <QtWebKitWidgets/QWebFrame>
-#include <QtWidgets/QInputDialog>
 #include <QtWidgets/QMessageBox>
 
 namespace Otter
@@ -65,23 +64,18 @@ void QtWebKitFrame::runUserScripts(const QUrl &url) const
 	}
 }
 
-void QtWebKitFrame::applyContentBlockingRules(const QStringList &rules, bool remove)
+void QtWebKitFrame::applyContentBlockingRules(const QStringList &rules, bool isHiding)
 {
-	const QWebElement document(m_frame->documentElement());
-	const QString value(remove ? QLatin1String("none !important") : QString());
+	const QString value(isHiding ? QLatin1String("none !important") : QString());
+	const QWebElementCollection elements(m_frame->documentElement().findAll(rules.join(QLatin1Char(','))));
 
-	for (int i = 0; i < rules.count(); ++i)
+	for (int i = 0; i < elements.count(); ++i)
 	{
-		const QWebElementCollection elements(document.findAll(rules.at(i)));
+		QWebElement element(elements.at(i));
 
-		for (int j = 0; j < elements.count(); ++j)
+		if (!element.isNull())
 		{
-			QWebElement element(elements.at(j));
-
-			if (!element.isNull())
-			{
-				element.setStyleProperty(QLatin1String("display"), value);
-			}
+			element.setStyleProperty(QLatin1String("display"), value);
 		}
 	}
 }
@@ -103,12 +97,12 @@ void QtWebKitFrame::handleLoadFinished()
 
 	if (m_isDisplayingErrorPage)
 	{
-		const QVector<QPair<QUrl, QSslError> > sslErrors(m_widget->getSslInformation().errors);
+		const QVector<WebWidget::SslInformation::SslError> sslErrors(m_widget->getSslInformation().errors);
 		QFile file(QLatin1String(":/modules/backends/web/qtwebkit/resources/errorPage.js"));
 
 		if (file.open(QIODevice::ReadOnly))
 		{
-			m_frame->documentElement().evaluateJavaScript(QString(file.readAll()).arg(m_widget->getMessageToken(), (sslErrors.isEmpty() ? QByteArray() : sslErrors.first().second.certificate().digest().toBase64()), ((m_frame->page()->history()->currentItemIndex() > 0) ? QLatin1String("true") : QLatin1String("false"))));
+			m_frame->documentElement().evaluateJavaScript(QString(file.readAll()).arg(m_widget->getMessageToken(), (sslErrors.isEmpty() ? QByteArray() : sslErrors.first().error.certificate().digest().toBase64()), ((m_frame->page()->history()->currentItemIndex() > 0) ? QLatin1String("true") : QLatin1String("false"))));
 
 			file.close();
 		}
@@ -133,29 +127,10 @@ void QtWebKitFrame::handleLoadFinished()
 		return;
 	}
 
-	const QVector<int> profiles(ContentBlockingManager::getProfileList(m_widget->getOption(SettingsManager::ContentBlocking_ProfilesOption).toStringList()));
+	const ContentBlockingManager::CosmeticFiltersResult cosmeticFilters(ContentBlockingManager::getCosmeticFilters(ContentBlockingManager::getProfileList(m_widget->getOption(SettingsManager::ContentBlocking_ProfilesOption).toStringList()), m_widget->getUrl()));
 
-	if (!profiles.isEmpty() && ContentBlockingManager::getCosmeticFiltersMode() != ContentBlockingManager::NoFiltersMode)
-	{
-		const QUrl url(m_widget->getUrl());
-		const ContentBlockingManager::CosmeticFiltersMode mode(ContentBlockingManager::checkUrl(profiles, url, url, NetworkManager::OtherType).comesticFiltersMode);
-
-		if (mode != ContentBlockingManager::NoFiltersMode)
-		{
-			if (mode != ContentBlockingManager::DomainOnlyFiltersMode)
-			{
-				applyContentBlockingRules(ContentBlockingManager::getStyleSheet(profiles), true);
-			}
-
-			const QStringList domainList(ContentBlockingManager::createSubdomainList(url.host()));
-
-			for (int i = 0; i < domainList.count(); ++i)
-			{
-				applyContentBlockingRules(ContentBlockingManager::getStyleSheetBlackList(domainList.at(i), profiles), true);
-				applyContentBlockingRules(ContentBlockingManager::getStyleSheetWhiteList(domainList.at(i), profiles), false);
-			}
-		}
-	}
+	applyContentBlockingRules(cosmeticFilters.rules, true);
+	applyContentBlockingRules(cosmeticFilters.exceptions, false);
 
 	const QStringList blockedRequests(m_widget->getBlockedElements());
 
@@ -170,7 +145,7 @@ void QtWebKitFrame::handleLoadFinished()
 
 			for (int j = 0; j < blockedRequests.count(); ++j)
 			{
-				if (url.matches(QUrl(blockedRequests[j]), QUrl::None) || blockedRequests[j].endsWith(url.url()))
+				if (url.matches(QUrl(blockedRequests.at(j)), QUrl::None) || blockedRequests.at(j).endsWith(url.url()))
 				{
 					element.setStyleProperty(QLatin1String("display"), QLatin1String("none !important"));
 
@@ -482,7 +457,6 @@ QWebPage* QtWebKitPage::createWindow(QWebPage::WebWindowType type)
 {
 	if (type != QWebPage::WebModalDialog)
 	{
-		QtWebKitWebWidget *widget(nullptr);
 		const QString popupsPolicy(getOption(SettingsManager::Permissions_ScriptsCanOpenWindowsOption).toString());
 
 		if (!m_widget || currentFrame()->hitTestContent(m_widget->getClickPosition()).linkUrl().isEmpty())
@@ -503,9 +477,7 @@ QWebPage* QtWebKitPage::createWindow(QWebPage::WebWindowType type)
 			}
 		}
 
-		widget = createWidget(SessionsManager::calculateOpenHints((popupsPolicy == QLatin1String("openAllInBackground")) ? (SessionsManager::NewTabOpen | SessionsManager::BackgroundOpen) : SessionsManager::NewTabOpen));
-
-		return widget->getPage();
+		return createWidget(SessionsManager::calculateOpenHints((popupsPolicy == QLatin1String("openAllInBackground")) ? (SessionsManager::NewTabOpen | SessionsManager::BackgroundOpen) : SessionsManager::NewTabOpen))->getPage();
 	}
 
 	return QWebPage::createWindow(type);
@@ -535,7 +507,7 @@ QtWebKitWebWidget* QtWebKitPage::createWidget(SessionsManager::OpenHints hints)
 
 	widget->handleLoadStarted();
 
-	emit requestedNewWindow(widget, hints);
+	emit requestedNewWindow(widget, hints, {});
 
 	return widget;
 }
@@ -569,7 +541,7 @@ QVariant QtWebKitPage::runScript(const QString &path, QWebElement element)
 		element = mainFrame()->documentElement();
 	}
 
-	QFile file(QString(":/modules/backends/web/qtwebkit/resources/%1.js").arg(path));
+	QFile file(QStringLiteral(":/modules/backends/web/qtwebkit/resources/%1.js").arg(path));
 
 	if (file.open(QIODevice::ReadOnly))
 	{
@@ -590,10 +562,9 @@ QVariant QtWebKitPage::getOption(int identifier) const
 		return m_widget->getOption(identifier);
 	}
 
-	QUrl url(mainFrame()->url());
-	url = (url.isEmpty() ? mainFrame()->requestedUrl() : url);
+	const QUrl url(mainFrame()->url());
 
-	return SettingsManager::getOption(identifier, url);
+	return SettingsManager::getOption(identifier, Utils::extractHost(url.isEmpty() ? mainFrame()->requestedUrl() : url));
 }
 
 bool QtWebKitPage::acceptNavigationRequest(QWebFrame *frame, const QNetworkRequest &request, QWebPage::NavigationType type)
@@ -638,8 +609,8 @@ bool QtWebKitPage::acceptNavigationRequest(QWebFrame *frame, const QNetworkReque
 
 	if (type == QWebPage::NavigationTypeFormResubmitted && SettingsManager::getOption(SettingsManager::Choices_WarnFormResendOption).toBool())
 	{
-		bool cancel(false);
-		bool warn(true);
+		bool shouldCancelRequest(false);
+		bool shouldWarnNextTime(true);
 
 		if (m_widget)
 		{
@@ -650,8 +621,8 @@ bool QtWebKitPage::acceptNavigationRequest(QWebFrame *frame, const QNetworkReque
 
 			m_widget->showDialog(&dialog);
 
-			cancel = !dialog.isAccepted();
-			warn = !dialog.getCheckBoxState();
+			shouldCancelRequest = !dialog.isAccepted();
+			shouldWarnNextTime = !dialog.getCheckBoxState();
 		}
 		else
 		{
@@ -664,13 +635,13 @@ bool QtWebKitPage::acceptNavigationRequest(QWebFrame *frame, const QNetworkReque
 			dialog.setDefaultButton(QMessageBox::Cancel);
 			dialog.setCheckBox(new QCheckBox(tr("Do not show this message again")));
 
-			cancel = (dialog.exec() == QMessageBox::Cancel);
-			warn = !dialog.checkBox()->isChecked();
+			shouldCancelRequest = (dialog.exec() == QMessageBox::Cancel);
+			shouldWarnNextTime = !dialog.checkBox()->isChecked();
 		}
 
-		SettingsManager::setOption(SettingsManager::Choices_WarnFormResendOption, warn);
+		SettingsManager::setOption(SettingsManager::Choices_WarnFormResendOption, shouldWarnNextTime);
 
-		if (cancel)
+		if (shouldCancelRequest)
 		{
 			return false;
 		}
@@ -767,7 +738,7 @@ bool QtWebKitPage::event(QEvent *event)
 {
 	if (event->type() == QEvent::Wheel)
 	{
-		QWheelEvent *wheelEvent(static_cast<QWheelEvent*>(event));
+		const QWheelEvent *wheelEvent(static_cast<QWheelEvent*>(event));
 
 		if (wheelEvent->buttons() == Qt::RightButton)
 		{
@@ -868,11 +839,11 @@ bool QtWebKitPage::extension(QWebPage::Extension extension, const QWebPage::Exte
 			information.description.clear();
 			information.type = ErrorPageInformation::ConnectionInsecureError;
 
-			const QVector<QPair<QUrl, QSslError> > sslErrors(m_widget->getSslInformation().errors);
+			const QVector<WebWidget::SslInformation::SslError> sslErrors(m_widget->getSslInformation().errors);
 
 			for (int i = 0; i < sslErrors.count(); ++i)
 			{
-				information.description.append(sslErrors.at(i).second.errorString());
+				information.description.append(sslErrors.at(i).error.errorString());
 			}
 		}
 		else if (errorOption->domain == QWebPage::QtNetwork && errorOption->error == QNetworkReply::QNetworkReply::ProtocolUnknownError)

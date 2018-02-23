@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2016 Piotr Wójcik <chocimier@tlen.pl>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -39,6 +39,7 @@ public:
 	bool hasHeightForWidth() const override;
 
 protected:
+	void changeEvent(QEvent *event) override;
 	void resizeEvent(QResizeEvent *event) override;
 
 protected slots:
@@ -46,7 +47,7 @@ protected slots:
 	void reset();
 	void selectFromFile();
 	void selectFromTheme();
-	void updateMenu();
+	void populateMenu();
 
 private:
 	QIcon m_defaultIcon;

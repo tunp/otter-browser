@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -52,9 +52,16 @@ public slots:
 	void addTile(const QUrl &url);
 	void reloadTile(const QModelIndex &index, bool needsTitleUpdate = false);
 
+protected:
+	struct ThumbnailRequestInformation final
+	{
+		quint64 bookmarkIdentifier = 0;
+		bool needsTitleUpdate = false;
+	};
+
 protected slots:
-	void dragEnded();
 	void handleOptionChanged(int identifier);
+	void handleDragEnded();
 	void handleBookmarkModified(BookmarksItem *bookmark);
 	void handleBookmarkMoved(BookmarksItem *bookmark, BookmarksItem *previousParent);
 	void handleBookmarkRemoved(BookmarksItem *bookmark, BookmarksItem *previousParent);
@@ -62,7 +69,7 @@ protected slots:
 
 private:
 	BookmarksItem *m_bookmark;
-	QHash<QUrl, QPair<quint64, bool> > m_reloads;
+	QHash<QUrl, ThumbnailRequestInformation> m_reloads;
 
 signals:
 	void modelModified();

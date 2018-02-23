@@ -2,7 +2,7 @@
 * Otter Browser: Web browser controlled by the user, not vice-versa.
 * Copyright (C) 2010 - 2014 David Rosca <nowrep@gmail.com>
 * Copyright (C) 2014 - 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -80,21 +80,21 @@ void ContentBlockingProfile::clear()
 		QtConcurrent::run(this, &ContentBlockingProfile::deleteNode, m_root);
 	}
 
-	m_styleSheet.clear();
-	m_styleSheetWhiteList.clear();
-	m_styleSheetBlackList.clear();
+	m_cosmeticFiltersRules.clear();
+	m_cosmeticFiltersDomainExceptions.clear();
+	m_cosmeticFiltersDomainRules.clear();
 
 	m_wasLoaded = false;
 }
 
 void ContentBlockingProfile::loadHeader(const QString &path)
 {
-	QFile file(path);
-
-	if (!file.exists())
+	if (!QFile::exists(path))
 	{
 		return;
 	}
+
+	QFile file(path);
 
 	if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
 	{
@@ -143,7 +143,7 @@ void ContentBlockingProfile::parseRuleLine(const QString &rule)
 	{
 		if (ContentBlockingManager::getCosmeticFiltersMode() == ContentBlockingManager::AllFiltersMode)
 		{
-			m_styleSheet.append(rule.mid(2));
+			m_cosmeticFiltersRules.append(rule.mid(2));
 		}
 
 		return;
@@ -153,7 +153,7 @@ void ContentBlockingProfile::parseRuleLine(const QString &rule)
 	{
 		if (ContentBlockingManager::getCosmeticFiltersMode() != ContentBlockingManager::NoFiltersMode)
 		{
-			parseStyleSheetRule(rule.split(QLatin1String("##")), m_styleSheetBlackList);
+			parseStyleSheetRule(rule.split(QLatin1String("##")), m_cosmeticFiltersDomainRules);
 		}
 
 		return;
@@ -163,7 +163,7 @@ void ContentBlockingProfile::parseRuleLine(const QString &rule)
 	{
 		if (ContentBlockingManager::getCosmeticFiltersMode() != ContentBlockingManager::NoFiltersMode)
 		{
-			parseStyleSheetRule(rule.split(QLatin1String("#@#")), m_styleSheetWhiteList);
+			parseStyleSheetRule(rule.split(QLatin1String("#@#")), m_cosmeticFiltersDomainExceptions);
 		}
 
 		return;
@@ -238,7 +238,8 @@ void ContentBlockingProfile::parseRuleLine(const QString &rule)
 			{
 				continue;
 			}
-			else if (!optionException)
+
+			if (!optionException)
 			{
 				ruleOptions |= option;
 			}
@@ -733,7 +734,7 @@ ContentBlockingManager::CheckResult ContentBlockingProfile::checkUrl(const QUrl 
 
 	for (int i = 0; i < m_requestUrl.length(); ++i)
 	{
-		ContentBlockingManager::CheckResult currentResult(checkUrlSubstring(m_root, m_requestUrl.right(m_requestUrl.length() - i), QString(), resourceType));
+		const ContentBlockingManager::CheckResult currentResult(checkUrlSubstring(m_root, m_requestUrl.right(m_requestUrl.length() - i), {}, resourceType));
 
 		if (currentResult.isBlocked)
 		{
@@ -748,34 +749,27 @@ ContentBlockingManager::CheckResult ContentBlockingProfile::checkUrl(const QUrl 
 	return result;
 }
 
-QStringList ContentBlockingProfile::getStyleSheet()
+ContentBlockingManager::CosmeticFiltersResult ContentBlockingProfile::getCosmeticFilters(const QStringList &domains, bool isDomainOnly)
 {
 	if (!m_wasLoaded)
 	{
 		loadRules();
 	}
 
-	return m_styleSheet;
-}
+	ContentBlockingManager::CosmeticFiltersResult result;
 
-QStringList ContentBlockingProfile::getStyleSheetBlackList(const QString &domain)
-{
-	if (!m_wasLoaded)
+	if (!isDomainOnly)
 	{
-		loadRules();
+		result.rules = m_cosmeticFiltersRules;
 	}
 
-	return m_styleSheetBlackList.values(domain);
-}
-
-QStringList ContentBlockingProfile::getStyleSheetWhiteList(const QString &domain)
-{
-	if (!m_wasLoaded)
+	for (int i = 0; i < domains.count(); ++i)
 	{
-		loadRules();
+		result.rules.append(m_cosmeticFiltersDomainRules.values(domains.at(i)));
+		result.exceptions.append(m_cosmeticFiltersDomainExceptions.values(domains.at(i)));
 	}
 
-	return m_styleSheetWhiteList.values(domain);
+	return result;
 }
 
 QVector<QLocale::Language> ContentBlockingProfile::getLanguages() const

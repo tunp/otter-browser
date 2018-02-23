@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2014 Piotr Wójcik <chocimier@tlen.pl>
 * Copyright (C) 2015 - 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
@@ -23,10 +23,8 @@
 #define OTTER_QTWEBKITNETWORKMANAGER_H
 
 #include "QtWebKitWebWidget.h"
-#include "../../../../core/ContentBlockingManager.h"
 #include "../../../../core/NetworkManager.h"
 #include "../../../../core/NetworkManagerFactory.h"
-#include "../../../../core/Utils.h"
 
 #include <QtNetwork/QNetworkRequest>
 
@@ -35,7 +33,6 @@ namespace Otter
 
 class NetworkProxyFactory;
 class QtWebKitCookieJar;
-class QtWebKitWebWidget;
 class WebBackend;
 
 class QtWebKitNetworkManager final : public QNetworkAccessManager

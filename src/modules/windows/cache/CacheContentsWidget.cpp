@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -18,7 +18,6 @@
 **************************************************************************/
 
 #include "CacheContentsWidget.h"
-#include "../../../core/Application.h"
 #include "../../../core/HistoryManager.h"
 #include "../../../core/NetworkCache.h"
 #include "../../../core/NetworkManagerFactory.h"
@@ -29,7 +28,7 @@
 
 #include "ui_CacheContentsWidget.h"
 
-#include <QtCore/QDateTime>
+#include <QtCore/QCoreApplication>
 #include <QtCore/QMimeDatabase>
 #include <QtCore/QTimer>
 #include <QtGui/QClipboard>
@@ -76,6 +75,8 @@ void CacheContentsWidget::changeEvent(QEvent *event)
 	if (event->type() == QEvent::LanguageChange)
 	{
 		m_ui->retranslateUi(this);
+
+		m_model->setHorizontalHeaderLabels({tr("Address"), tr("Type"), tr("Size"), tr("Last Modified"), tr("Expires")});
 	}
 }
 
@@ -157,7 +158,7 @@ void CacheContentsWidget::removeEntry()
 void CacheContentsWidget::removeDomainEntries()
 {
 	const QModelIndex index(m_ui->cacheViewWidget->currentIndex());
-	const QStandardItem *domainItem((index.isValid() && index.parent() == m_model->invisibleRootItem()->index()) ? findDomain(index.sibling(index.row(), 0).data(Qt::ToolTipRole).toString()) : findEntry(getEntry(index)));
+	const QStandardItem *domainItem(findDomain((index.isValid() && index.parent() == m_model->invisibleRootItem()->index()) ? index.sibling(index.row(), 0).data(Qt::ToolTipRole).toString() : Utils::extractHost(getEntry(index))));
 
 	if (!domainItem)
 	{
@@ -186,16 +187,16 @@ void CacheContentsWidget::removeDomainEntriesOrEntry()
 	}
 }
 
-void CacheContentsWidget::openEntry(const QModelIndex &index)
+void CacheContentsWidget::openEntry()
 {
-	const QModelIndex entryIndex(index.isValid() ? index : m_ui->cacheViewWidget->currentIndex());
+	const QModelIndex index(m_ui->cacheViewWidget->currentIndex());
 
-	if (!entryIndex.isValid() || entryIndex.parent() == m_model->invisibleRootItem()->index())
+	if (!index.isValid() || index.parent() == m_model->invisibleRootItem()->index())
 	{
 		return;
 	}
 
-	const QUrl url(entryIndex.sibling(entryIndex.row(), 0).data(Qt::UserRole).toUrl());
+	const QUrl url(getEntry(index));
 
 	if (url.isValid())
 	{
@@ -211,11 +212,11 @@ void CacheContentsWidget::openEntry(const QModelIndex &index)
 
 void CacheContentsWidget::copyEntryLink()
 {
-	const QStandardItem *entryItem(findEntry(getEntry(m_ui->cacheViewWidget->currentIndex())));
+	const QUrl url(getEntry(m_ui->cacheViewWidget->currentIndex()));
 
-	if (entryItem)
+	if (url.isValid())
 	{
-		QApplication::clipboard()->setText(entryItem->data(Qt::UserRole).toString());
+		QApplication::clipboard()->setText(url.toDisplayString());
 	}
 }
 
@@ -298,13 +299,18 @@ void CacheContentsWidget::handleEntryAdded(const QUrl &entry)
 
 void CacheContentsWidget::handleEntryRemoved(const QUrl &entry)
 {
-	QStandardItem *entryItem(findEntry(entry));
+	QStandardItem *domainItem(findDomain(Utils::extractHost(entry)));
 
-	if (entryItem)
+	if (!domainItem)
 	{
-		QStandardItem *domainItem(entryItem->parent());
+		return;
+	}
 
-		if (domainItem)
+	for (int i = 0; i < domainItem->rowCount(); ++i)
+	{
+		QStandardItem *entryItem(domainItem->child(i, 0));
+
+		if (entryItem && entryItem->data(Qt::UserRole).toUrl() == entry)
 		{
 			const qint64 size(domainItem->index().child(entryItem->row(), 2).data(Qt::UserRole).toLongLong());
 
@@ -326,6 +332,8 @@ void CacheContentsWidget::handleEntryRemoved(const QUrl &entry)
 
 				domainItem->setText(QStringLiteral("%1 (%2)").arg(entry.host()).arg(domainItem->rowCount()));
 			}
+
+			break;
 		}
 	}
 }
@@ -339,21 +347,39 @@ void CacheContentsWidget::showContextMenu(const QPoint &position)
 
 	if (entry.isValid())
 	{
-		menu.addAction(ThemesManager::createIcon(QLatin1String("document-open")), tr("Open"), this, SLOT(openEntry()));
-		menu.addAction(tr("Open in New Tab"), this, SLOT(openEntry()))->setData(SessionsManager::NewTabOpen);
-		menu.addAction(tr("Open in New Background Tab"), this, SLOT(openEntry()))->setData(static_cast<int>(SessionsManager::NewTabOpen | SessionsManager::BackgroundOpen));
+		connect(menu.addAction(ThemesManager::createIcon(QLatin1String("document-open")), tr("Open")), &QAction::triggered, this, &CacheContentsWidget::openEntry);
+
+		QAction *openInNewTabAction(menu.addAction(tr("Open in New Tab")));
+		openInNewTabAction->setData(SessionsManager::NewTabOpen);
+
+		QAction *openInNewBackgroundTabAction(menu.addAction(tr("Open in New Background Tab")));
+		openInNewBackgroundTabAction->setData(static_cast<int>(SessionsManager::NewTabOpen | SessionsManager::BackgroundOpen));
+
 		menu.addSeparator();
-		menu.addAction(tr("Open in New Window"), this, SLOT(openEntry()))->setData(SessionsManager::NewWindowOpen);
-		menu.addAction(tr("Open in New Background Window"), this, SLOT(openEntry()))->setData(static_cast<int>(SessionsManager::NewWindowOpen | SessionsManager::BackgroundOpen));
+
+		QAction *openInNewWindowAction(menu.addAction(tr("Open in New Window")));
+		openInNewWindowAction->setData(SessionsManager::NewWindowOpen);
+
+		QAction *openInNewBackgroundWindowAction(menu.addAction(tr("Open in New Background Window")));
+		openInNewBackgroundWindowAction->setData(static_cast<int>(SessionsManager::NewWindowOpen | SessionsManager::BackgroundOpen));
+
 		menu.addSeparator();
-		menu.addAction(tr("Copy Link to Clipboard"), this, SLOT(copyEntryLink()));
+
+		connect(menu.addAction(tr("Copy Link to Clipboard")), &QAction::triggered, this, &CacheContentsWidget::copyEntryLink);
+
 		menu.addSeparator();
-		menu.addAction(tr("Remove Entry"), this, SLOT(removeEntry()));
+
+		connect(menu.addAction(tr("Remove Entry")), &QAction::triggered, this, &CacheContentsWidget::removeEntry);
+		connect(openInNewTabAction, &QAction::triggered, this, &CacheContentsWidget::openEntry);
+		connect(openInNewBackgroundTabAction, &QAction::triggered, this, &CacheContentsWidget::openEntry);
+		connect(openInNewWindowAction, &QAction::triggered, this, &CacheContentsWidget::openEntry);
+		connect(openInNewBackgroundWindowAction, &QAction::triggered, this, &CacheContentsWidget::openEntry);
 	}
 
 	if (entry.isValid() || (index.isValid() && index.parent() == m_model->invisibleRootItem()->index()))
 	{
-		menu.addAction(tr("Remove All Entries from This Domain"), this, SLOT(removeDomainEntries()));
+		connect(menu.addAction(tr("Remove All Entries from This Domain")), &QAction::triggered, this, &CacheContentsWidget::removeDomainEntries);
+
 		menu.addSeparator();
 	}
 
@@ -504,26 +530,6 @@ QStandardItem* CacheContentsWidget::findDomain(const QString &domain)
 	return nullptr;
 }
 
-QStandardItem* CacheContentsWidget::findEntry(const QUrl &entry)
-{
-	for (int i = 0; i < m_model->rowCount(); ++i)
-	{
-		const QModelIndex domainIndex(m_model->index(i, 0));
-
-		for (int j = 0; j < m_model->rowCount(domainIndex); ++j)
-		{
-			const QModelIndex index(domainIndex.child(j, 0));
-
-			if (index.data(Qt::UserRole).toUrl() == entry)
-			{
-				return m_model->itemFromIndex(index);
-			}
-		}
-	}
-
-	return nullptr;
-}
-
 QString CacheContentsWidget::getTitle() const
 {
 	return tr("Cache");
@@ -573,18 +579,19 @@ bool CacheContentsWidget::eventFilter(QObject *object, QEvent *event)
 	{
 		const QKeyEvent *keyEvent(static_cast<QKeyEvent*>(event));
 
-		if (keyEvent && (keyEvent->key() == Qt::Key_Enter || keyEvent->key() == Qt::Key_Return))
+		switch (keyEvent->key())
 		{
-			openEntry();
+			case Qt::Key_Delete:
+				removeDomainEntriesOrEntry();
 
-			return true;
-		}
+				return true;
+			case Qt::Key_Enter:
+			case Qt::Key_Return:
+				openEntry();
 
-		if (keyEvent && keyEvent->key() == Qt::Key_Delete)
-		{
-			removeDomainEntriesOrEntry();
-
-			return true;
+				return true;
+			default:
+				break;
 		}
 	}
 	else if (object == m_ui->cacheViewWidget->viewport() && event->type() == QEvent::MouseButtonRelease)

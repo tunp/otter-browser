@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2014 Piotr Wójcik <chocimier@tlen.pl>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -359,6 +359,7 @@ SessionInformation SessionsManager::getSession(const QString &path)
 QStringList SessionsManager::getClosedWindows()
 {
 	QStringList closedWindows;
+	closedWindows.reserve(m_closedWindows.count());
 
 	for (int i = 0; i < m_closedWindows.count(); ++i)
 	{
@@ -373,26 +374,28 @@ QStringList SessionsManager::getClosedWindows()
 
 QStringList SessionsManager::getSessions()
 {
-	QStringList entries(QDir(m_profilePath + QLatin1String("/sessions/")).entryList({QLatin1String("*.json")}, QDir::Files));
+	const QList<QFileInfo> entries(QDir(m_profilePath + QLatin1String("/sessions/")).entryInfoList({QLatin1String("*.json")}, QDir::Files));
+	QStringList sessions;
+	sessions.reserve(entries.count());
 
 	for (int i = 0; i < entries.count(); ++i)
 	{
-		entries[i] = QFileInfo(entries.at(i)).completeBaseName();
+		sessions.append(entries.at(i).completeBaseName());
 	}
 
 	if (!m_sessionPath.isEmpty() && !entries.contains(m_sessionPath))
 	{
-		entries.append(m_sessionPath);
+		sessions.append(m_sessionPath);
 	}
 
-	if (!entries.contains(QLatin1String("default")))
+	if (!sessions.contains(QLatin1String("default")))
 	{
-		entries.append(QLatin1String("default"));
+		sessions.append(QLatin1String("default"));
 	}
 
-	entries.sort();
+	sessions.sort();
 
-	return entries;
+	return sessions;
 }
 
 SessionsManager::OpenHints SessionsManager::calculateOpenHints(OpenHints hints, Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
@@ -490,7 +493,7 @@ bool SessionsManager::restoreClosedWindow(int index)
 		return false;
 	}
 
-	Application::createWindow(QVariantMap(), m_closedWindows.takeAt(index));
+	Application::createWindow({}, m_closedWindows.takeAt(index));
 
 	emit m_instance->closedWindowsChanged();
 
@@ -573,7 +576,9 @@ bool SessionsManager::saveSession(const QString &path, const QString &title, Mai
 
 bool SessionsManager::saveSession(const SessionInformation &session)
 {
-	QDir().mkpath(m_profilePath + QLatin1String("/sessions/"));
+	const QString sessionsPath(m_profilePath + QLatin1String("/sessions/"));
+
+	QDir().mkpath(sessionsPath);
 
 	if (session.windows.isEmpty())
 	{
@@ -584,18 +589,19 @@ bool SessionsManager::saveSession(const SessionInformation &session)
 
 	if (path.isEmpty())
 	{
-		path = m_profilePath + QLatin1String("/sessions/") + session.title + QLatin1String(".json");
+		path = sessionsPath + session.title + QLatin1String(".json");
 
-		if (QFileInfo(path).exists())
+		if (QFile::exists(path))
 		{
-			int i = 1;
+			int i(1);
 
-			while (QFileInfo(m_profilePath + QLatin1String("/sessions/") + session.title + QString::number(i) + QLatin1String(".json")).exists())
+			do
 			{
+				path = sessionsPath + session.title + QLatin1Char('_') + QString::number(i) + QLatin1String(".json");
+
 				++i;
 			}
-
-			path = m_profilePath + QLatin1String("/sessions/") + session.title + QString::number(i) + QLatin1String(".json");
+			while (QFile::exists(path));
 		}
 	}
 
@@ -637,24 +643,29 @@ bool SessionsManager::saveSession(const SessionInformation &session)
 				windowObject.insert(QLatin1String("options"), optionsObject);
 			}
 
-			if (sessionEntry.windows.at(j).state.state == Qt::WindowMaximized)
+			switch (sessionEntry.windows.at(j).state.state)
 			{
-				windowObject.insert(QLatin1String("state"), QLatin1String("maximized"));
-			}
-			else if (sessionEntry.windows.at(j).state.state == Qt::WindowMinimized)
-			{
-				windowObject.insert(QLatin1String("state"), QLatin1String("minimized"));
-			}
-			else
-			{
-				const QRect geometry(sessionEntry.windows.at(j).state.geometry);
+				case Qt::WindowMaximized:
+					windowObject.insert(QLatin1String("state"), QLatin1String("maximized"));
 
-				windowObject.insert(QLatin1String("state"), QLatin1String("normal"));
+					break;
+				case Qt::WindowMinimized:
+					windowObject.insert(QLatin1String("state"), QLatin1String("minimized"));
 
-				if (geometry.isValid())
-				{
-					windowObject.insert(QLatin1String("geometry"), QStringLiteral("%1, %2, %3, %4").arg(geometry.x()).arg(geometry.y()).arg(geometry.width()).arg(geometry.height()));
-				}
+					break;
+				default:
+					{
+						const QRect geometry(sessionEntry.windows.at(j).state.geometry);
+
+						windowObject.insert(QLatin1String("state"), QLatin1String("normal"));
+
+						if (geometry.isValid())
+						{
+							windowObject.insert(QLatin1String("geometry"), QStringLiteral("%1, %2, %3, %4").arg(geometry.x()).arg(geometry.y()).arg(geometry.width()).arg(geometry.height()));
+						}
+					}
+
+					break;
 			}
 
 			if (sessionEntry.windows.at(j).isAlwaysOnTop)
@@ -674,7 +685,7 @@ bool SessionsManager::saveSession(const SessionInformation &session)
 				const QPoint position(sessionEntry.windows.at(j).history.at(k).position);
 				QJsonObject historyEntryObject({{QLatin1String("url"), sessionEntry.windows.at(j).history.at(k).url}, {QLatin1String("title"), sessionEntry.windows.at(j).history.at(k).title}, {QLatin1String("zoom"), sessionEntry.windows.at(j).history.at(k).zoom}});
 
-				if (position.x() != 0 || position.y() != 0)
+				if (!position.isNull())
 				{
 					historyEntryObject.insert(QLatin1String("position"), QStringLiteral("%1, %2").arg(position.x()).arg(position.y()));
 				}

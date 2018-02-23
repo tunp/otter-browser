@@ -241,6 +241,18 @@
 				]
 			},
 			{
+				"action": "Rewind",
+				"shortcuts": [
+					"Shift+Z"
+				]
+			},
+			{
+				"action": "FastForward",
+				"shortcuts": [
+					"Space"
+				]
+			},
+			{
 				"action": "Print",
 				"shortcuts": [
 					"Ctrl+P"
@@ -346,6 +358,51 @@
 				]
 			},
 			{
+				"action": "ShowPanel",
+				"parameters": {
+					"panel": "bookmarks"
+				},
+				"shortcuts": [
+					"Ctrl+B"
+				]
+			},
+			{
+				"action": "ShowPanel",
+				"parameters": {
+					"panel": "history"
+				},
+				"shortcuts": [
+					"Ctrl+H"
+				]
+			},
+			{
+				"action": "ShowPanel",
+				"parameters": {
+					"panel": "transfers"
+				},
+				"shortcuts": [
+					"Ctrl+J"
+				]
+			},
+			{
+				"action": "Addons",
+				"shortcuts": [
+					"Ctrl+Shift+A"
+				]
+			},
+			{
+				"action": "History",
+				"shortcuts": [
+					"Ctrl+Shift+H"
+				]
+			},
+			{
+				"action": "Transfers",
+				"shortcuts": [
+					"Ctrl+Shift+J"
+				]
+			},
+			{
 				"action": "Preferences",
 				"shortcuts": [
 					"Ctrl+F12",
@@ -362,6 +419,12 @@
 				"action": "QuickPreferences",
 				"shortcuts": [
 					"F12"
+				]
+			},
+			{
+				"action": "WebsiteInformation",
+				"shortcuts": [
+					"Ctrl+I"
 				]
 			},
 			{

@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2015 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -37,7 +37,8 @@ TrayIcon::TrayIcon(Application *parent) : QObject(parent),
 	const QVector<int> actions({-1, ActionsManager::NewTabAction, ActionsManager::NewTabPrivateAction, -1, ActionsManager::BookmarksAction, ActionsManager::TransfersAction, ActionsManager::HistoryAction, ActionsManager::NotesAction, -1, ActionsManager::ExitAction});
 	ActionExecutor::Object executor(Application::getInstance(), Application::getInstance());
 	Menu *menu(new Menu());
-	QAction *showWindowsAction(menu->addAction(tr("Show Windows")));
+
+	connect(menu->addAction(tr("Show Windows")), &QAction::triggered, this, &TrayIcon::toggleWindowsVisibility);
 
 	for (int i = 0; i < actions.count(); ++i)
 	{
@@ -83,7 +84,6 @@ TrayIcon::TrayIcon(Application *parent) : QObject(parent),
 	connect(Application::getInstance(), &Application::aboutToQuit, this, &TrayIcon::hide);
 	connect(this, &TrayIcon::destroyed, menu, &Menu::deleteLater);
 	connect(parent, &TrayIcon::destroyed, this, &TrayIcon::deleteLater);
-	connect(showWindowsAction, &QAction::triggered, this, &TrayIcon::toggleWindowsVisibility);
 	connect(menu, &Menu::aboutToShow, this, &TrayIcon::updateMenu);
 	connect(m_trayIcon, &QSystemTrayIcon::activated, this, &TrayIcon::handleTrayIconActivated);
 }
@@ -109,8 +109,7 @@ void TrayIcon::hide()
 
 void TrayIcon::toggleWindowsVisibility()
 {
-	Application *application(Application::getInstance());
-	application->setHidden(!application->isHidden());
+	Application::setHidden(!Application::isHidden());
 }
 
 void TrayIcon::handleTrayIconActivated(QSystemTrayIcon::ActivationReason reason)

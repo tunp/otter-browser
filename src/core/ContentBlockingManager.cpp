@@ -124,14 +124,14 @@ void ContentBlockingManager::timerEvent(QTimerEvent *event)
 
 			if (!languages.contains(QLocale::AnyLanguage))
 			{
-				QJsonArray languageNames;
+				QJsonArray languagesArray;
 
 				for (int j = 0; j < languages.count(); ++j)
 				{
-					languageNames.append(QLocale(languages.at(j)).name());
+					languagesArray.append(QLocale(languages.at(j)).name());
 				}
 
-				profileObject.insert(QLatin1String("languages"), languageNames);
+				profileObject.insert(QLatin1String("languages"), languagesArray);
 			}
 
 			mainObject.insert(profile->getName(), profileObject);
@@ -231,6 +231,7 @@ void ContentBlockingManager::ensureInitialized()
 
 		const QJsonArray languagesArray(profileObject.value(QLatin1String("languages")).toArray());
 		QStringList languages;
+		languages.reserve(languagesArray.count());
 
 		for (int j = 0; j < languagesArray.count(); ++j)
 		{
@@ -316,7 +317,7 @@ void ContentBlockingManager::removeProfile(ContentBlockingProfile *profile)
 
 	JsonSettings localSettings(SessionsManager::getWritableDataPath(QLatin1String("contentBlocking.json")));
 	QJsonObject localMainObject(localSettings.object());
-	QJsonObject bundledMainObject(JsonSettings(SessionsManager::getReadableDataPath(QLatin1String("contentBlocking.json"), true)).object());
+	const QJsonObject bundledMainObject(JsonSettings(SessionsManager::getReadableDataPath(QLatin1String("contentBlocking.json"), true)).object());
 
 	if (bundledMainObject.keys().contains(profile->getName()))
 	{
@@ -355,13 +356,14 @@ QStandardItemModel* ContentBlockingManager::createModel(QObject *parent, const Q
 			continue;
 		}
 
-		ContentBlockingProfile::ProfileCategory category(m_profiles.at(i)->getCategory());
+		const ContentBlockingProfile::ProfileCategory category(m_profiles.at(i)->getCategory());
 		QString title(m_profiles.at(i)->getTitle());
 
 		if (category == ContentBlockingProfile::RegionalCategory)
 		{
 			const QVector<QLocale::Language> languages(m_profiles.at(i)->getLanguages());
 			QStringList languageNames;
+			languageNames.reserve(languages.count());
 
 			for (int j = 0; j < languages.count(); ++j)
 			{
@@ -424,9 +426,9 @@ ContentBlockingProfile* ContentBlockingManager::getProfile(const QString &profil
 {
 	for (int i = 0; i < m_profiles.count(); ++i)
 	{
-		if (m_profiles[i]->getName() == profile)
+		if (m_profiles.at(i)->getName() == profile)
 		{
-			return m_profiles[i];
+			return m_profiles.at(i);
 		}
 	}
 
@@ -442,24 +444,24 @@ ContentBlockingManager::CheckResult ContentBlockingManager::checkUrl(const QVect
 {
 	if (profiles.isEmpty())
 	{
-		return CheckResult();
+		return {};
 	}
 
 	const QString scheme(requestUrl.scheme());
 
 	if (scheme != QLatin1String("http") && scheme != QLatin1String("https"))
 	{
-		return CheckResult();
+		return {};
 	}
 
 	CheckResult result;
 
 	for (int i = 0; i < profiles.count(); ++i)
 	{
-		if (profiles[i] >= 0 && profiles[i] < m_profiles.count())
+		if (profiles.at(i) >= 0 && profiles.at(i) < m_profiles.count())
 		{
-			CheckResult currentResult(m_profiles.at(profiles[i])->checkUrl(baseUrl, requestUrl, resourceType));
-			currentResult.profile = profiles[i];
+			CheckResult currentResult(m_profiles.at(profiles.at(i))->checkUrl(baseUrl, requestUrl, resourceType));
+			currentResult.profile = profiles.at(i);
 
 			if (currentResult.isBlocked)
 			{
@@ -469,6 +471,37 @@ ContentBlockingManager::CheckResult ContentBlockingManager::checkUrl(const QVect
 			{
 				return currentResult;
 			}
+		}
+	}
+
+	return result;
+}
+
+ContentBlockingManager::CosmeticFiltersResult ContentBlockingManager::getCosmeticFilters(const QVector<int> &profiles, const QUrl &requestUrl)
+{
+	if (profiles.isEmpty() || m_cosmeticFiltersMode == NoFiltersMode)
+	{
+		return {};
+	}
+
+	const CosmeticFiltersMode mode(checkUrl(profiles, requestUrl, requestUrl, NetworkManager::OtherType).comesticFiltersMode);
+
+	if (mode == ContentBlockingManager::NoFiltersMode)
+	{
+		return {};
+	}
+
+	CosmeticFiltersResult result;
+	const QStringList domains(createSubdomainList(requestUrl.host()));
+
+	for (int i = 0; i < profiles.count(); ++i)
+	{
+		if (profiles.at(i) >= 0 && profiles.at(i) < m_profiles.count())
+		{
+			const CosmeticFiltersResult profileResult(m_profiles.at(profiles.at(i))->getCosmeticFilters(domains, (mode == DomainOnlyFiltersMode)));
+
+			result.rules.append(profileResult.rules);
+			result.exceptions.append(profileResult.exceptions);
 		}
 	}
 
@@ -491,51 +524,6 @@ QStringList ContentBlockingManager::createSubdomainList(const QString &domain)
 	subdomainList.append(domain);
 
 	return subdomainList;
-}
-
-QStringList ContentBlockingManager::getStyleSheet(const QVector<int> &profiles)
-{
-	QStringList styleSheet;
-
-	for (int i = 0; i < profiles.count(); ++i)
-	{
-		if (profiles[i] >= 0 && profiles[i] < m_profiles.count())
-		{
-			styleSheet += m_profiles.at(profiles[i])->getStyleSheet();
-		}
-	}
-
-	return styleSheet;
-}
-
-QStringList ContentBlockingManager::getStyleSheetBlackList(const QString &domain, const QVector<int> &profiles)
-{
-	QStringList data;
-
-	for (int i = 0; i < profiles.count(); ++i)
-	{
-		if (profiles[i] >= 0 && profiles[i] < m_profiles.count())
-		{
-			data.append(m_profiles.at(profiles[i])->getStyleSheetBlackList(domain));
-		}
-	}
-
-	return data;
-}
-
-QStringList ContentBlockingManager::getStyleSheetWhiteList(const QString &domain, const QVector<int> &profiles)
-{
-	QStringList data;
-
-	for (int i = 0; i < profiles.count(); ++i)
-	{
-		if (profiles[i] >= 0 && profiles[i] < m_profiles.count())
-		{
-			data.append(m_profiles.at(profiles[i])->getStyleSheetWhiteList(domain));
-		}
-	}
-
-	return data;
 }
 
 QVector<ContentBlockingProfile*> ContentBlockingManager::getProfiles()

@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -86,7 +86,13 @@ ErrorConsoleWidget::ErrorConsoleWidget(QWidget *parent) : QWidget(parent),
 	connect(m_ui->cssButton, &QToolButton::clicked, this, &ErrorConsoleWidget::filterCategories);
 	connect(m_ui->javaScriptButton, &QToolButton::clicked, this, &ErrorConsoleWidget::filterCategories);
 	connect(m_ui->otherButton, &QToolButton::clicked, this, &ErrorConsoleWidget::filterCategories);
-	connect(m_ui->clearButton, &QToolButton::clicked, this, &ErrorConsoleWidget::clear);
+	connect(m_ui->clearButton, &QToolButton::clicked, this, [&]()
+	{
+		if (m_model)
+		{
+			m_model->clear();
+		}
+	});
 	connect(m_ui->filterLineEditWidget, &LineEditWidget::textChanged, this, &ErrorConsoleWidget::filterMessages);
 	connect(m_ui->consoleView, &QTreeView::customContextMenuRequested, this, &ErrorConsoleWidget::showContextMenu);
 }
@@ -185,31 +191,15 @@ void ErrorConsoleWidget::addMessage(const Console::Message &message)
 	messageItem->setData(source, SourceRole);
 	messageItem->setData(message.window, WindowRole);
 
-	if (!message.note.isEmpty())
-	{
-		QStandardItem *descriptionItem(new QStandardItem(message.note));
-		descriptionItem->setFlags(descriptionItem->flags() | Qt::ItemNeverHasChildren);
+	QStandardItem *descriptionItem(new QStandardItem(message.note.isEmpty() ? tr("<empty>") : message.note));
+	descriptionItem->setFlags(descriptionItem->flags() | Qt::ItemNeverHasChildren);
 
-		messageItem->appendRow(descriptionItem);
-	}
+	messageItem->appendRow(descriptionItem);
 
 	m_model->appendRow(messageItem);
 	m_model->sort(0, Qt::DescendingOrder);
 
 	applyFilters(messageItem->index(), m_ui->filterLineEditWidget->text(), getCategories(), getCurrentWindow());
-}
-
-void ErrorConsoleWidget::clear()
-{
-	if (m_model)
-	{
-		m_model->clear();
-	}
-}
-
-void ErrorConsoleWidget::copyText()
-{
-	QApplication::clipboard()->setText(m_ui->consoleView->currentIndex().data(Qt::DisplayRole).toString());
 }
 
 void ErrorConsoleWidget::filterCategories()
@@ -256,29 +246,36 @@ void ErrorConsoleWidget::filterMessages(const QString &filter)
 
 void ErrorConsoleWidget::applyFilters(const QModelIndex &index, const QString &filter, const QVector<Console::MessageCategory> &categories, quint64 currentWindow)
 {
-	bool matched(true);
+	bool hasMatch(true);
 
 	if (!filter.isEmpty() && !(index.data(SourceRole).toString().contains(filter, Qt::CaseInsensitive) || index.child(0, 0).data(Qt::DisplayRole).toString().contains(filter, Qt::CaseInsensitive)))
 	{
-		matched = false;
+		hasMatch = false;
 	}
 	else
 	{
 		const quint64 window(index.data(WindowRole).toULongLong());
 
-		matched = (((window == 0 && m_messageScopes.testFlag(OtherSourcesScope)) || (window > 0 && ((window == currentWindow && m_messageScopes.testFlag(CurrentTabScope)) || m_messageScopes.testFlag(AllTabsScope)))) && categories.contains(static_cast<Console::MessageCategory>(index.data(CategoryRole).toInt())));
+		hasMatch = (((window == 0 && m_messageScopes.testFlag(OtherSourcesScope)) || (window > 0 && ((window == currentWindow && m_messageScopes.testFlag(CurrentTabScope)) || m_messageScopes.testFlag(AllTabsScope)))) && categories.contains(static_cast<Console::MessageCategory>(index.data(CategoryRole).toInt())));
 	}
 
-	m_ui->consoleView->setRowHidden(index.row(), m_ui->consoleView->rootIndex(), !matched);
+	m_ui->consoleView->setRowHidden(index.row(), m_ui->consoleView->rootIndex(), !hasMatch);
 }
 
 void ErrorConsoleWidget::showContextMenu(const QPoint position)
 {
 	QMenu menu(m_ui->consoleView);
-	menu.addAction(ThemesManager::createIcon(QLatin1String("edit-copy")), tr("Copy"), this, SLOT(copyText()));
+
+	connect(menu.addAction(ThemesManager::createIcon(QLatin1String("edit-copy")), tr("Copy")), &QAction::triggered, this, [&]()
+	{
+		QApplication::clipboard()->setText(m_ui->consoleView->currentIndex().data(Qt::DisplayRole).toString());
+	});
+
 	menu.addSeparator();
-	menu.addAction(tr("Expand All"), m_ui->consoleView, SLOT(expandAll()));
-	menu.addAction(tr("Collapse All"), m_ui->consoleView, SLOT(collapseAll()));
+
+	connect(menu.addAction(tr("Expand All")), &QAction::triggered, m_ui->consoleView, &QTreeView::expandAll);
+	connect(menu.addAction(tr("Collapse All")), &QAction::triggered, m_ui->consoleView, &QTreeView::collapseAll);
+
 	menu.exec(m_ui->consoleView->mapToGlobal(position));
 }
 

@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -31,21 +31,21 @@
 namespace Otter
 {
 
-ClearHistoryDialog::ClearHistoryDialog(const QStringList &clearSettings, bool configureMode, QWidget *parent) : Dialog(parent),
-	m_configureMode(configureMode),
+ClearHistoryDialog::ClearHistoryDialog(const QStringList &clearSettings, bool isConfiguring, QWidget *parent) : Dialog(parent),
+	m_isConfiguring(isConfiguring),
 	m_ui(new Ui::ClearHistoryDialog)
 {
 	m_ui->setupUi(this);
 
 	QStringList settings(clearSettings);
-	settings.removeAll(QString());
+	settings.removeAll({});
 
 	if (settings.isEmpty())
 	{
 		settings = QStringList({QLatin1String("browsing"), QLatin1String("cookies"), QLatin1String("forms"), QLatin1String("downloads"), QLatin1String("caches")});
 	}
 
-	if (m_configureMode)
+	if (m_isConfiguring)
 	{
 		m_ui->periodWidget->hide();
 	}
