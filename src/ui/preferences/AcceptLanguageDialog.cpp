@@ -39,7 +39,7 @@ AcceptLanguageDialog::AcceptLanguageDialog(const QString &languages, QWidget *pa
 
 	m_ui->languagesViewWidget->setModel(m_model);
 
-	QStringList chosenLanguages(languages.split(QLatin1Char(','), QString::SkipEmptyParts));
+	const QStringList chosenLanguages(languages.split(QLatin1Char(','), QString::SkipEmptyParts));
 
 	for (int i = 0; i < chosenLanguages.count(); ++i)
 	{
@@ -48,6 +48,7 @@ AcceptLanguageDialog::AcceptLanguageDialog(const QString &languages, QWidget *pa
 
 	const QList<QLocale> locales(QLocale::matchingLocales(QLocale::AnyLanguage, QLocale::AnyScript, QLocale::AnyCountry));
 	QVector<QPair<QString, QString> > entries;
+	entries.reserve(locales.count() + 2);
 
 	for (int i = 0; i < locales.count(); ++i)
 	{
@@ -74,8 +75,9 @@ AcceptLanguageDialog::AcceptLanguageDialog(const QString &languages, QWidget *pa
 		return (collator.compare(first.first, second.first) < 0);
 	});
 
-	entries.prepend(QPair<QString, QString>(tr("Any other"), QLatin1String("*")));
-	entries.prepend(QPair<QString, QString>(tr("System language (%1 - %2)").arg(QLocale::system().nativeLanguageName()).arg(QLocale::system().nativeCountryName()), QLatin1String("system")));
+	entries.prepend({tr("Any other"), QLatin1String("*")});
+	entries.prepend({tr("System language (%1 - %2)").arg(QLocale::system().nativeLanguageName()).arg(QLocale::system().nativeCountryName()), QLatin1String("system")});
+	entries.squeeze();
 
 	for (int i = 0; i < entries.count(); ++i)
 	{

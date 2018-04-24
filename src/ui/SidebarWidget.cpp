@@ -202,14 +202,20 @@ void SidebarWidget::choosePanel(bool isChecked)
 	}
 
 	ToolBarsManager::ToolBarDefinition definition(m_toolBarWidget->getDefinition());
+	const QString panel(action->data().toString());
 
 	if (isChecked)
 	{
-		definition.panels.append(action->data().toString());
+		definition.panels.append(panel);
 	}
 	else
 	{
-		definition.panels.removeAll(action->data().toString());
+		definition.panels.removeAll(panel);
+
+		if (panel == definition.currentPanel)
+		{
+			definition.currentPanel.clear();
+		}
 	}
 
 	ToolBarsManager::setToolBar(definition);
@@ -217,15 +223,19 @@ void SidebarWidget::choosePanel(bool isChecked)
 
 void SidebarWidget::selectPanel(const QString &identifier)
 {
-	ToolBarsManager::ToolBarDefinition definition(m_toolBarWidget->getDefinition());
-
-	if (!identifier.isEmpty() && (identifier == m_currentPanel || !definition.panels.contains(identifier)))
+	if (!identifier.isEmpty() && identifier == m_currentPanel)
 	{
 		return;
 	}
 
+	ToolBarsManager::ToolBarDefinition definition(m_toolBarWidget->getDefinition());
 	MainWindow *mainWindow(MainWindow::findMainWindow(parent()));
-	ContentsWidget *contentsWidget((m_panels.contains(identifier) && m_panels[identifier]) ? m_panels[identifier] : WidgetFactory::createSidebarPanel(identifier, m_toolBarWidget->getIdentifier(), mainWindow, this));
+	ContentsWidget *contentsWidget(nullptr);
+
+	if (!identifier.isEmpty() && definition.panels.contains(identifier))
+	{
+		contentsWidget = ((m_panels.contains(identifier) && m_panels[identifier]) ? m_panels[identifier] : WidgetFactory::createSidebarPanel(identifier, m_toolBarWidget->getIdentifier(), mainWindow, this));
+	}
 
 	if (contentsWidget && mainWindow)
 	{
@@ -263,11 +273,11 @@ void SidebarWidget::selectPanel(const QString &identifier)
 
 	m_resizerWidget->setVisible(contentsWidget != nullptr);
 
-	m_currentPanel = identifier;
+	m_currentPanel = (definition.panels.contains(identifier) ? identifier : QString());
 
-	if (identifier != definition.currentPanel)
+	if (m_currentPanel != definition.currentPanel)
 	{
-		definition.currentPanel = identifier;
+		definition.currentPanel = m_currentPanel;
 
 		ToolBarsManager::setToolBar(definition);
 	}
@@ -372,6 +382,8 @@ void SidebarWidget::updatePanels()
 			}
 
 			widget->deleteLater();
+
+			m_panels.remove(panel);
 		}
 	}
 

@@ -106,7 +106,7 @@ Application::Application(int &argc, char **argv) : QApplication(argc, argv), Act
 	QString profilePath(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + QLatin1String("/otter"));
 	QString cachePath(QStandardPaths::writableLocation(QStandardPaths::CacheLocation));
 
-#if defined(Q_OS_MAC)
+#ifdef Q_OS_MAC
 	m_localePath = QFileInfo(applicationDirPath() + QLatin1String("/../Resources/locale/")).absoluteFilePath();
 #else
 	m_localePath = OTTER_INSTALL_PREFIX + QLatin1String("/share/otter-browser/locale/");
@@ -216,6 +216,13 @@ Application::Application(int &argc, char **argv) : QApplication(argc, argv), Act
 		QStringList rawReportOptions(m_commandLineParser.positionalArguments());
 		ReportOptions reportOptions(BasicReport);
 
+#ifdef Q_OS_WIN
+		if (!rawReportOptions.contains(QLatin1String("noDialog")))
+		{
+			rawReportOptions.append(QLatin1String("dialog"));
+		}
+#endif
+
 		if (rawReportOptions.isEmpty() || rawReportOptions.contains(QLatin1String("standard")))
 		{
 			reportOptions = StandardReport;
@@ -247,12 +254,6 @@ Application::Application(int &argc, char **argv) : QApplication(argc, argv), Act
 			}
 		}
 
-#ifdef Q_OS_WIN
-		if (!rawReportOptions.contains(QLatin1String("noDialog")))
-		{
-			rawReportOptions.append(QLatin1String("dialog"));
-		}
-#endif
 		if (rawReportOptions.contains(QLatin1String("dialog")))
 		{
 			ReportDialog dialog(reportOptions);
@@ -573,9 +574,38 @@ void Application::triggerAction(int identifier, const QVariantMap &parameters, Q
 				{
 					const SettingsManager::OptionDefinition definition(SettingsManager::getOptionDefinition(option));
 
-					if (definition.type == SettingsManager::BooleanType)
+					switch (definition.type)
 					{
-						SettingsManager::setOption(option, !SettingsManager::getOption(option, host).toBool(), host);
+						case SettingsManager::BooleanType:
+							SettingsManager::setOption(option, !SettingsManager::getOption(option, host).toBool(), host);
+
+							break;
+						case SettingsManager::EnumerationType:
+							if (definition.choices.count() > 1)
+							{
+								const QString value(SettingsManager::getOption(option, host).toString());
+
+								if (value == definition.choices.last().value)
+								{
+									SettingsManager::setOption(option, definition.choices.first().value, host);
+								}
+								else
+								{
+									for (int i = 0; i < (definition.choices.count() - 1); ++i)
+									{
+										if (value == definition.choices.at(i).value)
+										{
+											SettingsManager::setOption(option, definition.choices.at(i + 1).value, host);
+
+											break;
+										}
+									}
+								}
+							}
+
+							break;
+						default:
+							break;
 					}
 				}
 			}
@@ -622,11 +652,11 @@ void Application::triggerAction(int identifier, const QVariantMap &parameters, Q
 				{
 					if (m_windows.at(i)->isPrivate())
 					{
-						m_windows[i]->close();
+						m_windows.at(i)->close();
 					}
 					else
 					{
-						m_windows[i]->triggerAction(ActionsManager::ClosePrivateTabsAction);
+						m_windows.at(i)->triggerAction(ActionsManager::ClosePrivateTabsAction);
 					}
 				}
 			}
@@ -704,8 +734,8 @@ void Application::triggerAction(int identifier, const QVariantMap &parameters, Q
 			return;
 		case ActionsManager::AboutApplicationAction:
 			{
-				WebBackend *webBackend(AddonsManager::getWebBackend());
-				QString about = tr("<b>Otter %1</b><br>Web browser controlled by the user, not vice-versa.<br><a href=\"https://www.otter-browser.org/\">https://www.otter-browser.org/</a>").arg(Application::getFullVersion());
+				const WebBackend *webBackend(AddonsManager::getWebBackend());
+				QString about(tr("<b>Otter %1</b><br>Web browser controlled by the user, not vice-versa.<br><a href=\"https://www.otter-browser.org/\">https://www.otter-browser.org/</a>").arg(Application::getFullVersion()));
 
 				if (webBackend)
 				{
@@ -1203,9 +1233,10 @@ void Application::setLocale(const QString &locale)
 	}
 
 	const QString identifier(locale.endsWith(QLatin1String(".qm")) ? QFileInfo(locale).baseName().remove(QLatin1String("otter-browser_")) : ((locale == QLatin1String("system")) ? QLocale::system().name() : locale));
+	const bool useSystemLocale(locale.isEmpty() || locale == QLatin1String("system"));
 
-	m_qtTranslator->load(QLatin1String("qt_") + ((locale.isEmpty() || locale == QLatin1String("system")) ? QLocale::system().name() : identifier), QLibraryInfo::location(QLibraryInfo::TranslationsPath));
-	m_applicationTranslator->load((locale.endsWith(QLatin1String(".qm")) ? locale : QLatin1String("otter-browser_") + ((locale.isEmpty() || locale == QLatin1String("system")) ? QLocale::system().name() : locale)), m_localePath);
+	m_qtTranslator->load(QLatin1String("qt_") + (useSystemLocale ? QLocale::system().name() : identifier), QLibraryInfo::location(QLibraryInfo::TranslationsPath));
+	m_applicationTranslator->load((locale.endsWith(QLatin1String(".qm")) ? locale : QLatin1String("otter-browser_") + (useSystemLocale ? QLocale::system().name() : locale)), m_localePath);
 
 	QLocale::setDefault(Utils::createLocale(identifier));
 }
@@ -1586,20 +1617,21 @@ QVector<MainWindow*> Application::getWindows()
 
 bool Application::canClose()
 {
-	const QVector<Transfer*> transfers(TransfersManager::getTransfers());
-	int runningTransfers(0);
 	bool transfersDialog(false);
 
-	for (int i = 0; i < transfers.count(); ++i)
+	if (TransfersManager::hasRunningTransfers() && SettingsManager::getOption(SettingsManager::Choices_WarnQuitTransfersOption).toBool())
 	{
-		if (transfers.at(i)->getState() == Transfer::RunningState)
-		{
-			++runningTransfers;
-		}
-	}
+		const QVector<Transfer*> transfers(TransfersManager::getTransfers());
+		int runningTransfers(0);
 
-	if (runningTransfers > 0 && SettingsManager::getOption(SettingsManager::Choices_WarnQuitTransfersOption).toBool())
-	{
+		for (int i = 0; i < transfers.count(); ++i)
+		{
+			if (transfers.at(i)->getState() == Transfer::RunningState)
+			{
+				++runningTransfers;
+			}
+		}
+
 		QMessageBox messageBox;
 		messageBox.setWindowTitle(tr("Question"));
 		messageBox.setText(tr("You are about to quit while %n files are still being downloaded.", "", runningTransfers));

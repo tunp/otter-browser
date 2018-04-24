@@ -178,20 +178,23 @@ void ErrorConsoleWidget::addMessage(const Console::Message &message)
 	}
 
 	const QString source(message.source + ((message.line > 0) ? QStringLiteral(":%1").arg(message.line) : QString()));
+	const QString description(message.note.isEmpty() ? tr("<empty>") : message.note);
 	QString entry(QStringLiteral("[%1] %2").arg(message.time.toString(QLatin1String("yyyy-dd-MM hh:mm:ss"))).arg(category));
 
 	if (!message.source.isEmpty())
 	{
-		entry.append(QStringLiteral(" - %1").arg(source));
+		entry.append(QLatin1String(" - ") + source);
 	}
 
 	QStandardItem *messageItem(new QStandardItem(icon, entry));
+	messageItem->setData(entry, Qt::ToolTipRole);
 	messageItem->setData(message.time.toMSecsSinceEpoch(), TimeRole);
 	messageItem->setData(message.category, CategoryRole);
 	messageItem->setData(source, SourceRole);
 	messageItem->setData(message.window, WindowRole);
 
-	QStandardItem *descriptionItem(new QStandardItem(message.note.isEmpty() ? tr("<empty>") : message.note));
+	QStandardItem *descriptionItem(new QStandardItem(description));
+	descriptionItem->setData(description, Qt::ToolTipRole);
 	descriptionItem->setFlags(descriptionItem->flags() | Qt::ItemNeverHasChildren);
 
 	messageItem->appendRow(descriptionItem);
@@ -262,7 +265,7 @@ void ErrorConsoleWidget::applyFilters(const QModelIndex &index, const QString &f
 	m_ui->consoleView->setRowHidden(index.row(), m_ui->consoleView->rootIndex(), !hasMatch);
 }
 
-void ErrorConsoleWidget::showContextMenu(const QPoint position)
+void ErrorConsoleWidget::showContextMenu(const QPoint &position)
 {
 	QMenu menu(m_ui->consoleView);
 

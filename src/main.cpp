@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2015 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -24,16 +24,16 @@
 #include "ui/MainWindow.h"
 #include "ui/StartupDialog.h"
 #ifdef OTTER_ENABLE_CRASHREPORTS
-#if defined(Q_OS_WIN32)
+#ifdef Q_OS_WIN32
 #include "../3rdparty/breakpad/src/client/windows/handler/exception_handler.h"
 #elif defined(Q_OS_LINUX)
 #include "../3rdparty/breakpad/src/client/linux/handler/exception_handler.h"
-#endif
 #endif
 
 #include <QtCore/QDir>
 #include <QtCore/QProcess>
 #include <QtCore/QStandardPaths>
+#endif
 #include <QtCore/QUrl>
 #include <QtWidgets/QMessageBox>
 
@@ -57,7 +57,7 @@ void otterMessageHander(QtMsgType type, const QMessageLogContext &context, const
 #endif
 
 #ifdef OTTER_ENABLE_CRASHREPORTS
-#if defined(Q_OS_WIN32)
+#ifdef Q_OS_WIN32
 bool otterCrashDumpHandler(const wchar_t *dumpDirectory, const wchar_t *dumpIdentifier, void *context, EXCEPTION_POINTERS *exceptionInformation, MDRawAssertionInfo *assertionInformation, bool succeeded)
 {
 	Q_UNUSED(context)
@@ -106,7 +106,7 @@ int main(int argc, char *argv[])
 #endif
 
 #ifdef OTTER_ENABLE_CRASHREPORTS
-#if defined(Q_OS_WIN32)
+#ifdef Q_OS_WIN32
 	new google_breakpad::ExceptionHandler(reinterpret_cast<const wchar_t*>(QStandardPaths::writableLocation(QStandardPaths::TempLocation).utf16()), 0, otterCrashDumpHandler, 0, true);
 #elif defined(Q_OS_LINUX)
 	new google_breakpad::ExceptionHandler(google_breakpad::MinidumpDescriptor(QStandardPaths::writableLocation(QStandardPaths::TempLocation).toStdString()), 0, otterCrashDumpHandler, 0, true, -1);
@@ -202,7 +202,7 @@ int main(int argc, char *argv[])
 
 	Application::handlePositionalArguments(Application::getCommandLineParser());
 
-	if (application.getWindows().isEmpty())
+	if (Application::getWindows().isEmpty())
 	{
 		QVariantMap parameters;
 
@@ -211,7 +211,7 @@ int main(int argc, char *argv[])
 			parameters[QLatin1String("hints")] = SessionsManager::PrivateOpen;
 		}
 
-		application.createWindow(parameters);
+		Application::createWindow(parameters);
 	}
 
 	return application.exec();

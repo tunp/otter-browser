@@ -102,31 +102,28 @@ void CookieJar::clearCookies(int period)
 
 	const QList<QNetworkCookie> cookies(allCookies());
 
+	setAllCookies({});
+
 	for (int i = 0; i < cookies.count(); ++i)
 	{
-		QNetworkCookieJar::deleteCookie(cookies.at(i));
-
 		emit cookieRemoved(cookies.at(i));
 	}
 
+	scheduleSave();
+}
+
+void CookieJar::scheduleSave()
+{
 	if (!m_isPrivate)
 	{
 		if (Application::isAboutToQuit())
 		{
 			save();
 		}
-		else
+		else if (m_saveTimer == 0)
 		{
-			scheduleSave();
+			m_saveTimer = startTimer(500);
 		}
-	}
-}
-
-void CookieJar::scheduleSave()
-{
-	if (!m_isPrivate && m_saveTimer == 0)
-	{
-		m_saveTimer = startTimer(500);
 	}
 }
 
@@ -221,7 +218,7 @@ QVector<QNetworkCookie> CookieJar::getCookies(const QString &domain) const
 {
 	if (!domain.isEmpty())
 	{
-		const QVector<QNetworkCookie> cookies(allCookies().toVector());
+		const QList<QNetworkCookie> cookies(allCookies());
 		QVector<QNetworkCookie> domainCookies;
 
 		for (int i = 0; i < cookies.count(); ++i)

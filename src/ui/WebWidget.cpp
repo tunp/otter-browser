@@ -29,6 +29,7 @@
 #include "../core/Application.h"
 #include "../core/BookmarksManager.h"
 #include "../core/HandlersManager.h"
+#include "../core/HistoryManager.h"
 #include "../core/IniSettings.h"
 #include "../core/SearchEnginesManager.h"
 #include "../core/SettingsManager.h"
@@ -688,7 +689,11 @@ QString WebWidget::suggestSaveFileName(SaveFormat format) const
 			extension = QLatin1String(".mht");
 
 			break;
-		case SingleHtmlFileSaveFormat:
+		case PdfSaveFormat:
+			extension = QLatin1String(".pdf");
+
+			break;
+		case SingleFileSaveFormat:
 			extension = QLatin1String(".html");
 
 			break;
@@ -717,6 +722,29 @@ QString WebWidget::suggestSaveFileName(SaveFormat format) const
 	}
 
 	return fileName;
+}
+
+QString WebWidget::getSavePath(const QVector<SaveFormat> &allowedFormats, SaveFormat *selectedFormat) const
+{
+	const QMap<SaveFormat, QString> formats({{SingleFileSaveFormat, tr("HTML file (*.html *.htm)")}, {CompletePageSaveFormat, tr("HTML file with all resources (*.html *.htm)")}, {MhtmlSaveFormat, tr("Web archive (*.mht)")}, {PdfSaveFormat, tr("PDF document (*.pdf)")}});
+	QStringList filters;
+	filters.reserve(allowedFormats.count());
+
+	for (int i = 0; i < allowedFormats.count(); ++i)
+	{
+		filters.append(formats.value(allowedFormats.at(i)));
+	}
+
+	const SaveInformation result(Utils::getSavePath(suggestSaveFileName(SingleFileSaveFormat), {}, filters));
+
+	if (!result.canSave)
+	{
+		return {};
+	}
+
+	*selectedFormat = formats.key(result.filter);
+
+	return result.path;
 }
 
 QString WebWidget::getOpenActionText(SessionsManager::OpenHints hints) const
@@ -1084,8 +1112,40 @@ ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier
 			state.isEnabled = canGoForward();
 
 			break;
+		case ActionsManager::GoToHistoryIndexAction:
+			if (parameters.contains(QLatin1String("index")))
+			{
+				const WindowHistoryInformation history(getHistory());
+				const int index(parameters[QLatin1String("index")].toInt());
+
+				if (index >= 0 && index < history.entries.count())
+				{
+					state.icon = HistoryManager::getIcon(QUrl(history.entries.at(index).url));
+					state.text = history.entries.at(index).getTitle().replace(QLatin1Char('&'), QLatin1String("&&"));
+					state.isEnabled = true;
+				}
+			}
+
+			break;
 		case ActionsManager::FastForwardAction:
 			state.isEnabled = canFastForward();
+
+			break;
+		case ActionsManager::RemoveHistoryIndexAction:
+			if (parameters.value(QLatin1String("clearGlobalHistory"), false).toBool())
+			{
+				state.text = QCoreApplication::translate("actions", "Purge History Entry");
+			}
+
+			if (parameters.contains(QLatin1String("index")))
+			{
+				const int index(parameters[QLatin1String("index")].toInt());
+
+				if (index >= 0 && index < getHistory().entries.count())
+				{
+					state.isEnabled = true;
+				}
+			}
 
 			break;
 		case ActionsManager::StopAction:
@@ -1162,7 +1222,7 @@ ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier
 
 			break;
 		case ActionsManager::SelectAllAction:
-			state.isEnabled = (!m_hitResult.flags.testFlag(HitTestResult::IsEmptyTest));
+			state.isEnabled = !m_hitResult.flags.testFlag(HitTestResult::IsEmptyTest);
 
 			break;
 		case ActionsManager::ClearAllAction:
@@ -1297,6 +1357,11 @@ QVector<WebWidget::LinkUrl> WebWidget::getFeeds() const
 	return {};
 }
 
+QVector<WebWidget::LinkUrl> WebWidget::getLinks() const
+{
+	return {};
+}
+
 QVector<WebWidget::LinkUrl> WebWidget::getSearchEngines() const
 {
 	return {};
@@ -1425,11 +1490,6 @@ WebWidget::PermissionPolicy WebWidget::getPermission(FeaturePermission feature, 
 	}
 
 	return KeepAskingPermission;
-}
-
-WebWidget::SaveFormats WebWidget::getSupportedSaveFormats() const
-{
-	return SingleHtmlFileSaveFormat;
 }
 
 quint64 WebWidget::getWindowIdentifier() const

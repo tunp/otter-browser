@@ -17,15 +17,15 @@
 *
 **************************************************************************/
 
-#ifndef OTTER_TREEMODEL_H
-#define OTTER_TREEMODEL_H
+#ifndef OTTER_ITEMMODEL_H
+#define OTTER_ITEMMODEL_H
 
 #include <QtGui/QStandardItemModel>
 
 namespace Otter
 {
 
-class TreeModel : public QStandardItemModel
+class ItemModel : public QStandardItemModel
 {
 	Q_OBJECT
 
@@ -46,7 +46,18 @@ public:
 		UserRole
 	};
 
-	explicit TreeModel(QObject *parent = nullptr);
+	class Item : public QStandardItem
+	{
+	public:
+		explicit Item(ItemModel::ItemType type = EntryType);
+		explicit Item(const QString &title, ItemModel::ItemType type = EntryType);
+		explicit Item(const QIcon &icon, const QString &title, ItemModel::ItemType type = EntryType);
+
+	protected:
+		void setup(ItemModel::ItemType type);
+	};
+
+	explicit ItemModel(QObject *parent = nullptr);
 
 	void insertRow(QStandardItem *item = nullptr, QStandardItem *parent = nullptr, int row = -1, ItemType type = EntryType);
 	void insertRow(const QList<QStandardItem*> &items, QStandardItem *parent = nullptr, int row = -1, ItemType type = EntryType);

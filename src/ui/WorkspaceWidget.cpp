@@ -376,30 +376,20 @@ void WorkspaceWidget::triggerAction(int identifier, const QVariantMap &parameter
 		case ActionsManager::MinimizeTabAction:
 			if (subWindow)
 			{
-				const QList<QMdiSubWindow*> subWindows(m_mdi->subWindowList());
-				int activeSubWindows(0);
-				const bool wasActive(subWindow == m_mdi->currentSubWindow());
-
-				for (int i = 0; i < subWindows.count(); ++i)
-				{
-					if (!subWindows.at(i)->isMinimized())
-					{
-						++activeSubWindows;
-					}
-				}
-
-				subWindow->storeState();
-				subWindow->setWindowFlags(Qt::SubWindow);
-				subWindow->showMinimized();
+				const int activeSubWindows(m_mainWindow->getWindowCount() - getWindowCount(Qt::WindowMinimized));
 
 				if (activeSubWindows == 1)
 				{
 					m_mainWindow->setActiveWindowByIndex(-1);
 				}
-				else if (wasActive && activeSubWindows > 1)
+				else if (subWindow == m_mdi->currentSubWindow() && activeSubWindows > 1)
 				{
 					Application::triggerAction(ActionsManager::ActivatePreviouslyUsedTabAction, {}, m_mainWindow);
 				}
+
+				subWindow->storeState();
+				subWindow->setWindowFlags(Qt::SubWindow);
+				subWindow->showMinimized();
 			}
 
 			break;

@@ -110,7 +110,7 @@ public slots:
 	void setSort(int column, Qt::SortOrder order);
 	void setColumnVisibility(int column, bool hide);
 	void setExclusive(bool isExclusive);
-	void setFilterString(const QString filter = {});
+	void setFilterString(const QString &filter);
 	void setFilterRoles(const QSet<int> &roles);
 	void setModified(bool isModified);
 
@@ -121,6 +121,7 @@ protected:
 	void startDrag(Qt::DropActions supportedActions) override;
 	void ensureInitialized();
 	void moveRow(bool up);
+	void selectRow(const QModelIndex &index);
 	bool applyFilter(const QModelIndex &index);
 
 protected slots:

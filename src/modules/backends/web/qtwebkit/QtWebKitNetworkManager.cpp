@@ -633,7 +633,7 @@ QNetworkReply* QtWebKitNetworkManager::createRequest(QNetworkAccessManager::Oper
 				const QJsonArray fieldsArray(payloadObject.value(QLatin1String("fields")).toArray());
 				PasswordsManager::PasswordInformation password;
 				password.url = QUrl(payloadObject.value(QLatin1String("url")).toString());
-				password.timeAdded = QDateTime::currentDateTime();
+				password.timeAdded = QDateTime::currentDateTimeUtc();
 				password.fields.reserve(fieldsArray.count());
 				password.type = PasswordsManager::FormPassword;
 
@@ -773,6 +773,9 @@ QNetworkReply* QtWebKitNetworkManager::createRequest(QNetworkAccessManager::Oper
 
 	mutableRequest.setRawHeader(QStringLiteral("Accept-Language").toLatin1(), (m_acceptLanguage.isEmpty() ? NetworkManagerFactory::getAcceptLanguage().toLatin1() : m_acceptLanguage.toLatin1()));
 	mutableRequest.setHeader(QNetworkRequest::UserAgentHeader, m_userAgent);
+#if QT_VERSION >= 0x050900
+	mutableRequest.setAttribute(QNetworkRequest::HTTP2AllowedAttribute, false);
+#endif
 
 	setPageInformation(WebWidget::LoadingMessageInformation, tr("Sending request to %1…").arg(request.url().host()));
 

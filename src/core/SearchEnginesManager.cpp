@@ -18,6 +18,7 @@
 **************************************************************************/
 
 #include "SearchEnginesManager.h"
+#include "ItemModel.h"
 #include "SessionsManager.h"
 #include "SettingsManager.h"
 #include "ThemesManager.h"
@@ -167,15 +168,11 @@ void SearchEnginesManager::updateSearchEnginesModel()
 
 	if (searchEngines.count() > 0)
 	{
-		QStandardItem *separatorItem(new QStandardItem());
-		separatorItem->setData(QLatin1String("separator"), Qt::AccessibleDescriptionRole);
-		separatorItem->setFlags(Qt::ItemIsEnabled | Qt::ItemNeverHasChildren);
-
 		QStandardItem *manageItem(new QStandardItem(ThemesManager::createIcon(QLatin1String("configure")), tr("Manage Search Engines…")));
 		manageItem->setData(QLatin1String("configure"), Qt::AccessibleDescriptionRole);
 		manageItem->setFlags(manageItem->flags() | Qt::ItemNeverHasChildren);
 
-		m_searchEnginesModel->appendRow(separatorItem);
+		m_searchEnginesModel->appendRow(new ItemModel::Item(ItemModel::SeparatorType));
 		m_searchEnginesModel->appendRow(manageItem);
 	}
 
@@ -264,8 +261,8 @@ void SearchEnginesManager::setupQuery(const QString &query, const SearchUrl &sea
 					else
 					{
 						encodedValue.append(QLatin1Char('='));
-						encodedValue.append(hex[((character >> 4) & 0x0F)]);
-						encodedValue.append(hex[(character & 0x0F)]);
+						encodedValue.append(hex[(character >> 4) & 0x0F]);
+						encodedValue.append(hex[character & 0x0F]);
 					}
 				}
 
@@ -341,7 +338,7 @@ SearchEnginesManager::SearchEngineDefinition SearchEnginesManager::loadSearchEng
 						currentUrl->method = reader.attributes().value(QLatin1String("method")).toString().toLower();
 					}
 				}
-				else if ((reader.name() == QLatin1String("Param") || reader.name() == QLatin1String("Parameter")) && currentUrl)
+				else if (currentUrl && (reader.name() == QLatin1String("Param") || reader.name() == QLatin1String("Parameter")))
 				{
 					currentUrl->parameters.addQueryItem(reader.attributes().value(QLatin1String("name")).toString(), reader.attributes().value(QLatin1String("value")).toString());
 				}
@@ -416,7 +413,7 @@ QStandardItemModel* SearchEnginesManager::getSearchEnginesModel()
 	{
 		m_searchEnginesModel = new QStandardItemModel(m_instance);
 
-		m_instance->updateSearchEnginesModel();
+		updateSearchEnginesModel();
 	}
 
 	return m_searchEnginesModel;

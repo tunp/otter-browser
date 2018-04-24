@@ -34,7 +34,7 @@ PreferencesPrivacyPageWidget::PreferencesPrivacyPageWidget(QWidget *parent) : QW
 	m_clearHisorySettings(SettingsManager::getOption(SettingsManager::History_ClearOnCloseOption).toStringList()),
 	m_ui(new Ui::PreferencesPrivacyPageWidget)
 {
-	m_clearHisorySettings.removeAll(QString());
+	m_clearHisorySettings.removeAll({});
 
 	m_ui->setupUi(this);
 	m_ui->doNotTrackComboBox->addItem(tr("Inform websites that I do not want to be tracked"), QLatin1String("doNotAllow"));
@@ -80,6 +80,15 @@ PreferencesPrivacyPageWidget::PreferencesPrivacyPageWidget(QWidget *parent) : QW
 	connect(m_ui->enableCookiesCheckBox, &QCheckBox::toggled, m_ui->cookiesWidget, &QWidget::setEnabled);
 	connect(m_ui->thirdPartyCookiesExceptionsButton, &QPushButton::clicked, this, &PreferencesPrivacyPageWidget::setupThirdPartyCookiesExceptions);
 	connect(m_ui->clearHistoryCheckBox, &QCheckBox::toggled, m_ui->clearHistoryButton, &QPushButton::setEnabled);
+	connect(m_ui->clearHistoryCheckBox, &QCheckBox::toggled, [&](bool isChecked)
+	{
+		if (isChecked && m_clearHisorySettings.isEmpty())
+		{
+			m_clearHisorySettings = ClearHistoryDialog::getDefaultClearSettings();
+
+			emit settingsModified();
+		}
+	});
 	connect(m_ui->clearHistoryButton, &QPushButton::clicked, this, &PreferencesPrivacyPageWidget::setupClearHistory);
 	connect(m_ui->managePasswordsButton, &QPushButton::clicked, [&]()
 	{

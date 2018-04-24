@@ -25,9 +25,9 @@
 #include "../core/ActionsManager.h"
 #include "../core/AddonsManager.h"
 #include "../core/BookmarksManager.h"
+#include "../core/ItemModel.h"
 #include "../core/SearchEnginesManager.h"
 #include "../core/ThemesManager.h"
-#include "../core/TreeModel.h"
 
 #include "ui_ToolBarDialog.h"
 
@@ -112,14 +112,14 @@ ToolBarDialog::ToolBarDialog(const ToolBarsManager::ToolBarDefinition &definitio
 	switch (definition.type)
 	{
 		case ToolBarsManager::BookmarksBarType:
-			m_ui->folderComboBox->setCurrentFolder(BookmarksManager::getModel()->getItem(definition.bookmarksPath));
+			m_ui->folderComboBox->setCurrentFolder(BookmarksManager::getModel()->getBookmarkByPath(definition.bookmarksPath));
 
 			connect(m_ui->newFolderButton, &QPushButton::clicked, m_ui->folderComboBox, &BookmarksComboBoxWidget::createFolder);
 
 			return;
 		case ToolBarsManager::SideBarType:
 			{
-				TreeModel *panelsModel(new TreeModel(this));
+				ItemModel *panelsModel(new ItemModel(this));
 				const QStringList specialPages(AddonsManager::getSpecialPages(AddonsManager::SpecialPageInformation::SidebarPanelType));
 
 				for (int i = 0; i < specialPages.count(); ++i)
@@ -127,7 +127,7 @@ ToolBarDialog::ToolBarDialog(const ToolBarsManager::ToolBarDefinition &definitio
 					QStandardItem *item(new QStandardItem(SidebarWidget::getPanelTitle(specialPages.at(i))));
 					item->setCheckable(true);
 					item->setCheckState(definition.panels.contains(specialPages.at(i)) ? Qt::Checked : Qt::Unchecked);
-					item->setData(specialPages.at(i), TreeModel::UserRole);
+					item->setData(specialPages.at(i), ItemModel::UserRole);
 					item->setFlags(item->flags() | Qt::ItemNeverHasChildren);
 
 					panelsModel->insertRow(item);
@@ -140,7 +140,7 @@ ToolBarDialog::ToolBarDialog(const ToolBarsManager::ToolBarDefinition &definitio
 						QStandardItem *item(new QStandardItem(SidebarWidget::getPanelTitle(definition.panels.at(i))));
 						item->setCheckable(true);
 						item->setCheckState(Qt::Checked);
-						item->setData(definition.panels.at(i), TreeModel::UserRole);
+						item->setData(definition.panels.at(i), ItemModel::UserRole);
 						item->setFlags(item->flags() | Qt::ItemNeverHasChildren);
 
 						panelsModel->insertRow(item);
@@ -159,7 +159,7 @@ ToolBarDialog::ToolBarDialog(const ToolBarsManager::ToolBarDefinition &definitio
 	m_ui->addButton->setIcon(ThemesManager::createIcon(QGuiApplication::isLeftToRight() ? QLatin1String("go-next") : QLatin1String("go-previous")));
 	m_ui->moveUpButton->setIcon(ThemesManager::createIcon(QLatin1String("go-up")));
 	m_ui->moveDownButton->setIcon(ThemesManager::createIcon(QLatin1String("go-down")));
-	m_ui->addEntryButton->setMenu(new QMenu(m_ui->addEntryButton));
+	m_ui->addBookmarkButton->setMenu(new QMenu(m_ui->addBookmarkButton));
 
 	QStandardItemModel *availableEntriesModel(new QStandardItemModel(this));
 	availableEntriesModel->appendRow(createEntry(QLatin1String("separator")));
@@ -195,6 +195,7 @@ ToolBarDialog::ToolBarDialog(const ToolBarsManager::ToolBarDefinition &definitio
 		QStandardItem *item(new QStandardItem(actions.at(i).getText(true)));
 		item->setData(QColor(Qt::transparent), Qt::DecorationRole);
 		item->setData(name, IdentifierRole);
+		item->setData(true, HasOptionsRole);
 		item->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled | Qt::ItemIsDragEnabled | Qt::ItemNeverHasChildren);
 		item->setToolTip(QStringLiteral("%1 (%2)").arg(item->text()).arg(name));
 
@@ -221,10 +222,10 @@ ToolBarDialog::ToolBarDialog(const ToolBarsManager::ToolBarDefinition &definitio
 
 	m_definition.entries.clear();
 
-	Menu *bookmarksMenu(new Menu(Menu::BookmarkSelectorMenuRole, m_ui->addEntryButton));
+	Menu *bookmarksMenu(new Menu(Menu::BookmarkSelectorMenuRole, m_ui->addBookmarkButton));
 
-	m_ui->addEntryButton->setMenu(bookmarksMenu);
-	m_ui->addEntryButton->setEnabled(BookmarksManager::getModel()->getRootItem()->rowCount() > 0);
+	m_ui->addBookmarkButton->setMenu(bookmarksMenu);
+	m_ui->addBookmarkButton->setEnabled(BookmarksManager::getModel()->getRootItem()->rowCount() > 0);
 
 	connect(bookmarksMenu, &Menu::triggered, this, &ToolBarDialog::addBookmark);
 	connect(m_ui->addButton, &QToolButton::clicked, this, &ToolBarDialog::addNewEntry);
@@ -434,7 +435,7 @@ void ToolBarDialog::editEntry()
 		}
 		else if (identifier.startsWith(QLatin1String("bookmarks:")))
 		{
-			const BookmarksItem *bookmark(identifier.startsWith(QLatin1String("bookmarks:/")) ? BookmarksManager::getModel()->getItem(identifier.mid(11)) : BookmarksManager::getBookmark(identifier.mid(10).toULongLong()));
+			const BookmarksModel::Bookmark *bookmark(identifier.startsWith(QLatin1String("bookmarks:/")) ? BookmarksManager::getModel()->getBookmarkByPath(identifier.mid(11)) : BookmarksManager::getBookmark(identifier.mid(10).toULongLong()));
 
 			if (bookmark)
 			{
@@ -657,7 +658,7 @@ QStandardItem* ToolBarDialog::createEntry(const QString &identifier, const QVari
 	}
 	else if (identifier.startsWith(QLatin1String("bookmarks:")))
 	{
-		const BookmarksItem *bookmark(identifier.startsWith(QLatin1String("bookmarks:/")) ? BookmarksManager::getModel()->getItem(identifier.mid(11)) : BookmarksManager::getBookmark(identifier.mid(10).toULongLong()));
+		const BookmarksModel::Bookmark *bookmark(identifier.startsWith(QLatin1String("bookmarks:/")) ? BookmarksManager::getModel()->getBookmarkByPath(identifier.mid(11)) : BookmarksManager::getBookmark(identifier.mid(10).toULongLong()));
 
 		if (bookmark)
 		{
@@ -783,7 +784,7 @@ ToolBarsManager::ToolBarDefinition ToolBarDialog::getDefinition() const
 
 				if (item->data(Qt::CheckStateRole).toInt() == Qt::Checked)
 				{
-					definition.panels.append(item->data(TreeModel::UserRole).toString());
+					definition.panels.append(item->data(ItemModel::UserRole).toString());
 				}
 			}
 

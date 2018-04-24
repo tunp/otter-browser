@@ -89,8 +89,6 @@ public:
 	bool eventFilter(QObject *object, QEvent *event) override;
 
 public slots:
-	void goToHistoryIndex(int index) override;
-	void removeHistoryIndex(int index, bool purge = false) override;
 	void triggerAction(int identifier, const QVariantMap &parameters = {}) override;
 	void setOption(int identifier, const QVariant &value) override;
 	void setHistory(const WindowHistoryInformation &history) override;
@@ -107,6 +105,7 @@ protected:
 	void mousePressEvent(QMouseEvent *event) override;
 	void mouseReleaseEvent(QMouseEvent *event) override;
 	void mouseMoveEvent(QMouseEvent *event) override;
+	void addInformationBar(QWidget *widget);
 	void scrollContents(const QPoint &delta);
 	void setScrollMode(ScrollMode mode);
 	void setWidget(WebWidget *widget, const QVariantMap &parameters, const QHash<int, QVariant> &options);

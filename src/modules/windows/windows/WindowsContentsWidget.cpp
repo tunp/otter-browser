@@ -32,18 +32,41 @@
 namespace Otter
 {
 
+EntryItemDelegate::EntryItemDelegate(QObject *parent) : QStyledItemDelegate(parent)
+{
+}
+
+void EntryItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const
+{
+	if (index.data(SessionModel::IsActiveRole).toBool())
+	{
+		QStyleOptionViewItem mutableOption(option);
+		mutableOption.font.setBold(true);
+
+		QStyledItemDelegate::paint(painter, mutableOption, index);
+	}
+	else
+	{
+		QStyledItemDelegate::paint(painter, option, index);
+	}
+}
+
 WindowsContentsWidget::WindowsContentsWidget(const QVariantMap &parameters, Window *window, QWidget *parent) : ContentsWidget(parameters, window, parent),
 	m_ui(new Ui::WindowsContentsWidget)
 {
 	m_ui->setupUi(this);
-
+	m_ui->filterLineEditWidget->setClearOnEscape(true);
 	m_ui->windowsViewWidget->setViewMode(ItemViewWidget::TreeViewMode);
 	m_ui->windowsViewWidget->setModel(SessionsManager::getModel());
+	m_ui->windowsViewWidget->setItemDelegate(new EntryItemDelegate(m_ui->windowsViewWidget));
+	m_ui->windowsViewWidget->setFilterRoles({SessionModel::TitleRole, SessionModel::UrlRole});
 	m_ui->windowsViewWidget->expandAll();
 	m_ui->windowsViewWidget->viewport()->setMouseTracking(true);
 
+	connect(m_ui->filterLineEditWidget, &LineEditWidget::textChanged, m_ui->windowsViewWidget, &ItemViewWidget::setFilterString);
 	connect(m_ui->windowsViewWidget, &ItemViewWidget::customContextMenuRequested, this, &WindowsContentsWidget::showContextMenu);
 	connect(m_ui->windowsViewWidget, &ItemViewWidget::clicked, this, &WindowsContentsWidget::activateWindow);
+	connect(m_ui->windowsViewWidget->getSourceModel(), &QStandardItemModel::dataChanged, m_ui->windowsViewWidget, static_cast<void(ItemViewWidget::*)()>(&ItemViewWidget::update));
 }
 
 WindowsContentsWidget::~WindowsContentsWidget()
@@ -87,9 +110,7 @@ void WindowsContentsWidget::triggerAction(int identifier, const QVariantMap &par
 
 void WindowsContentsWidget::activateWindow(const QModelIndex &index)
 {
-	const SessionModel::EntityType type(static_cast<SessionModel::EntityType>(index.data(SessionModel::TypeRole).toInt()));
-
-	switch (type)
+	switch (static_cast<SessionModel::EntityType>(index.data(SessionModel::TypeRole).toInt()))
 	{
 		case SessionModel::MainWindowEntity:
 			Application::getInstance()->triggerAction(ActionsManager::ActivateWindowAction, {{QLatin1String("window"), index.data(SessionModel::IdentifierRole).toULongLong()}});
@@ -123,7 +144,6 @@ void WindowsContentsWidget::showContextMenu(const QPoint &position)
 {
 	MainWindow *mainWindow(MainWindow::findMainWindow(this));
 	const QModelIndex index(m_ui->windowsViewWidget->indexAt(position));
-	SessionModel::EntityType type(static_cast<SessionModel::EntityType>(index.data(SessionModel::TypeRole).toInt()));
 	ActionExecutor::Object executor(mainWindow, mainWindow);
 	QMenu menu(this);
 	menu.addAction(new Action(ActionsManager::NewWindowAction, {}, executor, &menu));
@@ -131,33 +151,42 @@ void WindowsContentsWidget::showContextMenu(const QPoint &position)
 
 	if (!index.data(SessionModel::IsTrashedRole).toBool())
 	{
-		if (type == SessionModel::MainWindowEntity)
+		switch (static_cast<SessionModel::EntityType>(index.data(SessionModel::TypeRole).toInt()))
 		{
-			const MainWindowSessionItem *mainWindowItem(static_cast<MainWindowSessionItem*>(SessionsManager::getModel()->itemFromIndex(index)));
+			case SessionModel::MainWindowEntity:
+				{
+					const MainWindowSessionItem *mainWindowItem(static_cast<MainWindowSessionItem*>(SessionsManager::getModel()->itemFromIndex(index)));
 
-			if (mainWindowItem)
-			{
-				executor = ActionExecutor::Object(mainWindowItem->getMainWindow(), mainWindowItem->getMainWindow());
+					if (mainWindowItem)
+					{
+						executor = ActionExecutor::Object(mainWindowItem->getMainWindow(), mainWindowItem->getMainWindow());
 
-				menu.addAction(new Action(ActionsManager::NewTabAction, {}, executor, &menu));
-				menu.addAction(new Action(ActionsManager::NewTabPrivateAction, {}, executor, &menu));
-				menu.addSeparator();
-				menu.addAction(new Action(ActionsManager::CloseWindowAction, {}, executor, &menu));
-			}
-		}
-		else if (type == SessionModel::WindowEntity)
-		{
-			const WindowSessionItem *windowItem(static_cast<WindowSessionItem*>(SessionsManager::getModel()->itemFromIndex(index)));
+						menu.addAction(new Action(ActionsManager::NewTabAction, {}, executor, &menu));
+						menu.addAction(new Action(ActionsManager::NewTabPrivateAction, {}, executor, &menu));
+						menu.addSeparator();
+						menu.addAction(new Action(ActionsManager::CloseWindowAction, {}, executor, &menu));
+					}
+				}
 
-			if (windowItem)
-			{
-				executor = ActionExecutor::Object(windowItem->getActiveWindow()->getMainWindow(), windowItem->getActiveWindow()->getMainWindow());
+				break;
+			case SessionModel::WindowEntity:
+				{
+					const WindowSessionItem *windowItem(static_cast<WindowSessionItem*>(SessionsManager::getModel()->itemFromIndex(index)));
 
-				menu.addAction(new Action(ActionsManager::NewTabAction, {}, executor, &menu));
-				menu.addAction(new Action(ActionsManager::NewTabPrivateAction, {}, executor, &menu));
-				menu.addSeparator();
-				menu.addAction(new Action(ActionsManager::CloseTabAction, {}, ActionExecutor::Object(windowItem->getActiveWindow(), windowItem->getActiveWindow()), &menu));
-			}
+					if (windowItem)
+					{
+						executor = ActionExecutor::Object(windowItem->getActiveWindow()->getMainWindow(), windowItem->getActiveWindow()->getMainWindow());
+
+						menu.addAction(new Action(ActionsManager::NewTabAction, {}, executor, &menu));
+						menu.addAction(new Action(ActionsManager::NewTabPrivateAction, {}, executor, &menu));
+						menu.addSeparator();
+						menu.addAction(new Action(ActionsManager::CloseTabAction, {}, ActionExecutor::Object(windowItem->getActiveWindow(), windowItem->getActiveWindow()), &menu));
+					}
+				}
+
+				break;
+			default:
+				break;
 		}
 	}
 

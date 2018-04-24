@@ -42,7 +42,7 @@ ClearHistoryDialog::ClearHistoryDialog(const QStringList &clearSettings, bool is
 
 	if (settings.isEmpty())
 	{
-		settings = QStringList({QLatin1String("browsing"), QLatin1String("cookies"), QLatin1String("forms"), QLatin1String("downloads"), QLatin1String("caches")});
+		settings = getDefaultClearSettings();
 	}
 
 	if (m_isConfiguring)
@@ -79,6 +79,11 @@ void ClearHistoryDialog::changeEvent(QEvent *event)
 	if (event->type() == QEvent::LanguageChange)
 	{
 		m_ui->retranslateUi(this);
+
+		if (!m_isConfiguring)
+		{
+			m_ui->buttonBox->button(QDialogButtonBox::Ok)->setText(tr("Clear Now"));
+		}
 	}
 }
 
@@ -158,6 +163,11 @@ QStringList ClearHistoryDialog::getClearSettings() const
 	}
 
 	return clearSettings;
+}
+
+QStringList ClearHistoryDialog::getDefaultClearSettings()
+{
+	return {QLatin1String("browsing"), QLatin1String("cookies"), QLatin1String("forms"), QLatin1String("downloads"), QLatin1String("caches")};
 }
 
 }

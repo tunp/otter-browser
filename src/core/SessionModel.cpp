@@ -56,6 +56,8 @@ QVariant SessionItem::data(int role) const
 			}
 
 			break;
+		case Qt::ToolTipRole:
+			return data(Qt::DisplayRole);
 		case SessionModel::IsTrashedRole:
 			{
 				QModelIndex parent(index().parent());
@@ -167,6 +169,8 @@ QVariant MainWindowSessionItem::data(int role) const
 			return SessionModel::MainWindowEntity;
 		case SessionModel::IndexRole:
 			return m_mainWindow->getCurrentWindowIndex();
+		case SessionModel::IsActiveRole:
+			return (m_mainWindow == Application::getActiveWindow());
 		case SessionModel::IsPrivateRole:
 			return m_mainWindow->isPrivate();
 		default:
@@ -216,6 +220,8 @@ QVariant WindowSessionItem::data(int role) const
 			return m_window->getLastActivity();
 		case SessionModel::ZoomRole:
 			return m_window->getZoom();
+		case SessionModel::IsActiveRole:
+			return m_window->isActive();
 		case SessionModel::IsPinnedRole:
 			return m_window->isPinned();
 		case SessionModel::IsPrivateRole:

@@ -36,7 +36,7 @@ namespace Otter
 {
 
 AddressCompletionModel::AddressCompletionModel(QObject *parent) : QAbstractListModel(parent),
-	m_types(HistoryCompletionType),
+	m_types(UnknownCompletionType),
 	m_updateTimer(0),
 	m_showCompletionCategories(true)
 {
@@ -125,10 +125,10 @@ void AddressCompletionModel::updateModel()
 		}
 	}
 
-	if (m_types.testFlag(LocalPathSuggestionsCompletionType) && m_filter.contains(QDir::separator()))
+	if (m_types.testFlag(LocalPathSuggestionsCompletionType) && (m_filter == QString(QLatin1Char('~')) || m_filter.contains(QDir::separator())))
 	{
-		const QString directory(m_filter.section(QDir::separator(), 0, -2) + QDir::separator());
-		const QString prefix(m_filter.section(QDir::separator(), -1, -1));
+		const QString directory((m_filter == QString(QLatin1Char('~'))) ? QDir::homePath() : m_filter.section(QDir::separator(), 0, -2) + QDir::separator());
+		const QString prefix(m_filter.contains(QDir::separator()) ? m_filter.section(QDir::separator(), -1, -1) : QString());
 		const QList<QFileInfo> entries(QDir(Utils::normalizePath(directory)).entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot));
 		const QFileIconProvider iconProvider;
 		bool wasAdded(!m_showCompletionCategories);
@@ -242,19 +242,22 @@ void AddressCompletionModel::setFilter(const QString &filter)
 
 void AddressCompletionModel::setTypes(CompletionTypes types)
 {
-	m_types = types;
-
-	if (types.testFlag(TypedHistoryCompletionType))
+	if (types != m_types)
 	{
-		m_filter.clear();
-	}
+		m_types = types;
 
-	if (m_types.testFlag(SearchSuggestionsCompletionType))
-	{
-		m_defaultSearchEngine = SearchEnginesManager::getSearchEngine();
-	}
+		if (types.testFlag(TypedHistoryCompletionType))
+		{
+			m_filter.clear();
+		}
 
-	updateModel();
+		if (m_types.testFlag(SearchSuggestionsCompletionType))
+		{
+			m_defaultSearchEngine = SearchEnginesManager::getSearchEngine();
+		}
+
+		updateModel();
+	}
 }
 
 QVariant AddressCompletionModel::data(const QModelIndex &index, int role) const

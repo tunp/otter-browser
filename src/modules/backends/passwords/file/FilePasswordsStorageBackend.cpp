@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2016 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2016 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -71,7 +71,9 @@ void FilePasswordsStorageBackend::initialize()
 			PasswordsManager::PasswordInformation password;
 			password.url = QUrl(passwordObject.value(QLatin1String("url")).toString());
 			password.timeAdded = QDateTime::fromString(passwordObject.value(QLatin1String("timeAdded")).toString(), Qt::ISODate);
+			password.timeAdded.setTimeSpec(Qt::UTC);
 			password.timeUsed = QDateTime::fromString(passwordObject.value(QLatin1String("timeUsed")).toString(), Qt::ISODate);
+			password.timeUsed.setTimeSpec(Qt::UTC);
 			password.type = ((passwordObject.value(QLatin1String("type")).toString() == QLatin1String("auth")) ? PasswordsManager::AuthPassword : PasswordsManager::FormPassword);
 
 			const QJsonArray fieldsArray(passwordObject.value(QLatin1String("fields")).toArray());
@@ -128,16 +130,10 @@ void FilePasswordsStorageBackend::save()
 
 			for (int j = 0; j < passwords.at(i).fields.count(); ++j)
 			{
-				QJsonObject fieldObject;
-				fieldObject.insert(QLatin1String("name"), passwords.at(i).fields.at(j).name);
-				fieldObject.insert(QLatin1String("value"), passwords.at(i).fields.at(j).value);
-				fieldObject.insert(QLatin1String("type"), ((passwords.at(i).fields.at(j).type == PasswordsManager::PasswordField) ? QLatin1String("password") : QLatin1String("text")));
-
-				fieldsArray.append(fieldObject);
+				fieldsArray.append(QJsonObject({{QLatin1String("name"), passwords.at(i).fields.at(j).name}, {QLatin1String("value"), passwords.at(i).fields.at(j).value}, {QLatin1String("type"), ((passwords.at(i).fields.at(j).type == PasswordsManager::PasswordField) ? QLatin1String("password") : QLatin1String("text"))}}));
 			}
 
-			QJsonObject passwordObject;
-			passwordObject.insert(QLatin1String("url"), passwords.at(i).url.toString());
+			QJsonObject passwordObject({{QLatin1String("url"), passwords.at(i).url.toString()}});
 
 			if (passwords.at(i).timeAdded.isValid())
 			{
@@ -226,7 +222,7 @@ void FilePasswordsStorageBackend::clearPasswords(int period)
 
 		for (int i = (passwords.count() - 1); i >= 0; --i)
 		{
-			if (passwords.at(i).timeAdded.secsTo(QDateTime::currentDateTime()) < (period * 3600))
+			if (passwords.at(i).timeAdded.secsTo(QDateTime::currentDateTimeUtc()) < (period * 3600))
 			{
 				passwords.removeAt(i);
 

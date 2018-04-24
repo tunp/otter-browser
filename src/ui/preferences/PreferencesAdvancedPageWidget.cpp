@@ -214,7 +214,7 @@ PreferencesAdvancedPageWidget::PreferencesAdvancedPageWidget(QWidget *parent) : 
 
 	m_ui->sendReferrerCheckBox->setChecked(SettingsManager::getOption(SettingsManager::Network_EnableReferrerOption).toBool());
 
-	TreeModel *userAgentsModel(new UserAgentsModel(SettingsManager::getOption(SettingsManager::Network_UserAgentOption).toString(), true, this));
+	ItemModel *userAgentsModel(new UserAgentsModel(SettingsManager::getOption(SettingsManager::Network_UserAgentOption).toString(), true, this));
 	userAgentsModel->setHorizontalHeaderLabels({tr("Title"), tr("Value")});
 
 	m_ui->userAgentsViewWidget->setModel(userAgentsModel);
@@ -223,13 +223,13 @@ PreferencesAdvancedPageWidget::PreferencesAdvancedPageWidget(QWidget *parent) : 
 	m_ui->userAgentsViewWidget->expandAll();
 
 	QMenu *addUserAgentMenu(new QMenu(m_ui->userAgentsAddButton));
-	addUserAgentMenu->addAction(ThemesManager::createIcon(QLatin1String("inode-directory")), tr("Add Folder…"))->setData(TreeModel::FolderType);
-	addUserAgentMenu->addAction(tr("Add User Agent…"))->setData(TreeModel::EntryType);
-	addUserAgentMenu->addAction(tr("Add Separator"))->setData(TreeModel::SeparatorType);
+	addUserAgentMenu->addAction(ThemesManager::createIcon(QLatin1String("inode-directory")), tr("Add Folder…"))->setData(ItemModel::FolderType);
+	addUserAgentMenu->addAction(tr("Add User Agent…"))->setData(ItemModel::EntryType);
+	addUserAgentMenu->addAction(tr("Add Separator"))->setData(ItemModel::SeparatorType);
 
 	m_ui->userAgentsAddButton->setMenu(addUserAgentMenu);
 
-	TreeModel *proxiesModel(new ProxiesModel(SettingsManager::getOption(SettingsManager::Network_ProxyOption).toString(), true, this));
+	ItemModel *proxiesModel(new ProxiesModel(SettingsManager::getOption(SettingsManager::Network_ProxyOption).toString(), true, this));
 	proxiesModel->setHorizontalHeaderLabels({tr("Title")});
 
 	m_ui->proxiesViewWidget->setModel(proxiesModel);
@@ -238,9 +238,9 @@ PreferencesAdvancedPageWidget::PreferencesAdvancedPageWidget(QWidget *parent) : 
 	m_ui->proxiesViewWidget->expandAll();
 
 	QMenu *addProxyMenu(new QMenu(m_ui->proxiesAddButton));
-	addProxyMenu->addAction(ThemesManager::createIcon(QLatin1String("inode-directory")), tr("Add Folder…"))->setData(TreeModel::FolderType);
-	addProxyMenu->addAction(tr("Add Proxy…"))->setData(TreeModel::EntryType);
-	addProxyMenu->addAction(tr("Add Separator"))->setData(TreeModel::SeparatorType);
+	addProxyMenu->addAction(ThemesManager::createIcon(QLatin1String("inode-directory")), tr("Add Folder…"))->setData(ItemModel::FolderType);
+	addProxyMenu->addAction(tr("Add Proxy…"))->setData(ItemModel::EntryType);
+	addProxyMenu->addAction(tr("Add Separator"))->setData(ItemModel::SeparatorType);
 
 	m_ui->proxiesAddButton->setMenu(addProxyMenu);
 
@@ -719,7 +719,7 @@ void PreferencesAdvancedPageWidget::addUserAgent(QAction *action)
 		return;
 	}
 
-	TreeModel *model(qobject_cast<TreeModel*>(m_ui->userAgentsViewWidget->getSourceModel()));
+	ItemModel *model(qobject_cast<ItemModel*>(m_ui->userAgentsViewWidget->getSourceModel()));
 	QStandardItem *parent(model->itemFromIndex(m_ui->userAgentsViewWidget->getCurrentIndex()));
 
 	if (!parent)
@@ -729,16 +729,16 @@ void PreferencesAdvancedPageWidget::addUserAgent(QAction *action)
 
 	int row(-1);
 
-	if (static_cast<TreeModel::ItemType>(parent->data(TreeModel::TypeRole).toInt()) != TreeModel::FolderType)
+	if (static_cast<ItemModel::ItemType>(parent->data(ItemModel::TypeRole).toInt()) != ItemModel::FolderType)
 	{
 		row = (parent->row() + 1);
 
 		parent = parent->parent();
 	}
 
-	switch (static_cast<TreeModel::ItemType>(action->data().toInt()))
+	switch (static_cast<ItemModel::ItemType>(action->data().toInt()))
 	{
-		case TreeModel::FolderType:
+		case ItemModel::FolderType:
 			{
 				bool result(false);
 				const QString title(QInputDialog::getText(this, tr("Folder Name"), tr("Select folder name:"), QLineEdit::Normal, {}, &result));
@@ -746,16 +746,17 @@ void PreferencesAdvancedPageWidget::addUserAgent(QAction *action)
 				if (result)
 				{
 					QList<QStandardItem*> items({new QStandardItem(title.isEmpty() ? tr("(Untitled)") : title), new QStandardItem()});
+					items[0]->setData(items[0]->data(Qt::DisplayRole), Qt::ToolTipRole);
 					items[0]->setData(Utils::createIdentifier({}, QVariant(model->getAllData(UserAgentsModel::IdentifierRole, 0)).toStringList()), UserAgentsModel::IdentifierRole);
 
-					model->insertRow(items, parent, row, TreeModel::FolderType);
+					model->insertRow(items, parent, row, ItemModel::FolderType);
 
 					m_ui->userAgentsViewWidget->expand(items[0]->index());
 				}
 			}
 
 			break;
-		case TreeModel::EntryType:
+		case ItemModel::EntryType:
 			{
 				UserAgentDefinition userAgent;
 				userAgent.title = tr("Custom");
@@ -770,15 +771,17 @@ void PreferencesAdvancedPageWidget::addUserAgent(QAction *action)
 
 					QList<QStandardItem*> items({new QStandardItem(userAgent.title.isEmpty() ? tr("(Untitled)") : userAgent.title), new QStandardItem(userAgent.value)});
 					items[0]->setCheckable(true);
+					items[0]->setData(items[0]->data(Qt::DisplayRole), Qt::ToolTipRole);
 					items[0]->setData(userAgent.identifier, UserAgentsModel::IdentifierRole);
+					items[1]->setData(items[1]->data(Qt::DisplayRole), Qt::ToolTipRole);
 
-					model->insertRow(items, parent, row, TreeModel::EntryType);
+					model->insertRow(items, parent, row, ItemModel::EntryType);
 				}
 			}
 
 			break;
-		case TreeModel::SeparatorType:
-			model->insertRow({new QStandardItem(), new QStandardItem()}, parent, row, TreeModel::SeparatorType);
+		case ItemModel::SeparatorType:
+			model->insertRow({new QStandardItem(), new QStandardItem()}, parent, row, ItemModel::SeparatorType);
 
 			break;
 		default:
@@ -795,9 +798,9 @@ void PreferencesAdvancedPageWidget::editUserAgent()
 		return;
 	}
 
-	const TreeModel::ItemType type(static_cast<TreeModel::ItemType>(index.data(TreeModel::TypeRole).toInt()));
+	const ItemModel::ItemType type(static_cast<ItemModel::ItemType>(index.data(ItemModel::TypeRole).toInt()));
 
-	if (type == TreeModel::FolderType)
+	if (type == ItemModel::FolderType)
 	{
 		bool result(false);
 		const QString title(QInputDialog::getText(this, tr("Folder Name"), tr("Select folder name:"), QLineEdit::Normal, index.data(UserAgentsModel::TitleRole).toString(), &result));
@@ -805,9 +808,10 @@ void PreferencesAdvancedPageWidget::editUserAgent()
 		if (result)
 		{
 			m_ui->userAgentsViewWidget->setData(index, (title.isEmpty() ? tr("(Untitled)") : title), UserAgentsModel::TitleRole);
+			m_ui->userAgentsViewWidget->setData(index, index.data(Qt::DisplayRole), Qt::ToolTipRole);
 		}
 	}
-	else if (type == TreeModel::EntryType)
+	else if (type == ItemModel::EntryType)
 	{
 		UserAgentDefinition userAgent;
 		userAgent.identifier = index.data(UserAgentsModel::IdentifierRole).toString();
@@ -821,7 +825,9 @@ void PreferencesAdvancedPageWidget::editUserAgent()
 			userAgent = dialog.getUserAgent();
 
 			m_ui->userAgentsViewWidget->setData(index, (userAgent.title.isEmpty() ? tr("(Untitled)") : userAgent.title), UserAgentsModel::TitleRole);
+			m_ui->userAgentsViewWidget->setData(index, index.data(Qt::DisplayRole), Qt::ToolTipRole);
 			m_ui->userAgentsViewWidget->setData(index.sibling(index.row(), 1), userAgent.value, Qt::DisplayRole);
+			m_ui->userAgentsViewWidget->setData(index.sibling(index.row(), 1), userAgent.value, Qt::ToolTipRole);
 		}
 	}
 }
@@ -829,9 +835,9 @@ void PreferencesAdvancedPageWidget::editUserAgent()
 void PreferencesAdvancedPageWidget::updateUserAgentsActions()
 {
 	const QModelIndex index(m_ui->userAgentsViewWidget->getCurrentIndex());
-	const TreeModel::ItemType type(static_cast<TreeModel::ItemType>(index.data(TreeModel::TypeRole).toInt()));
+	const ItemModel::ItemType type(static_cast<ItemModel::ItemType>(index.data(ItemModel::TypeRole).toInt()));
 
-	m_ui->userAgentsEditButton->setEnabled(index.isValid() && (type == TreeModel::FolderType || type == TreeModel::EntryType));
+	m_ui->userAgentsEditButton->setEnabled(index.isValid() && (type == ItemModel::FolderType || type == ItemModel::EntryType));
 	m_ui->userAgentsRemoveButton->setEnabled(index.isValid() && index.data(UserAgentsModel::IdentifierRole).toString() != QLatin1String("default"));
 }
 
@@ -843,13 +849,13 @@ void PreferencesAdvancedPageWidget::saveUsuerAgents(QJsonArray *userAgents, cons
 
 		if (item)
 		{
-			const TreeModel::ItemType type(static_cast<TreeModel::ItemType>(item->data(TreeModel::TypeRole).toInt()));
+			const ItemModel::ItemType type(static_cast<ItemModel::ItemType>(item->data(ItemModel::TypeRole).toInt()));
 
-			if (type == TreeModel::FolderType || type == TreeModel::EntryType)
+			if (type == ItemModel::FolderType || type == ItemModel::EntryType)
 			{
 				QJsonObject userAgentObject({{QLatin1String("identifier"), item->data(UserAgentsModel::IdentifierRole).toString()}, {QLatin1String("title"), item->data(UserAgentsModel::TitleRole).toString()}});
 
-				if (type == TreeModel::FolderType)
+				if (type == ItemModel::FolderType)
 				{
 					QJsonArray userAgentsArray;
 
@@ -879,7 +885,7 @@ void PreferencesAdvancedPageWidget::addProxy(QAction *action)
 		return;
 	}
 
-	TreeModel *model(qobject_cast<TreeModel*>(m_ui->proxiesViewWidget->getSourceModel()));
+	ItemModel *model(qobject_cast<ItemModel*>(m_ui->proxiesViewWidget->getSourceModel()));
 	QStandardItem *parent(model->itemFromIndex(m_ui->proxiesViewWidget->getCurrentIndex()));
 
 	if (!parent)
@@ -889,16 +895,16 @@ void PreferencesAdvancedPageWidget::addProxy(QAction *action)
 
 	int row(-1);
 
-	if (static_cast<TreeModel::ItemType>(parent->data(TreeModel::TypeRole).toInt()) != TreeModel::FolderType)
+	if (static_cast<ItemModel::ItemType>(parent->data(ItemModel::TypeRole).toInt()) != ItemModel::FolderType)
 	{
 		row = (parent->row() + 1);
 
 		parent = parent->parent();
 	}
 
-	switch (static_cast<TreeModel::ItemType>(action->data().toInt()))
+	switch (static_cast<ItemModel::ItemType>(action->data().toInt()))
 	{
-		case TreeModel::FolderType:
+		case ItemModel::FolderType:
 			{
 				bool result(false);
 				const QString title(QInputDialog::getText(this, tr("Folder Name"), tr("Select folder name:"), QLineEdit::Normal, {}, &result));
@@ -906,16 +912,17 @@ void PreferencesAdvancedPageWidget::addProxy(QAction *action)
 				if (result)
 				{
 					QStandardItem *item(new QStandardItem(title.isEmpty() ? tr("(Untitled)") : title));
+					item->setData(item->data(Qt::DisplayRole), Qt::ToolTipRole);
 					item->setData(Utils::createIdentifier({}, QVariant(model->getAllData(ProxiesModel::IdentifierRole, 0)).toStringList()), ProxiesModel::IdentifierRole);
 
-					model->insertRow(item, parent, row, TreeModel::FolderType);
+					model->insertRow(item, parent, row, ItemModel::FolderType);
 
 					m_ui->proxiesViewWidget->expand(item->index());
 				}
 			}
 
 			break;
-		case TreeModel::EntryType:
+		case ItemModel::EntryType:
 			{
 				ProxyDefinition proxy;
 				proxy.title = tr("Custom");
@@ -931,15 +938,16 @@ void PreferencesAdvancedPageWidget::addProxy(QAction *action)
 
 					QStandardItem *item(new QStandardItem(proxy.title.isEmpty() ? tr("(Untitled)") : proxy.title));
 					item->setCheckable(true);
+					item->setData(item->data(Qt::DisplayRole), Qt::ToolTipRole);
 					item->setData(proxy.identifier, ProxiesModel::IdentifierRole);
 
-					model->insertRow(item, parent, row, TreeModel::EntryType);
+					model->insertRow(item, parent, row, ItemModel::EntryType);
 				}
 			}
 
 			break;
-		case TreeModel::SeparatorType:
-			model->insertRow(new QStandardItem(), parent, row, TreeModel::SeparatorType);
+		case ItemModel::SeparatorType:
+			model->insertRow(new QStandardItem(), parent, row, ItemModel::SeparatorType);
 
 			break;
 		default:
@@ -956,9 +964,9 @@ void PreferencesAdvancedPageWidget::editProxy()
 		return;
 	}
 
-	const TreeModel::ItemType type(static_cast<TreeModel::ItemType>(index.data(TreeModel::TypeRole).toInt()));
+	const ItemModel::ItemType type(static_cast<ItemModel::ItemType>(index.data(ItemModel::TypeRole).toInt()));
 
-	if (type == TreeModel::FolderType)
+	if (type == ItemModel::FolderType)
 	{
 		bool result(false);
 		const QString title(QInputDialog::getText(this, tr("Folder Name"), tr("Select folder name:"), QLineEdit::Normal, index.data(ProxiesModel::TitleRole).toString(), &result));
@@ -966,9 +974,10 @@ void PreferencesAdvancedPageWidget::editProxy()
 		if (result)
 		{
 			m_ui->proxiesViewWidget->setData(index, (title.isEmpty() ? tr("(Untitled)") : title), ProxiesModel::TitleRole);
+			m_ui->proxiesViewWidget->setData(index, index.data(Qt::DisplayRole), Qt::ToolTipRole);
 		}
 	}
-	else if (type == TreeModel::EntryType)
+	else if (type == ItemModel::EntryType)
 	{
 		const QString identifier(index.data(ProxiesModel::IdentifierRole).toString());
 		ProxyPropertiesDialog dialog((m_proxies.value(identifier, NetworkManagerFactory::getProxy(identifier))), this);
@@ -981,6 +990,7 @@ void PreferencesAdvancedPageWidget::editProxy()
 
 			m_ui->proxiesViewWidget->markAsModified();
 			m_ui->proxiesViewWidget->setData(index, (proxy.title.isEmpty() ? tr("(Untitled)") : proxy.title), ProxiesModel::TitleRole);
+			m_ui->proxiesViewWidget->setData(index, index.data(Qt::DisplayRole), Qt::ToolTipRole);
 		}
 	}
 }
@@ -989,10 +999,10 @@ void PreferencesAdvancedPageWidget::updateProxiesActions()
 {
 	const QModelIndex index(m_ui->proxiesViewWidget->getCurrentIndex());
 	const QString identifier(index.data(ProxiesModel::IdentifierRole).toString());
-	const TreeModel::ItemType type(static_cast<TreeModel::ItemType>(index.data(TreeModel::TypeRole).toInt()));
+	const ItemModel::ItemType type(static_cast<ItemModel::ItemType>(index.data(ItemModel::TypeRole).toInt()));
 	const bool isReadOnly(identifier == QLatin1String("noProxy") || identifier == QLatin1String("system"));
 
-	m_ui->proxiesEditButton->setEnabled(index.isValid() && !isReadOnly && (type == TreeModel::FolderType || type == TreeModel::EntryType));
+	m_ui->proxiesEditButton->setEnabled(index.isValid() && !isReadOnly && (type == ItemModel::FolderType || type == ItemModel::EntryType));
 	m_ui->proxiesRemoveButton->setEnabled(index.isValid() && !isReadOnly);
 }
 
@@ -1004,9 +1014,9 @@ void PreferencesAdvancedPageWidget::saveProxies(QJsonArray *proxies, const QStan
 
 		if (item)
 		{
-			const TreeModel::ItemType type(static_cast<TreeModel::ItemType>(item->data(TreeModel::TypeRole).toInt()));
+			const ItemModel::ItemType type(static_cast<ItemModel::ItemType>(item->data(ItemModel::TypeRole).toInt()));
 
-			if (type == TreeModel::FolderType)
+			if (type == ItemModel::FolderType)
 			{
 				QJsonArray proxiesArray;
 
@@ -1014,7 +1024,7 @@ void PreferencesAdvancedPageWidget::saveProxies(QJsonArray *proxies, const QStan
 
 				proxies->append(QJsonObject({{QLatin1String("identifier"), item->data(ProxiesModel::IdentifierRole).toString()}, {QLatin1String("title"), item->data(ProxiesModel::TitleRole).toString()}, {QLatin1String("children"), proxiesArray}}));
 			}
-			else if (type == TreeModel::EntryType)
+			else if (type == ItemModel::EntryType)
 			{
 				const QString identifier(item->data(ProxiesModel::IdentifierRole).toString());
 				const ProxyDefinition proxy(m_proxies.value(identifier, NetworkManagerFactory::getProxy(identifier)));

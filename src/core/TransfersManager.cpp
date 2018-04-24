@@ -190,9 +190,9 @@ void Transfer::timerEvent(QTimerEvent *event)
 					speedSum += m_speeds.at(i);
 				}
 
-				speedSum /= (m_speeds.count());
+				speedSum /= m_speeds.count();
 
-				m_remainingTime = (static_cast<qreal>(m_bytesTotal - m_bytesReceived) / speedSum);
+				m_remainingTime = qRound(static_cast<qreal>(m_bytesTotal - m_bytesReceived) / static_cast<qreal>(speedSum));
 			}
 
 			emit changed();
@@ -313,7 +313,7 @@ void Transfer::start(QNetworkReply *reply, const QString &target)
 			m_options |= IsQuickTransferOption;
 		}
 
-		const QString directory(m_options.testFlag(IsQuickTransferOption) ? SettingsManager::getOption(SettingsManager::Paths_DownloadsOption).toString() : QString());
+		const QString directory(m_options.testFlag(IsQuickTransferOption) ? Utils::normalizePath(SettingsManager::getOption(SettingsManager::Paths_DownloadsOption).toString()) : QString());
 		const QString fileName(getSuggestedFileName());
 
 		if (m_options.testFlag(IsQuickTransferOption))
@@ -432,7 +432,7 @@ void Transfer::stop()
 		QTimer::singleShot(250, m_reply, &QNetworkReply::deleteLater);
 	}
 
-	if (m_device && !m_device->inherits(QStringLiteral("QTemporaryFile").toLatin1()))
+	if (m_device && !m_device->inherits("QTemporaryFile"))
 	{
 		m_device->close();
 		m_device->deleteLater();
@@ -504,7 +504,7 @@ void Transfer::handleDownloadFinished()
 {
 	if (!m_reply)
 	{
-		if (m_device && !m_device->inherits(QStringLiteral("QTemporaryFile").toLatin1()))
+		if (m_device && !m_device->inherits("QTemporaryFile"))
 		{
 			m_device->close();
 			m_device->deleteLater();
@@ -575,7 +575,7 @@ void Transfer::handleDownloadFinished()
 	emit finished();
 	emit changed();
 
-	if (m_device && (m_options.testFlag(HasToOpenAfterFinishOption) || !m_device->inherits(QStringLiteral("QTemporaryFile").toLatin1())))
+	if (m_device && (m_options.testFlag(HasToOpenAfterFinishOption) || !m_device->inherits("QTemporaryFile")))
 	{
 		m_device->close();
 		m_device->deleteLater();

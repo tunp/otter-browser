@@ -55,7 +55,7 @@ protected slots:
 	void populateHostsPart(const QHash<QString, bool> &hostsEnabled, const QHash<QString, unsigned int> &hosts, const bool isSecondLevel);
 	void saveHosts();
 	void setHostsDisabledState();
-	void handleRequest(const NetworkManager::ResourceInformation &request);
+	void handleRequest();
 	void setWindow(Window *window);
 
 private:

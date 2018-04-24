@@ -107,12 +107,11 @@ public:
 	enum SaveFormat
 	{
 		UnknownSaveFormat = 0,
-		CompletePageSaveFormat = 1,
-		MhtmlSaveFormat = 2,
-		SingleHtmlFileSaveFormat = 4
+		CompletePageSaveFormat,
+		MhtmlSaveFormat,
+		PdfSaveFormat,
+		SingleFileSaveFormat
 	};
-
-	Q_DECLARE_FLAGS(SaveFormats, SaveFormat)
 
 	enum PageInformation
 	{
@@ -222,6 +221,7 @@ public:
 	virtual QStringList getStyleSheets() const;
 	virtual QVector<SpellCheckManager::DictionaryInformation> getDictionaries() const;
 	virtual QVector<LinkUrl> getFeeds() const;
+	virtual QVector<LinkUrl> getLinks() const;
 	virtual QVector<LinkUrl> getSearchEngines() const;
 	virtual QVector<NetworkManager::ResourceInformation> getBlockedRequests() const;
 	QHash<int, QVariant> getOptions() const;
@@ -243,8 +243,6 @@ public slots:
 	virtual void triggerAction(int identifier, const QVariantMap &parameters = {}) override;
 	virtual void clearOptions();
 	virtual void fillPassword(const PasswordsManager::PasswordInformation &password);
-	virtual void goToHistoryIndex(int index) = 0;
-	virtual void removeHistoryIndex(int index, bool purge = false) = 0;
 	virtual void showContextMenu(const QPoint &position = {});
 	virtual void setActiveStyleSheet(const QString &styleSheet);
 	virtual void setPermission(FeaturePermission feature, const QUrl &url, PermissionPolicies policies);
@@ -266,11 +264,11 @@ protected:
 	void updateHitTestResult(const QPoint &position);
 	void setClickPosition(const QPoint &position);
 	QString suggestSaveFileName(SaveFormat format) const;
+	QString getSavePath(const QVector<SaveFormat> &allowedFormats, SaveFormat *selectedFormat) const;
 	QString getOpenActionText(SessionsManager::OpenHints hints) const;
 	static QString getFastForwardScript(bool isSelectingTheBestLink);
 	HitTestResult getCurrentHitTestResult() const;
 	PermissionPolicy getPermission(FeaturePermission feature, const QUrl &url) const;
-	virtual SaveFormats getSupportedSaveFormats() const;
 	virtual int getAmountOfDeferredPlugins() const;
 	virtual bool canGoBack() const;
 	virtual bool canGoForward() const;

@@ -413,8 +413,7 @@ void ItemViewWidget::ensureInitialized()
 
 				if (size.width() > maximumSectionWidth)
 				{
-					widestSections.clear();
-					widestSections.append(i);
+					widestSections = {i};
 
 					maximumSectionWidth = size.width();
 				}
@@ -517,7 +516,7 @@ void ItemViewWidget::moveRow(bool up)
 	{
 		m_sourceModel->insertRow(sourceRow, m_sourceModel->takeRow(destinationRow));
 
-		setCurrentIndex(getIndex(destinationRow, 0));
+		selectRow(getIndex(destinationRow, 0));
 		notifySelectionChanged();
 		markAsModified();
 	}
@@ -543,7 +542,7 @@ void ItemViewWidget::insertRow(const QList<QStandardItem*> &items)
 			m_sourceModel->insertRow(row);
 		}
 
-		setCurrentIndex(getIndex(row, 0));
+		selectRow(getIndex(row, 0));
 	}
 	else
 	{
@@ -559,7 +558,7 @@ void ItemViewWidget::insertRow(const QList<QStandardItem*> &items)
 			m_sourceModel->appendRow(items);
 		}
 
-		setCurrentIndex(getIndex(0, 0));
+		selectRow(getIndex(0, 0));
 	}
 
 	markAsModified();
@@ -599,6 +598,12 @@ void ItemViewWidget::moveUpRow()
 void ItemViewWidget::moveDownRow()
 {
 	moveRow(false);
+}
+
+void ItemViewWidget::selectRow(const QModelIndex &index)
+{
+	setCurrentIndex(index);
+	scrollTo(index);
 }
 
 void ItemViewWidget::markAsModified()
@@ -733,7 +738,7 @@ void ItemViewWidget::setExclusive(bool isExclusive)
 	update();
 }
 
-void ItemViewWidget::setFilterString(const QString filter)
+void ItemViewWidget::setFilterString(const QString &filter)
 {
 	if (filter == m_filterString || !model())
 	{

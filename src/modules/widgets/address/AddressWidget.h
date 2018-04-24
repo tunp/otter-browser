@@ -33,7 +33,6 @@ namespace Otter
 {
 
 class AddressCompletionModel;
-class BookmarksItem;
 class ItemViewWidget;
 class Window;
 
@@ -132,14 +131,15 @@ protected:
 	void dragEnterEvent(QDragEnterEvent *event) override;
 	void showCompletion(bool isTypedHistory);
 	EntryIdentifier getEntry(const QPoint &position) const;
-	bool startDrag(QMouseEvent *event);
 
 protected slots:
 	void openUrl(const QString &url);
 	void removeEntry();
 	void handleOptionChanged(int identifier, const QVariant &value);
 	void handleActionsStateChanged(const QVector<int> &identifiers);
+	void handleLoadingStateChanged();
 	void updateGeometries();
+	void updateCompletion(bool isTypedHistory);
 	void setCompletion(const QString &filter);
 	void setIcon(const QIcon &icon);
 
@@ -153,6 +153,7 @@ private:
 	EntryIdentifier m_hoveredEntry;
 	CompletionModes m_completionModes;
 	SessionsManager::OpenHints m_hints;
+	bool m_hasFeeds;
 	bool m_isNavigatingCompletion;
 	bool m_isUsingSimpleMode;
 	bool m_wasEdited;

@@ -57,8 +57,6 @@ public:
 
 public slots:
 	void triggerAction(int identifier, const QVariantMap &parameters = {}) override;
-	void goToHistoryIndex(int index) override;
-	void removeHistoryIndex(int index, bool purge = false) override;
 	void setOption(int identifier, const QVariant &value) override;
 	void setScrollPosition(const QPoint &position) override;
 	void setHistory(const WindowHistoryInformation &history) override;
@@ -68,6 +66,7 @@ public slots:
 
 protected:
 	void setOptions(const QHash<int, QVariant> &options, const QStringList &excludedOptions = {}) override;
+	bool canViewSource() const override;
 
 protected slots:
 	void handleViewSourceReplyFinished();

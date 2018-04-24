@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2014 - 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -31,7 +31,6 @@
 #include "ui_ContentBlockingDialog.h"
 
 #include <QtCore/QDir>
-#include <QtCore/QSettings>
 
 namespace Otter
 {
@@ -253,7 +252,7 @@ void ContentBlockingDialog::updateModel(ContentBlockingProfile *profile, bool is
 	m_ui->profilesViewWidget->setData(currentIndex.sibling(currentIndex.row(), 0), profile->getTitle(), Qt::DisplayRole);
 	m_ui->profilesViewWidget->setData(currentIndex.sibling(currentIndex.row(), 0), profile->getUpdateUrl(), ContentBlockingManager::UpdateUrlRole);
 	m_ui->profilesViewWidget->setData(currentIndex.sibling(currentIndex.row(), 1), profile->getUpdateInterval(), Qt::DisplayRole);
-	m_ui->profilesViewWidget->setData(currentIndex.sibling(currentIndex.row(), 2), profile->getLastUpdate(), Qt::DisplayRole);
+	m_ui->profilesViewWidget->setData(currentIndex.sibling(currentIndex.row(), 2), Utils::formatDateTime(profile->getLastUpdate()), Qt::DisplayRole);
 }
 
 void ContentBlockingDialog::handleProfileModified(const QString &name)

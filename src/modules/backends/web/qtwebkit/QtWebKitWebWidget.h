@@ -70,6 +70,7 @@ public:
 	HitTestResult getHitTestResult(const QPoint &position) override;
 	QStringList getStyleSheets() const override;
 	QVector<LinkUrl> getFeeds() const override;
+	QVector<LinkUrl> getLinks() const override;
 	QVector<LinkUrl> getSearchEngines() const override;
 	QVector<NetworkManager::ResourceInformation> getBlockedRequests() const override;
 	QMap<QByteArray, QByteArray> getHeaders() const override;
@@ -89,8 +90,6 @@ public:
 
 public slots:
 	void clearOptions() override;
-	void goToHistoryIndex(int index) override;
-	void removeHistoryIndex(int index, bool purge = false) override;
 	void fillPassword(const PasswordsManager::PasswordInformation &password) override;
 	void triggerAction(int identifier, const QVariantMap &parameters = {}) override;
 	void setActiveStyleSheet(const QString &styleSheet) override;
@@ -106,7 +105,8 @@ protected:
 	{
 		IdentifierEntryData = 0,
 		ZoomEntryData,
-		PositionEntryData
+		PositionEntryData,
+		VisitTimeEntryData
 	};
 
 	explicit QtWebKitWebWidget(const QVariantMap &parameters, WebBackend *backend, QtWebKitNetworkManager *networkManager = nullptr, ContentsWidget *parent = nullptr);
@@ -135,6 +135,7 @@ protected:
 	QString getMessageToken() const;
 	QString getPluginToken() const;
 	QUrl resolveUrl(QWebFrame *frame, const QUrl &url) const;
+	QVector<LinkUrl> getLinks(const QString &query) const;
 	int getAmountOfDeferredPlugins() const override;
 	bool canLoadPlugins() const;
 	bool canGoBack() const override;

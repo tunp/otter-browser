@@ -184,7 +184,7 @@ void ContentsWidget::triggerAction(int identifier, const QVariantMap &parameters
 					break;
 				}
 
-				const QVector<BookmarksItem*> bookmarks(BookmarksManager::getModel()->getBookmarks(url));
+				const QVector<BookmarksModel::Bookmark*> bookmarks(BookmarksManager::getModel()->getBookmarks(url));
 
 				if (bookmarks.isEmpty())
 				{
@@ -304,17 +304,6 @@ void ContentsWidget::showDialog(ContentsDialog *dialog, bool lockEventLoop)
 
 		eventLoop.exec();
 	}
-}
-
-void ContentsWidget::goToHistoryIndex(int index)
-{
-	Q_UNUSED(index)
-}
-
-void ContentsWidget::removeHistoryIndex(int index, bool purge)
-{
-	Q_UNUSED(index)
-	Q_UNUSED(purge)
 }
 
 void ContentsWidget::setOption(int identifier, const QVariant &value)

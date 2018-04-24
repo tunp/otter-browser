@@ -48,14 +48,12 @@
 #include <QtGui/QClipboard>
 #include <QtGui/QContextMenuEvent>
 #include <QtGui/QImageWriter>
-#include <QtWebEngineCore/QtWebEngineCoreVersion>
 #include <QtWebEngineCore/QWebEngineCookieStore>
 #include <QtWebEngineWidgets/QWebEngineHistory>
 #include <QtWebEngineWidgets/QWebEngineProfile>
 #include <QtWebEngineWidgets/QWebEngineScript>
 #include <QtWebEngineWidgets/QWebEngineSettings>
 #include <QtWidgets/QAction>
-#include <QtWidgets/QToolTip>
 #include <QtWidgets/QVBoxLayout>
 
 namespace Otter
@@ -63,8 +61,10 @@ namespace Otter
 
 QtWebEngineWebWidget::QtWebEngineWebWidget(const QVariantMap &parameters, WebBackend *backend, ContentsWidget *parent) : WebWidget(parameters, backend, parent),
 	m_webView(nullptr),
+#if QTWEBENGINECORE_VERSION >= 0x050B00
+	m_inspectorView(nullptr),
+#endif
 	m_page(new QtWebEnginePage(SessionsManager::calculateOpenHints(parameters).testFlag(SessionsManager::PrivateOpen), this)),
-	m_loadingTime(nullptr),
 	m_loadingState(FinishedLoadingState),
 	m_canGoForwardValue(UnknownValue),
 	m_documentLoadingProgress(0),
@@ -85,7 +85,7 @@ QtWebEngineWebWidget::QtWebEngineWebWidget(const QVariantMap &parameters, WebBac
 	connect(m_page, &QtWebEnginePage::loadStarted, this, &QtWebEngineWebWidget::pageLoadStarted);
 	connect(m_page, &QtWebEnginePage::loadFinished, this, &QtWebEngineWebWidget::pageLoadFinished);
 	connect(m_page, &QtWebEnginePage::linkHovered, this, &QtWebEngineWebWidget::setStatusMessageOverride);
-	connect(m_page, &QtWebEnginePage::iconChanged, this, &QtWebEngineWebWidget::iconChanged);
+	connect(m_page, &QtWebEnginePage::iconChanged, this, &QtWebEngineWebWidget::notifyIconChanged);
 	connect(m_page, &QtWebEnginePage::requestedPopupWindow, this, &QtWebEngineWebWidget::requestedPopupWindow);
 	connect(m_page, &QtWebEnginePage::aboutToNavigate, this, &QtWebEngineWebWidget::aboutToNavigate);
 	connect(m_page, &QtWebEnginePage::requestedNewWindow, this, &QtWebEngineWebWidget::requestedNewWindow);
@@ -93,12 +93,19 @@ QtWebEngineWebWidget::QtWebEngineWebWidget(const QVariantMap &parameters, WebBac
 	connect(m_page, &QtWebEnginePage::proxyAuthenticationRequired, this, &QtWebEngineWebWidget::handleProxyAuthenticationRequired);
 	connect(m_page, &QtWebEnginePage::windowCloseRequested, this, &QtWebEngineWebWidget::handleWindowCloseRequest);
 	connect(m_page, &QtWebEnginePage::fullScreenRequested, this, &QtWebEngineWebWidget::handleFullScreenRequest);
-	connect(m_page, &QtWebEnginePage::featurePermissionRequested, this, &QtWebEngineWebWidget::handlePermissionRequest);
-	connect(m_page, &QtWebEnginePage::featurePermissionRequestCanceled, this, &QtWebEngineWebWidget::handlePermissionCancel);
+	connect(m_page, &QtWebEnginePage::featurePermissionRequested, [&](const QUrl &url, QWebEnginePage::Feature feature)
+	{
+		notifyPermissionRequested(url, feature, false);
+	});
+	connect(m_page, &QtWebEnginePage::featurePermissionRequestCanceled, [&](const QUrl &url, QWebEnginePage::Feature feature)
+	{
+		notifyPermissionRequested(url, feature, true);
+	});
 	connect(m_page, &QtWebEnginePage::recentlyAudibleChanged, this, &QtWebEngineWebWidget::isAudibleChanged);
 	connect(m_page, &QtWebEnginePage::viewingMediaChanged, this, &QtWebEngineWebWidget::notifyNavigationActionsChanged);
 	connect(m_page, &QtWebEnginePage::titleChanged, this, &QtWebEngineWebWidget::notifyTitleChanged);
 	connect(m_page, &QtWebEnginePage::urlChanged, this, &QtWebEngineWebWidget::notifyUrlChanged);
+	connect(m_page, &QtWebEnginePage::renderProcessTerminated, this, &QtWebEngineWebWidget::notifyRenderProcessTerminated);
 	connect(m_page->action(QWebEnginePage::Redo), &QAction::changed, this, &QtWebEngineWebWidget::notifyRedoActionStateChanged);
 	connect(m_page->action(QWebEnginePage::Undo), &QAction::changed, this, &QtWebEngineWebWidget::notifyUndoActionStateChanged);
 }
@@ -164,6 +171,7 @@ void QtWebEngineWebWidget::ensureInitialized()
 		m_webView = new QWebEngineView(this);
 		m_webView->setPage(m_page);
 		m_webView->setContextMenuPolicy(Qt::CustomContextMenu);
+		m_webView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 		m_webView->installEventFilter(this);
 
 		QVBoxLayout *layout(new QVBoxLayout(this));
@@ -171,8 +179,6 @@ void QtWebEngineWebWidget::ensureInitialized()
 		layout->setContentsMargins(0, 0, 0, 0);
 
 		setLayout(layout);
-
-		connect(m_webView, &QWebEngineView::renderProcessTerminated, this, &QtWebEngineWebWidget::notifyRenderProcessTerminated);
 	}
 }
 
@@ -219,12 +225,6 @@ void QtWebEngineWebWidget::pageLoadStarted()
 	m_loadingState = OngoingLoadingState;
 	m_documentLoadingProgress = 0;
 
-	if (!m_loadingTime)
-	{
-		m_loadingTime = new QTime();
-		m_loadingTime->start();
-	}
-
 	setStatusMessage({});
 	setStatusMessageOverride({});
 
@@ -259,38 +259,48 @@ void QtWebEngineWebWidget::clearOptions()
 	updateOptions(getUrl());
 }
 
-void QtWebEngineWebWidget::goToHistoryIndex(int index)
-{
-	m_page->history()->goToItem(m_page->history()->itemAt(index));
-}
-
-void QtWebEngineWebWidget::removeHistoryIndex(int index, bool purge)
-{
-	Q_UNUSED(purge)
-
-	WindowHistoryInformation history(getHistory());
-
-	if (index < 0 || index >= history.entries.count())
-	{
-		return;
-	}
-
-	history.entries.removeAt(index);
-
-	if (history.index >= index)
-	{
-		history.index = (history.index - 1);
-	}
-
-	setHistory(history);
-}
-
 void QtWebEngineWebWidget::triggerAction(int identifier, const QVariantMap &parameters)
 {
 	switch (identifier)
 	{
 		case ActionsManager::SaveAction:
-			m_page->triggerAction(QWebEnginePage::SavePage);
+			if (m_page->isViewingMedia())
+			{
+				const SaveInformation information(Utils::getSavePath(suggestSaveFileName(SingleFileSaveFormat)));
+
+				if (information.canSave)
+				{
+					m_page->save(information.path, QWebEngineDownloadItem::SingleHtmlSaveFormat);
+				}
+			}
+			else
+			{
+				SaveFormat format(UnknownSaveFormat);
+				const QString path(getSavePath({SingleFileSaveFormat, CompletePageSaveFormat, MhtmlSaveFormat, PdfSaveFormat}, &format));
+
+				if (!path.isEmpty())
+				{
+					switch (format)
+					{
+						case CompletePageSaveFormat:
+							m_page->save(path, QWebEngineDownloadItem::CompleteHtmlSaveFormat);
+
+							break;
+						case MhtmlSaveFormat:
+							m_page->save(path, QWebEngineDownloadItem::MimeHtmlSaveFormat);
+
+							break;
+						case PdfSaveFormat:
+							m_page->printToPdf(path);
+
+							break;
+						default:
+							m_page->save(path, QWebEngineDownloadItem::SingleHtmlSaveFormat);
+
+							break;
+					}
+				}
+			}
 
 			break;
 		case ActionsManager::ClearTabHistoryAction:
@@ -390,7 +400,7 @@ void QtWebEngineWebWidget::triggerAction(int identifier, const QVariantMap &para
 		case ActionsManager::CopyLinkToClipboardAction:
 			if (!m_hitResult.linkUrl.isEmpty())
 			{
-				QGuiApplication::clipboard()->setText(m_hitResult.linkUrl.toString(QUrl::EncodeReserved | QUrl::EncodeSpaces));
+				Application::clipboard()->setText(m_hitResult.linkUrl.toString(QUrl::EncodeReserved | QUrl::EncodeSpaces));
 			}
 
 			break;
@@ -440,7 +450,7 @@ void QtWebEngineWebWidget::triggerAction(int identifier, const QVariantMap &para
 		case ActionsManager::CopyFrameLinkToClipboardAction:
 			if (m_hitResult.frameUrl.isValid())
 			{
-				QGuiApplication::clipboard()->setText(m_hitResult.frameUrl.toString(QUrl::EncodeReserved | QUrl::EncodeSpaces));
+				Application::clipboard()->setText(m_hitResult.frameUrl.toString(QUrl::EncodeReserved | QUrl::EncodeSpaces));
 			}
 
 			break;
@@ -637,6 +647,18 @@ void QtWebEngineWebWidget::triggerAction(int identifier, const QVariantMap &para
 			m_page->triggerAction(QWebEnginePage::Forward);
 
 			break;
+		case ActionsManager::GoToHistoryIndexAction:
+			if (parameters.contains(QLatin1String("index")))
+			{
+				const int index(parameters[QLatin1String("index")].toInt());
+
+				if (index >= 0 && index < m_page->history()->count())
+				{
+					m_page->history()->goToItem(m_page->history()->itemAt(index));
+				}
+			}
+
+			break;
 		case ActionsManager::RewindAction:
 			m_page->history()->goToItem(m_page->history()->itemAt(0));
 
@@ -655,6 +677,26 @@ void QtWebEngineWebWidget::triggerAction(int identifier, const QVariantMap &para
 					m_page->triggerAction(QWebEnginePage::Forward);
 				}
 			});
+
+			break;
+		case ActionsManager::RemoveHistoryIndexAction:
+			if (parameters.contains(QLatin1String("index")))
+			{
+				const int index(parameters[QLatin1String("index")].toInt());
+
+				if (index >= 0 && index < m_page->history()->count())
+				{
+					WindowHistoryInformation history(getHistory());
+					history.entries.removeAt(index);
+
+					if (history.index >= index)
+					{
+						history.index = (history.index - 1);
+					}
+
+					setHistory(history);
+				}
+			}
 
 			break;
 		case ActionsManager::StopAction:
@@ -730,7 +772,7 @@ void QtWebEngineWebWidget::triggerAction(int identifier, const QVariantMap &para
 		case ActionsManager::PasteAction:
 			if (parameters.contains(QLatin1String("note")))
 			{
-				const BookmarksItem *bookmark(NotesManager::getModel()->getBookmark(parameters[QLatin1String("note")].toULongLong()));
+				const BookmarksModel::Bookmark *bookmark(NotesManager::getModel()->getBookmark(parameters[QLatin1String("note")].toULongLong()));
 
 				if (bookmark)
 				{
@@ -740,18 +782,18 @@ void QtWebEngineWebWidget::triggerAction(int identifier, const QVariantMap &para
 			else if (parameters.contains(QLatin1String("text")))
 			{
 				QMimeData *mimeData(new QMimeData());
-				const QStringList mimeTypes(QGuiApplication::clipboard()->mimeData()->formats());
+				const QStringList mimeTypes(Application::clipboard()->mimeData()->formats());
 
 				for (int i = 0; i < mimeTypes.count(); ++i)
 				{
-					mimeData->setData(mimeTypes.at(i), QGuiApplication::clipboard()->mimeData()->data(mimeTypes.at(i)));
+					mimeData->setData(mimeTypes.at(i), Application::clipboard()->mimeData()->data(mimeTypes.at(i)));
 				}
 
-				QGuiApplication::clipboard()->setText(parameters[QLatin1String("text")].toString());
+				Application::clipboard()->setText(parameters[QLatin1String("text")].toString());
 
 				m_page->triggerAction(QWebEnginePage::Paste);
 
-				QGuiApplication::clipboard()->setMimeData(mimeData);
+				Application::clipboard()->setMimeData(mimeData);
 			}
 			else
 			{
@@ -792,12 +834,10 @@ void QtWebEngineWebWidget::triggerAction(int identifier, const QVariantMap &para
 						return;
 					}
 
-					const QStringList identifiers(SearchEnginesManager::getSearchEngines());
-					const QStringList keywords(SearchEnginesManager::getSearchKeywords());
 					const QIcon icon(getIcon());
 					const QUrl url(result.toMap().value(QLatin1String("url")).toString());
 					SearchEnginesManager::SearchEngineDefinition searchEngine;
-					searchEngine.identifier = Utils::createIdentifier(getUrl().host(), identifiers);
+					searchEngine.identifier = Utils::createIdentifier(getUrl().host(), SearchEnginesManager::getSearchEngines());
 					searchEngine.title = getTitle();
 					searchEngine.formUrl = getUrl();
 					searchEngine.icon = (icon.isNull() ? ThemesManager::createIcon(QLatin1String("edit-find")) : icon);
@@ -806,7 +846,7 @@ void QtWebEngineWebWidget::triggerAction(int identifier, const QVariantMap &para
 					searchEngine.resultsUrl.method = result.toMap().value(QLatin1String("method")).toString();
 					searchEngine.resultsUrl.parameters = QUrlQuery(result.toMap().value(QLatin1String("query")).toString());
 
-					SearchEnginePropertiesDialog dialog(searchEngine, keywords, this);
+					SearchEnginePropertiesDialog dialog(searchEngine, SearchEnginesManager::getSearchKeywords(), this);
 
 					if (dialog.exec() == QDialog::Accepted)
 					{
@@ -847,13 +887,11 @@ void QtWebEngineWebWidget::triggerAction(int identifier, const QVariantMap &para
 
 			break;
 		case ActionsManager::ActivateContentAction:
-			{
-				ensureInitialized();
+			ensureInitialized();
 
-				m_webView->setFocus();
+			m_webView->setFocus();
 
-				m_page->runJavaScript(QLatin1String("var element = document.activeElement; if (element && element.tagName && (element.tagName.toLowerCase() == 'input' || element.tagName.toLowerCase() == 'textarea'))) { document.activeElement.blur(); }"));
-			}
+			m_page->runJavaScript(QLatin1String("var element = document.activeElement; if (element && element.tagName && (element.tagName.toLowerCase() == 'input' || element.tagName.toLowerCase() == 'textarea'))) { document.activeElement.blur(); }"));
 
 			break;
 		case ActionsManager::ViewSourceAction:
@@ -881,9 +919,31 @@ void QtWebEngineWebWidget::triggerAction(int identifier, const QVariantMap &para
 			}
 
 			break;
+#if QTWEBENGINECORE_VERSION >= 0x050B00
+		case ActionsManager::InspectPageAction:
+			{
+				const bool showInspector(parameters.value(QLatin1String("isChecked"), !getActionState(identifier, parameters).isChecked).toBool());
+
+				if (showInspector && !m_inspectorView)
+				{
+					getInspector();
+				}
+
+				emit requestedInspectorVisibilityChange(showInspector);
+				emit arbitraryActionsStateChanged({ActionsManager::InspectPageAction});
+			}
+
+			break;
+		case ActionsManager::InspectElementAction:
+			triggerAction(ActionsManager::InspectPageAction, {{QLatin1String("isChecked"), true}});
+
+			m_page->triggerAction(QWebEnginePage::InspectElement);
+
+			break;
+#endif
 		case ActionsManager::FullScreenAction:
 			{
-				MainWindow *mainWindow(MainWindow::findMainWindow(this));
+				const MainWindow *mainWindow(MainWindow::findMainWindow(this));
 
 				if (mainWindow && !mainWindow->isFullScreen())
 				{
@@ -899,7 +959,7 @@ void QtWebEngineWebWidget::triggerAction(int identifier, const QVariantMap &para
 
 				if (dialog.exec() == QDialog::Accepted)
 				{
-					updateOptions(getUrl());
+					updateOptions(url);
 
 					const QVector<QNetworkCookie> cookiesToDelete(dialog.getCookiesToDelete());
 
@@ -1005,16 +1065,6 @@ void QtWebEngineWebWidget::handleFullScreenRequest(QWebEngineFullScreenRequest r
 	m_isFullScreen = request.toggleOn();
 
 	emit isFullScreenChanged(m_isFullScreen);
-}
-
-void QtWebEngineWebWidget::handlePermissionRequest(const QUrl &url, QWebEnginePage::Feature feature)
-{
-	notifyPermissionRequested(url, feature, false);
-}
-
-void QtWebEngineWebWidget::handlePermissionCancel(const QUrl &url, QWebEnginePage::Feature feature)
-{
-	notifyPermissionRequested(url, feature, true);
 }
 
 void QtWebEngineWebWidget::notifyTitleChanged()
@@ -1148,46 +1198,21 @@ void QtWebEngineWebWidget::setScrollPosition(const QPoint &position)
 
 void QtWebEngineWebWidget::setHistory(const WindowHistoryInformation &history)
 {
+	m_page->setHistory(history);
+
 	if (history.entries.count() == 0)
 	{
-		m_page->history()->clear();
-
 		updateOptions({});
-
-		const QVector<UserScript*> scripts(UserScript::getUserScriptsForUrl(QUrl(QLatin1String("about:blank"))));
-
-		for (int i = 0; i < scripts.count(); ++i)
-		{
-			m_page->runJavaScript(scripts.at(i)->getSource(), QWebEngineScript::UserWorld);
-		}
-
-		notifyNavigationActionsChanged();
-
-		emit categorizedActionsStateChanged({ActionsManager::ActionDefinition::PageCategory});
-
-		return;
 	}
-
-	QByteArray byteArray;
-	QDataStream stream(&byteArray, QIODevice::ReadWrite);
-	stream << static_cast<int>(3) << history.entries.count() << history.index;
-
-	for (int i = 0; i < history.entries.count(); ++i)
+	else
 	{
-		stream << QUrl(history.entries.at(i).url) << history.entries.at(i).title << QByteArray() << static_cast<qint32>(0) << false << QUrl() << static_cast<qint32>(0) << QUrl(history.entries.at(i).url) << false << QDateTime::currentDateTime().toSecsSinceEpoch() << static_cast<int>(200);
+		const QUrl url(m_page->history()->itemAt(history.index).url());
+
+		setRequestedUrl(url, false, true);
+		updateOptions(url);
+
+		m_page->triggerAction(QWebEnginePage::Reload);
 	}
-
-	stream.device()->reset();
-	stream >> *(m_page->history());
-
-	m_page->history()->goToItem(m_page->history()->itemAt(history.index));
-
-	const QUrl url(m_page->history()->itemAt(history.index).url());
-
-	setRequestedUrl(url, false, true);
-	updateOptions(url);
-
-	m_page->triggerAction(QWebEnginePage::Reload);
 
 	notifyNavigationActionsChanged();
 
@@ -1199,8 +1224,10 @@ void QtWebEngineWebWidget::setHistory(QDataStream &stream)
 	stream.device()->reset();
 	stream >> *(m_page->history());
 
-	setRequestedUrl(m_page->history()->currentItem().url(), false, true);
-	updateOptions(m_page->history()->currentItem().url());
+	const QUrl url(m_page->history()->currentItem().url());
+
+	setRequestedUrl(url, false, true);
+	updateOptions(url);
 }
 
 void QtWebEngineWebWidget::setZoom(int zoom)
@@ -1228,7 +1255,7 @@ void QtWebEngineWebWidget::setUrl(const QUrl &url, bool isTyped)
 		{
 			if (result.isValid())
 			{
-				setScrollPosition(QPoint(result.toList()[0].toInt(), result.toList()[1].toInt()));
+				setScrollPosition(QPoint(result.toList().value(0).toInt(), result.toList().value(1).toInt()));
 			}
 		});
 	}
@@ -1245,6 +1272,11 @@ void QtWebEngineWebWidget::setUrl(const QUrl &url, bool isTyped)
 		notifyTitleChanged();
 		notifyIconChanged();
 	}
+}
+
+void QtWebEngineWebWidget::setActiveStyleSheet(const QString &styleSheet)
+{
+	m_page->runJavaScript(QStringLiteral("var elements = document.querySelectorAll('link[rel=\\'alternate stylesheet\\']'); for (var i = 0; i < elements.length; ++i) { elements[i].disabled = (elements[i].title !== '%1'); }").arg(QString(styleSheet).replace(QLatin1Char('\''), QLatin1String("\\'"))));
 }
 
 void QtWebEngineWebWidget::setPermission(FeaturePermission feature, const QUrl &url, PermissionPolicies policies)
@@ -1339,6 +1371,20 @@ WebWidget* QtWebEngineWebWidget::clone(bool cloneHistory, bool isPrivate, const 
 	return widget;
 }
 
+#if QTWEBENGINECORE_VERSION >= 0x050B00
+QWidget* QtWebEngineWebWidget::getInspector()
+{
+	if (!m_inspectorView)
+	{
+		m_inspectorView = new QWebEngineView(this);
+		m_inspectorView->setMinimumHeight(200);
+		m_inspectorView->page()->setInspectedPage(m_page);
+	}
+
+	return m_inspectorView;
+}
+#endif
+
 QWidget* QtWebEngineWebWidget::getViewport()
 {
 	return (focusWidget() ? focusWidget() : m_webView);
@@ -1358,29 +1404,39 @@ QString QtWebEngineWebWidget::getTitle() const
 {
 	const QString title(m_page->title());
 
-	if (title.isEmpty())
+	if (!title.isEmpty())
 	{
-		const QUrl url(getUrl());
-
-		if (Utils::isUrlEmpty(url))
-		{
-			return tr("Blank Page");
-		}
-
-		if (url.isLocalFile())
-		{
-			return QFileInfo(url.toLocalFile()).canonicalFilePath();
-		}
-
-		if (!url.isEmpty())
-		{
-			return url.toString();
-		}
-
-		return tr("(Untitled)");
+		return title;
 	}
 
-	return title;
+	const QUrl url(getUrl());
+
+	if (Utils::isUrlEmpty(url))
+	{
+		return tr("Blank Page");
+	}
+
+	if (url.isLocalFile())
+	{
+		return QFileInfo(url.toLocalFile()).canonicalFilePath();
+	}
+
+	if (!url.isEmpty())
+	{
+		return url.toString();
+	}
+
+	return tr("(Untitled)");
+}
+
+QString QtWebEngineWebWidget::getDescription() const
+{
+	return m_page->runScriptSource(QLatin1String("var element = document.querySelector('[name=\\'description\\']'); var description = (element ? element.content : ''); if (description == '') { element = document.querySelector('[name=\\'og:description\\']'); description = (element ? element.property : ''); } description;")).toString();
+}
+
+QString QtWebEngineWebWidget::getActiveStyleSheet() const
+{
+	return m_page->runScriptFile(QLatin1String("getActiveStyleSheet")).toString();
 }
 
 QString QtWebEngineWebWidget::getSelectedText() const
@@ -1482,62 +1538,75 @@ WebWidget::LinkUrl QtWebEngineWebWidget::getActiveMedia() const
 
 WindowHistoryInformation QtWebEngineWebWidget::getHistory() const
 {
-	const QWebEngineHistory *history(m_page->history());
-	WindowHistoryInformation information;
-	information.index = history->currentItemIndex();
-
-	const QString requestedUrl(m_page->requestedUrl().toString());
-	const int historyCount(history->count());
-
-	for (int i = 0; i < historyCount; ++i)
-	{
-		const QWebEngineHistoryItem item(history->itemAt(i));
-		WindowHistoryEntry entry;
-		entry.url = item.url().toString();
-		entry.title = item.title();
-
-		information.entries.append(entry);
-	}
-
-	if (m_loadingState == OngoingLoadingState && requestedUrl != history->itemAt(history->currentItemIndex()).url().toString())
-	{
-		WindowHistoryEntry entry;
-		entry.url = requestedUrl;
-		entry.title = getTitle();
-
-		information.index = historyCount;
-		information.entries.append(entry);
-	}
-
-	return information;
+	return m_page->getHistory();
 }
 
 WebWidget::HitTestResult QtWebEngineWebWidget::getHitTestResult(const QPoint &position)
 {
-	QFile file(QLatin1String(":/modules/backends/web/qtwebengine/resources/hitTest.js"));
-
-	if (!file.open(QIODevice::ReadOnly))
-	{
-		return {};
-	}
-
-	QEventLoop eventLoop;
-
-	m_page->runJavaScript(parsePosition(QString(file.readAll()), position), [&](const QVariant &result)
-	{
-		m_hitResult = QtWebEngineHitTestResult(result);
-
-		eventLoop.quit();
-	});
-
-	file.close();
-
-	connect(this, &QtWebEngineWebWidget::aboutToReload, &eventLoop, &QEventLoop::quit);
-	connect(this, &QtWebEngineWebWidget::destroyed, &eventLoop, &QEventLoop::quit);
-
-	eventLoop.exec();
+	m_hitResult = QtWebEngineHitTestResult(m_page->runScriptFile(QLatin1String("hitTest"), {QString::number(position.x() / m_page->zoomFactor()), QString::number(position.y() / m_page->zoomFactor())}));
 
 	return m_hitResult;
+}
+
+QStringList QtWebEngineWebWidget::getStyleSheets() const
+{
+	return m_page->runScriptFile(QLatin1String("getStyleSheets")).toStringList();
+}
+
+QVector<WebWidget::LinkUrl> QtWebEngineWebWidget::getFeeds() const
+{
+	return getLinks(QLatin1String("a[type=\\'application/atom+xml\\'], a[type=\\'application/rss+xml\\'], link[type=\\'application/atom+xml\\'], link[type=\\'application/rss+xml\\']"));
+}
+
+QVector<WebWidget::LinkUrl> QtWebEngineWebWidget::getLinks(const QString &query) const
+{
+	const QVariant result(m_page->runScriptFile(QLatin1String("getLinks"), {query}));
+	QVector<LinkUrl> links;
+
+	if (result.isValid())
+	{
+		const QVariantList rawLinks(result.toList());
+
+		links.reserve(rawLinks.count());
+
+		for (int i = 0; i < rawLinks.count(); ++i)
+		{
+			const QVariantHash rawLink(rawLinks.at(i).toHash());
+			LinkUrl link;
+			link.title = rawLink.value(QLatin1String("title")).toString();
+			link.mimeType = rawLink.value(QLatin1String("mimeType")).toString();
+			link.url = QUrl(rawLink.value(QLatin1String("url")).toString());
+
+			links.append(link);
+		}
+	}
+
+	return links;
+}
+
+QVector<WebWidget::LinkUrl> QtWebEngineWebWidget::getLinks() const
+{
+	return getLinks(QLatin1String("a[href]"));
+}
+
+QVector<WebWidget::LinkUrl> QtWebEngineWebWidget::getSearchEngines() const
+{
+	return getLinks(QLatin1String("link[type=\\'application/opensearchdescription+xml\\']"));
+}
+
+QMultiMap<QString, QString> QtWebEngineWebWidget::getMetaData() const
+{
+	QMultiMap<QString, QString> metaData;
+	const QVariantList rawMetaData(m_page->runScriptSource(QLatin1String("var elements = document.querySelectorAll('meta'); var metaData = []; for (var i = 0; i < elements.length; ++i) { if (elements[i].name !== '') { metaData.push({key: elements[i].name, value: elements[i].content}); } } metaData;")).toList());
+
+	for (int i = 0; i < rawMetaData.count(); ++i)
+	{
+		const QVariantHash metaDataEntry(rawMetaData.at(i).toHash());
+
+		metaData.insertMulti(metaDataEntry.value(QLatin1String("key")).toString(), metaDataEntry.value(QLatin1String("value")).toString());
+	}
+
+	return metaData;
 }
 
 WebWidget::LoadingState QtWebEngineWebWidget::getLoadingState() const
@@ -1601,13 +1670,15 @@ bool QtWebEngineWebWidget::canGoForward() const
 
 bool QtWebEngineWebWidget::canFastForward() const
 {
-	if (m_canGoForwardValue == TrueValue || canGoForward())
-	{
-		return true;
-	}
-
-	return false;
+	return (m_canGoForwardValue == TrueValue || canGoForward());
 }
+
+#if QTWEBENGINECORE_VERSION >= 0x050B00
+bool QtWebEngineWebWidget::canInspect() const
+{
+	return !Utils::isUrlEmpty(getUrl());
+}
+#endif
 
 bool QtWebEngineWebWidget::canRedo() const
 {
@@ -1650,6 +1721,13 @@ bool QtWebEngineWebWidget::isFullScreen() const
 {
 	return m_isFullScreen;
 }
+
+#if QTWEBENGINECORE_VERSION >= 0x050B00
+bool QtWebEngineWebWidget::isInspecting() const
+{
+	return (m_inspectorView && m_inspectorView->isVisible());
+}
+#endif
 
 bool QtWebEngineWebWidget::isPopup() const
 {
@@ -1759,43 +1837,20 @@ bool QtWebEngineWebWidget::eventFilter(QObject *object, QEvent *event)
 
 			break;
 		case QEvent::ShortcutOverride:
+			m_isEditing = m_page->runScriptSource(QLatin1String("var element = document.body.querySelector(':focus'); var tagName = (element ? element.tagName.toLowerCase() : ''); var result = false; if (tagName == 'textarea' || tagName == 'input') { var type = (element.type ? element.type.toLowerCase() : ''); if ((type == '' || tagName == 'textarea' || type == 'text' || type == 'search') && !element.hasAttribute('readonly') && !element.hasAttribute('disabled')) { result = true; } } result;")).toBool();
+
+			if (m_isEditing)
 			{
-				QEventLoop eventLoop;
-
-				m_page->runJavaScript(QLatin1String("var element = document.body.querySelector(':focus'); var tagName = (element ? element.tagName.toLowerCase() : ''); var result = false; if (tagName == 'textarea' || tagName == 'input') { var type = (element.type ? element.type.toLowerCase() : ''); if ((type == '' || tagName == 'textarea' || type == 'text' || type == 'search') && !element.hasAttribute('readonly') && !element.hasAttribute('disabled')) { result = true; } } result;"), [&](const QVariant &result)
-				{
-					m_isEditing = result.toBool();
-
-					eventLoop.quit();
-				});
-
-				connect(this, &QtWebEngineWebWidget::aboutToReload, &eventLoop, &QEventLoop::quit);
-				connect(this, &QtWebEngineWebWidget::destroyed, &eventLoop, &QEventLoop::quit);
-
-				eventLoop.exec();
-
-				if (m_isEditing)
-				{
-					event->accept();
-
-					return true;
-				}
-			}
-
-			break;
-		case QEvent::ToolTip:
-			{
-				QHelpEvent *helpEvent(static_cast<QHelpEvent*>(event));
-
-				if (helpEvent)
-				{
-					handleToolTipEvent(helpEvent, m_webView);
-				}
+				event->accept();
 
 				return true;
 			}
 
 			break;
+		case QEvent::ToolTip:
+			handleToolTipEvent(static_cast<QHelpEvent*>(event), m_webView);
+
+			return true;
 		default:
 			break;
 	}

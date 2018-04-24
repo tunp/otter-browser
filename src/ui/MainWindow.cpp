@@ -524,7 +524,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 		case ActionsManager::ClosePrivateTabsAction:
 			for (int i = 0; i < m_privateWindows.count(); ++i)
 			{
-				m_privateWindows[i]->requestClose();
+				m_privateWindows.at(i)->requestClose();
 			}
 
 			emit arbitraryActionsStateChanged({ActionsManager::ClosePrivateTabsAction});
@@ -592,7 +592,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 				}
 
 				SessionsManager::OpenHints hints(SessionsManager::calculateOpenHints(parameters));
-				int index(parameters.value(QLatin1String("index"), -1).toInt());
+				const int index(parameters.value(QLatin1String("index"), -1).toInt());
 
 				if (m_isPrivate)
 				{
@@ -738,7 +738,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 		case ActionsManager::OpenBookmarkAction:
 			if (parameters.contains(QLatin1String("bookmark")))
 			{
-				const BookmarksItem *bookmark(BookmarksManager::getBookmark(parameters[QLatin1String("bookmark")].toULongLong()));
+				const BookmarksModel::Bookmark *bookmark(BookmarksManager::getBookmark(parameters[QLatin1String("bookmark")].toULongLong()));
 
 				if (!bookmark)
 				{
@@ -748,7 +748,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 				QVariantMap mutableParameters(parameters);
 				mutableParameters.remove(QLatin1String("bookmark"));
 
-				switch (static_cast<BookmarksModel::BookmarkType>(bookmark->getType()))
+				switch (bookmark->getType())
 				{
 					case BookmarksModel::UrlBookmark:
 						mutableParameters[QLatin1String("url")] = bookmark->getUrl();
@@ -1059,7 +1059,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 			return;
 		case ActionsManager::PreferencesAction:
 			{
-				PreferencesDialog dialog(QLatin1String("general"), this);
+				PreferencesDialog dialog(parameters.value(QLatin1String("page"), QLatin1String("general")).toString(), this);
 				dialog.exec();
 			}
 
@@ -2001,9 +2001,7 @@ Window* MainWindow::openWindow(ContentsWidget *widget, SessionsManager::OpenHint
 			session.toolBars = getSession().toolBars;
 		}
 
-		MainWindow *mainWindow(Application::createWindow({{QLatin1String("hints"), QVariant(hints)}, {QLatin1String("noTabs"), true}}, session));
-
-		window = mainWindow->openWindow(widget);
+		window = Application::createWindow({{QLatin1String("hints"), QVariant(hints)}, {QLatin1String("noTabs"), true}}, session)->openWindow(widget);
 	}
 	else
 	{
@@ -2137,7 +2135,7 @@ ActionsManager::ActionDefinition::State MainWindow::getActionState(int identifie
 			break;
 		case ActionsManager::OpenBookmarkAction:
 			{
-				const BookmarksItem *bookmark(BookmarksManager::getBookmark(parameters[QLatin1String("bookmark")].toULongLong()));
+				const BookmarksModel::Bookmark *bookmark(BookmarksManager::getBookmark(parameters[QLatin1String("bookmark")].toULongLong()));
 
 				if (bookmark)
 				{

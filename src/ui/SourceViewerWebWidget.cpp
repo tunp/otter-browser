@@ -69,7 +69,7 @@ void SourceViewerWebWidget::triggerAction(int identifier, const QVariantMap &par
 	{
 		case ActionsManager::SaveAction:
 			{
-				const QString path(Utils::getSavePath(suggestSaveFileName(SingleHtmlFileSaveFormat)).path);
+				const QString path(Utils::getSavePath(suggestSaveFileName(SingleFileSaveFormat)).path);
 
 				if (!path.isEmpty())
 				{
@@ -209,7 +209,7 @@ void SourceViewerWebWidget::triggerAction(int identifier, const QVariantMap &par
 		case ActionsManager::PasteAction:
 			if (parameters.contains(QLatin1String("note")))
 			{
-				const BookmarksItem *bookmark(NotesManager::getModel()->getBookmark(parameters[QLatin1String("note")].toULongLong()));
+				const BookmarksModel::Bookmark *bookmark(NotesManager::getModel()->getBookmark(parameters[QLatin1String("note")].toULongLong()));
 
 				if (bookmark)
 				{
@@ -268,17 +268,6 @@ void SourceViewerWebWidget::handleViewSourceReplyFinished()
 
 		emit categorizedActionsStateChanged({ActionsManager::ActionDefinition::NavigationCategory});
 	}
-}
-
-void SourceViewerWebWidget::goToHistoryIndex(int index)
-{
-	Q_UNUSED(index)
-}
-
-void SourceViewerWebWidget::removeHistoryIndex(int index, bool purge)
-{
-	Q_UNUSED(index)
-	Q_UNUSED(purge)
 }
 
 void SourceViewerWebWidget::handleZoomChanged()
@@ -543,6 +532,11 @@ bool SourceViewerWebWidget::canRedo() const
 bool SourceViewerWebWidget::canUndo() const
 {
 	return m_sourceViewer->document()->isUndoAvailable();
+}
+
+bool SourceViewerWebWidget::canViewSource() const
+{
+	return false;
 }
 
 bool SourceViewerWebWidget::hasSelection() const

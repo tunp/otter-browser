@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -32,11 +32,11 @@
 namespace Otter
 {
 
-HistoryEntryItem::HistoryEntryItem() : QStandardItem()
+HistoryModel::Entry::Entry() : QStandardItem()
 {
 }
 
-void HistoryEntryItem::setData(const QVariant &value, int role)
+void HistoryModel::Entry::setData(const QVariant &value, int role)
 {
 	if (model() && qobject_cast<HistoryModel*>(model()))
 	{
@@ -48,32 +48,34 @@ void HistoryEntryItem::setData(const QVariant &value, int role)
 	}
 }
 
-void HistoryEntryItem::setItemData(const QVariant &value, int role)
+void HistoryModel::Entry::setItemData(const QVariant &value, int role)
 {
 	QStandardItem::setData(value, role);
 }
 
-QString HistoryEntryItem::getTitle() const
+QString HistoryModel::Entry::getTitle() const
 {
 	return (data(HistoryModel::TitleRole).isNull() ? QCoreApplication::translate("Otter::HistoryEntryItem", "(Untitled)") : data(HistoryModel::TitleRole).toString());
 }
 
-QUrl HistoryEntryItem::getUrl() const
+QUrl HistoryModel::Entry::getUrl() const
 {
 	return data(HistoryModel::UrlRole).toUrl();
 }
 
-QDateTime HistoryEntryItem::getTimeVisited() const
+QDateTime HistoryModel::Entry::getTimeVisited() const
 {
 	return data(HistoryModel::TimeVisitedRole).toDateTime();
 }
 
-QIcon HistoryEntryItem::getIcon() const
+QIcon HistoryModel::Entry::getIcon() const
 {
-	return (data(Qt::DecorationRole).isNull() ? ThemesManager::createIcon(QLatin1String("text-html")) : data(Qt::DecorationRole).value<QIcon>());
+	const QVariant iconData(data(Qt::DecorationRole));
+
+	return (iconData.isNull() ? ThemesManager::createIcon(QLatin1String("text-html")) : iconData.value<QIcon>());
 }
 
-quint64 HistoryEntryItem::getIdentifier() const
+quint64 HistoryModel::Entry::getIdentifier() const
 {
 	return data(HistoryModel::IdentifierRole).toULongLong();
 }
@@ -97,8 +99,10 @@ HistoryModel::HistoryModel(const QString &path, HistoryType type, QObject *paren
 	for (int i = 0; i < historyArray.count(); ++i)
 	{
 		const QJsonObject entryObject(historyArray.at(i).toObject());
+		QDateTime dateTime(QDateTime::fromString(entryObject.value(QLatin1String("time")).toString(), Qt::ISODate));
+		dateTime.setTimeSpec(Qt::UTC);
 
-		addEntry(QUrl(entryObject.value(QLatin1String("url")).toString()), entryObject.value(QLatin1String("title")).toString(), {}, QDateTime::fromString(entryObject.value(QLatin1String("time")).toString(), Qt::ISODate));
+		addEntry(QUrl(entryObject.value(QLatin1String("url")).toString()), entryObject.value(QLatin1String("title")).toString(), {}, dateTime);
 	}
 
 	setSortRole(TimeVisitedRole);
@@ -129,7 +133,7 @@ void HistoryModel::clearRecentEntries(uint period)
 
 	for (int i = (rowCount() - 1); i >= 0; --i)
 	{
-		if (index(i, 0).data(TimeVisitedRole).toDateTime().secsTo(QDateTime::currentDateTime()) < (period * 3600))
+		if (index(i, 0).data(TimeVisitedRole).toDateTime().secsTo(QDateTime::currentDateTimeUtc()) < (period * 3600))
 		{
 			removeEntry(index(i, 0).data(IdentifierRole).toULongLong());
 		}
@@ -143,7 +147,7 @@ void HistoryModel::clearOldestEntries(int period)
 		return;
 	}
 
-	const QDateTime currentDateTime(QDateTime::currentDateTime());
+	const QDateTime currentDateTime(QDateTime::currentDateTimeUtc());
 
 	for (int i = (rowCount() - 1); i >= 0; --i)
 	{
@@ -156,7 +160,7 @@ void HistoryModel::clearOldestEntries(int period)
 
 void HistoryModel::removeEntry(quint64 identifier)
 {
-	HistoryEntryItem *entry(getEntry(identifier));
+	Entry *entry(getEntry(identifier));
 
 	if (!entry)
 	{
@@ -187,7 +191,7 @@ void HistoryModel::removeEntry(quint64 identifier)
 	emit modelModified();
 }
 
-HistoryEntryItem* HistoryModel::addEntry(const QUrl &url, const QString &title, const QIcon &icon, const QDateTime &date, quint64 identifier)
+HistoryModel::Entry* HistoryModel::addEntry(const QUrl &url, const QString &title, const QIcon &icon, const QDateTime &date, quint64 identifier)
 {
 	blockSignals(true);
 
@@ -204,7 +208,7 @@ HistoryEntryItem* HistoryModel::addEntry(const QUrl &url, const QString &title, 
 		}
 	}
 
-	HistoryEntryItem *entry(new HistoryEntryItem());
+	Entry *entry(new Entry());
 	entry->setIcon(icon);
 
 	insertRow(0, entry);
@@ -228,7 +232,7 @@ HistoryEntryItem* HistoryModel::addEntry(const QUrl &url, const QString &title, 
 	return entry;
 }
 
-HistoryEntryItem* HistoryModel::getEntry(quint64 identifier) const
+HistoryModel::Entry* HistoryModel::getEntry(quint64 identifier) const
 {
 	if (m_identifiers.contains(identifier))
 	{
@@ -240,11 +244,11 @@ HistoryEntryItem* HistoryModel::getEntry(quint64 identifier) const
 
 QVector<HistoryModel::HistoryEntryMatch> HistoryModel::findEntries(const QString &prefix, bool markAsTypedIn) const
 {
-	QVector<HistoryEntryItem*> matchedEntries;
+	QVector<Entry*> matchedEntries;
 	QVector<HistoryModel::HistoryEntryMatch> allMatches;
 	QVector<HistoryModel::HistoryEntryMatch> currentMatches;
 	QMultiMap<QDateTime, HistoryModel::HistoryEntryMatch> matchesMap;
-	QHash<QUrl, QVector<HistoryEntryItem*> >::const_iterator urlsIterator;
+	QHash<QUrl, QVector<Entry*> >::const_iterator urlsIterator;
 
 	for (urlsIterator = m_urls.constBegin(); urlsIterator != m_urls.constEnd(); ++urlsIterator)
 	{
@@ -316,7 +320,7 @@ bool HistoryModel::save(const QString &path) const
 
 bool HistoryModel::setData(const QModelIndex &index, const QVariant &value, int role)
 {
-	HistoryEntryItem *entry(static_cast<HistoryEntryItem*>(itemFromIndex(index)));
+	Entry *entry(static_cast<Entry*>(itemFromIndex(index)));
 
 	if (!entry)
 	{
@@ -342,7 +346,7 @@ bool HistoryModel::setData(const QModelIndex &index, const QVariant &value, int 
 		{
 			if (!m_urls.contains(newUrl))
 			{
-				m_urls[newUrl] = QVector<HistoryEntryItem*>();
+				m_urls[newUrl] = QVector<Entry*>();
 			}
 
 			m_urls[newUrl].append(entry);

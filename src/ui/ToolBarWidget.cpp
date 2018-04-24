@@ -400,7 +400,7 @@ void ToolBarWidget::populateEntries()
 	switch (definition.type)
 	{
 		case ToolBarsManager::BookmarksBarType:
-			m_bookmark = (definition.bookmarksPath.startsWith(QLatin1Char('#')) ? BookmarksManager::getBookmark(definition.bookmarksPath.mid(1).toULongLong()) : BookmarksManager::getModel()->getItem(definition.bookmarksPath));
+			m_bookmark = BookmarksManager::getBookmark(definition.bookmarksPath);
 
 			loadBookmarks();
 
@@ -501,9 +501,9 @@ void ToolBarWidget::updateDropIndex(const QPoint &position)
 
 		if (dropIndex >= 0 && dropIndex < m_bookmark->rowCount())
 		{
-			BookmarksItem *dropBookmark(BookmarksManager::getModel()->getBookmark(m_bookmark->index().child(dropIndex, 0)));
+			BookmarksModel::Bookmark *dropBookmark(BookmarksManager::getModel()->getBookmark(m_bookmark->index().child(dropIndex, 0)));
 
-			if (dropBookmark && static_cast<BookmarksModel::BookmarkType>(dropBookmark->getType()) == BookmarksModel::FolderBookmark)
+			if (dropBookmark && dropBookmark->getType() == BookmarksModel::FolderBookmark)
 			{
 				bool canNest(false);
 
@@ -656,11 +656,11 @@ void ToolBarWidget::loadBookmarks()
 
 	for (int i = 0; i < m_bookmark->rowCount(); ++i)
 	{
-		BookmarksItem *bookmark(static_cast<BookmarksItem*>(m_bookmark->child(i)));
+		BookmarksModel::Bookmark *bookmark(static_cast<BookmarksModel::Bookmark*>(m_bookmark->child(i)));
 
 		if (bookmark)
 		{
-			if (static_cast<BookmarksModel::BookmarkType>(bookmark->getType()) == BookmarksModel::SeparatorBookmark)
+			if (bookmark->getType() == BookmarksModel::SeparatorBookmark)
 			{
 				addSeparator();
 			}
@@ -706,7 +706,7 @@ void ToolBarWidget::handleToolBarRemoved(int identifier)
 	}
 }
 
-void ToolBarWidget::handleBookmarkModified(BookmarksItem *bookmark)
+void ToolBarWidget::handleBookmarkModified(BookmarksModel::Bookmark *bookmark)
 {
 	if (bookmark == m_bookmark || m_bookmark->isAncestorOf(bookmark))
 	{
@@ -714,7 +714,7 @@ void ToolBarWidget::handleBookmarkModified(BookmarksItem *bookmark)
 	}
 }
 
-void ToolBarWidget::handleBookmarkMoved(BookmarksItem *bookmark, BookmarksItem *previousParent)
+void ToolBarWidget::handleBookmarkMoved(BookmarksModel::Bookmark *bookmark, BookmarksModel::Bookmark *previousParent)
 {
 	if (bookmark == m_bookmark || previousParent == m_bookmark || m_bookmark->isAncestorOf(bookmark) || m_bookmark->isAncestorOf(previousParent))
 	{
@@ -722,7 +722,7 @@ void ToolBarWidget::handleBookmarkMoved(BookmarksItem *bookmark, BookmarksItem *
 	}
 }
 
-void ToolBarWidget::handleBookmarkRemoved(BookmarksItem *bookmark, BookmarksItem *previousParent)
+void ToolBarWidget::handleBookmarkRemoved(BookmarksModel::Bookmark *bookmark, BookmarksModel::Bookmark *previousParent)
 {
 	if (bookmark == m_bookmark)
 	{
@@ -1038,15 +1038,12 @@ bool ToolBarWidget::event(QEvent *event)
 
 		if (position.isNull() || !isDragHandle(position))
 		{
-			QVector<GesturesManager::GesturesContext> contexts;
+			QVector<GesturesManager::GesturesContext> contexts({GesturesManager::ToolBarContext, GesturesManager::GenericContext});
 
 			if (m_identifier == ToolBarsManager::TabBar)
 			{
-				contexts.append(GesturesManager::NoTabHandleContext);
+				contexts.prepend(GesturesManager::NoTabHandleContext);
 			}
-
-			contexts.append(GesturesManager::ToolBarContext);
-			contexts.append(GesturesManager::GenericContext);
 
 			GesturesManager::startGesture(this, event, contexts);
 		}

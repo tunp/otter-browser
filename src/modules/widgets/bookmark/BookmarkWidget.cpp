@@ -29,7 +29,7 @@
 namespace Otter
 {
 
-BookmarkWidget::BookmarkWidget(BookmarksItem *bookmark, const ToolBarsManager::ToolBarDefinition::Entry &definition, QWidget *parent) : ToolButtonWidget(definition, parent),
+BookmarkWidget::BookmarkWidget(BookmarksModel::Bookmark *bookmark, const ToolBarsManager::ToolBarDefinition::Entry &definition, QWidget *parent) : ToolButtonWidget(definition, parent),
 	m_bookmark(bookmark)
 {
 	updateBookmark(m_bookmark);
@@ -58,7 +58,7 @@ void BookmarkWidget::mouseReleaseEvent(QMouseEvent *event)
 	}
 }
 
-void BookmarkWidget::removeBookmark(BookmarksItem *bookmark)
+void BookmarkWidget::removeBookmark(BookmarksModel::Bookmark *bookmark)
 {
 	if (m_bookmark && m_bookmark == bookmark)
 	{
@@ -68,14 +68,14 @@ void BookmarkWidget::removeBookmark(BookmarksItem *bookmark)
 	}
 }
 
-void BookmarkWidget::updateBookmark(BookmarksItem *bookmark)
+void BookmarkWidget::updateBookmark(BookmarksModel::Bookmark *bookmark)
 {
 	if (bookmark != m_bookmark)
 	{
 		return;
 	}
 
-	const BookmarksModel::BookmarkType type(static_cast<BookmarksModel::BookmarkType>(m_bookmark->getType()));
+	const BookmarksModel::BookmarkType type(m_bookmark->getType());
 
 	if (type == BookmarksModel::RootBookmark || type == BookmarksModel::TrashBookmark || type == BookmarksModel::FolderBookmark)
 	{
@@ -120,9 +120,23 @@ void BookmarkWidget::updateBookmark(BookmarksItem *bookmark)
 		setMenu(nullptr);
 	}
 
-	setText(m_bookmark->getTitle().replace(QLatin1Char('&'), QLatin1String("&&")));
+	setIcon(getIcon());
 	setStatusTip(m_bookmark->getUrl().toDisplayString());
-	setIcon(m_bookmark->getIcon());
+	setText(getText().replace(QLatin1Char('&'), QLatin1String("&&")));
+}
+
+QString BookmarkWidget::getText() const
+{
+	const QVariantMap options(getOptions());
+
+	return ((isCustomized() && options.contains(QLatin1String("text"))) ? options[QLatin1String("text")].toString() : m_bookmark->getTitle());
+}
+
+QIcon BookmarkWidget::getIcon() const
+{
+	const QVariantMap options(getOptions());
+
+	return ((isCustomized() && options.contains(QLatin1String("icon"))) ? options[QLatin1String("icon")].value<QIcon>() : m_bookmark->getIcon());
 }
 
 }

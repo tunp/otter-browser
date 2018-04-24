@@ -23,13 +23,13 @@
 #include "../../../../ui/WebWidget.h"
 
 #include <QtNetwork/QNetworkReply>
+#include <QtWebEngineCore/QtWebEngineCoreVersion>
 #include <QtWebEngineWidgets/QWebEngineFullScreenRequest>
 #include <QtWebEngineWidgets/QWebEngineView>
 
 namespace Otter
 {
 
-class ContentsDialog;
 class QtWebEnginePage;
 class SourceViewerWebWidget;
 
@@ -64,8 +64,13 @@ public:
 	void search(const QString &query, const QString &searchEngine) override;
 	void print(QPrinter *printer) override;
 	WebWidget* clone(bool cloneHistory = true, bool isPrivate = false, const QStringList &excludedOptions = {}) const override;
+#if QTWEBENGINECORE_VERSION >= 0x050B00
+	QWidget* getInspector();
+#endif
 	QWidget* getViewport() override;
 	QString getTitle() const override;
+	QString getDescription() const override;
+	QString getActiveStyleSheet() const override;
 	QString getSelectedText() const override;
 	QVariant getPageInformation(PageInformation key) const override;
 	QUrl getUrl() const override;
@@ -77,6 +82,11 @@ public:
 	LinkUrl getActiveMedia() const override;
 	WindowHistoryInformation getHistory() const override;
 	HitTestResult getHitTestResult(const QPoint &position) override;
+	QStringList getStyleSheets() const override;
+	QVector<LinkUrl> getFeeds() const override;
+	QVector<LinkUrl> getLinks() const override;
+	QVector<LinkUrl> getSearchEngines() const override;
+	QMultiMap<QString, QString> getMetaData() const override;
 	LoadingState getLoadingState() const override;
 	int getZoom() const override;
 	int findInPage(const QString &text, FindFlags flags = NoFlagsFind) override;
@@ -89,9 +99,8 @@ public:
 
 public slots:
 	void clearOptions() override;
-	void goToHistoryIndex(int index) override;
-	void removeHistoryIndex(int index, bool purge = false) override;
 	void triggerAction(int identifier, const QVariantMap &parameters = {}) override;
+	void setActiveStyleSheet(const QString &styleSheet) override;
 	void setPermission(FeaturePermission feature, const QUrl &url, PermissionPolicies policies) override;
 	void setOption(int identifier, const QVariant &value) override;
 	void setScrollPosition(const QPoint &position) override;
@@ -113,13 +122,20 @@ protected:
 	QWebEnginePage* getPage() const;
 	QString parsePosition(const QString &script, const QPoint &position) const;
 	QDateTime getLastUrlClickTime() const;
+	QVector<LinkUrl> getLinks(const QString &query) const;
 	bool canGoBack() const override;
 	bool canGoForward() const override;
 	bool canFastForward() const override;
+#if QTWEBENGINECORE_VERSION >= 0x050B00
+	bool canInspect() const;
+#endif
 	bool canRedo() const override;
 	bool canUndo() const override;
 	bool canShowContextMenu(const QPoint &position) const override;
 	bool canViewSource() const override;
+#if QTWEBENGINECORE_VERSION >= 0x050B00
+	bool isInspecting() const;
+#endif
 	bool isPopup() const override;
 	bool isScrollBar(const QPoint &position) const override;
 
@@ -130,8 +146,6 @@ protected slots:
 	void handleAuthenticationRequired(const QUrl &url, QAuthenticator *authenticator);
 	void handleProxyAuthenticationRequired(const QUrl &url, QAuthenticator *authenticator, const QString &proxy);
 	void handleFullScreenRequest(QWebEngineFullScreenRequest request);
-	void handlePermissionRequest(const QUrl &url, QWebEnginePage::Feature feature);
-	void handlePermissionCancel(const QUrl &url, QWebEnginePage::Feature feature);
 	void notifyTitleChanged();
 	void notifyUrlChanged(const QUrl &url);
 	void notifyIconChanged();
@@ -141,8 +155,10 @@ protected slots:
 
 private:
 	QWebEngineView *m_webView;
+#if QTWEBENGINECORE_VERSION >= 0x050B00
+	QWebEngineView *m_inspectorView;
+#endif
 	QtWebEnginePage *m_page;
-	QTime *m_loadingTime;
 	QDateTime m_lastUrlClickTime;
 	HitTestResult m_hitResult;
 	QHash<QNetworkReply*, QPointer<SourceViewerWebWidget> > m_viewSourceReplies;

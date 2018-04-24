@@ -12,7 +12,7 @@ project(otter-browser)
 
 set(MAJOR_VERSION "0")
 set(MINOR_VERSION "9")
-set(PATCH_VERSION "96")
+set(PATCH_VERSION "98")
 set(WEEKLY_VERSION "" CACHE STRING "")
 
 add_definitions(-DOTTER_VERSION_MAIN="${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION}" -DOTTER_INSTALL_PREFIX="${CMAKE_INSTALL_PREFIX}")
@@ -110,6 +110,7 @@ set(otter_src
 	src/core/Importer.cpp
 	src/core/IniSettings.cpp
 	src/core/InputInterpreter.cpp
+	src/core/ItemModel.cpp
 	src/core/Job.cpp
 	src/core/JsonSettings.cpp
 	src/core/LocalListingNetworkReply.cpp
@@ -134,7 +135,6 @@ set(otter_src
 	src/core/ThemesManager.cpp
 	src/core/ToolBarsManager.cpp
 	src/core/TransfersManager.cpp
-	src/core/TreeModel.cpp
 	src/core/UpdateChecker.cpp
 	src/core/Updater.cpp
 	src/core/UserScript.cpp
@@ -246,9 +246,11 @@ set(otter_src
 	src/modules/windows/configuration/ConfigurationContentsWidget.cpp
 	src/modules/windows/cookies/CookiesContentsWidget.cpp
 	src/modules/windows/history/HistoryContentsWidget.cpp
+	src/modules/windows/links/LinksContentsWidget.cpp
 	src/modules/windows/notes/NotesContentsWidget.cpp
 	src/modules/windows/pageInformation/PageInformationContentsWidget.cpp
 	src/modules/windows/passwords/PasswordsContentsWidget.cpp
+	src/modules/windows/tabHistory/TabHistoryContentsWidget.cpp
 	src/modules/windows/transfers/TransfersContentsWidget.cpp
 	src/modules/windows/web/PasswordBarWidget.cpp
 	src/modules/windows/web/PermissionBarWidget.cpp
@@ -318,9 +320,11 @@ qt5_wrap_ui(otter_ui
 	src/modules/windows/configuration/ConfigurationContentsWidget.ui
 	src/modules/windows/cookies/CookiesContentsWidget.ui
 	src/modules/windows/history/HistoryContentsWidget.ui
+	src/modules/windows/links/LinksContentsWidget.ui
 	src/modules/windows/notes/NotesContentsWidget.ui
 	src/modules/windows/pageInformation/PageInformationContentsWidget.ui
 	src/modules/windows/passwords/PasswordsContentsWidget.ui
+	src/modules/windows/tabHistory/TabHistoryContentsWidget.ui
 	src/modules/windows/transfers/TransfersContentsWidget.ui
 	src/modules/windows/web/PasswordBarWidget.ui
 	src/modules/windows/web/PermissionBarWidget.ui

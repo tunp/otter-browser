@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2016 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2016 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -43,9 +43,11 @@
 #include "../modules/windows/configuration/ConfigurationContentsWidget.h"
 #include "../modules/windows/cookies/CookiesContentsWidget.h"
 #include "../modules/windows/history/HistoryContentsWidget.h"
+#include "../modules/windows/links/LinksContentsWidget.h"
 #include "../modules/windows/notes/NotesContentsWidget.h"
 #include "../modules/windows/pageInformation/PageInformationContentsWidget.h"
 #include "../modules/windows/passwords/PasswordsContentsWidget.h"
+#include "../modules/windows/tabHistory/TabHistoryContentsWidget.h"
 #include "../modules/windows/transfers/TransfersContentsWidget.h"
 #include "../modules/windows/web/WebContentsWidget.h"
 #include "../modules/windows/windows/WindowsContentsWidget.h"
@@ -158,7 +160,7 @@ QWidget* createToolBarItem(const ToolBarsManager::ToolBarDefinition::Entry &defi
 
 	if (definition.action.startsWith(QLatin1String("bookmarks:")))
 	{
-		BookmarksItem *bookmark(definition.action.startsWith(QLatin1String("bookmarks:/")) ? BookmarksManager::getModel()->getItem(definition.action.mid(11)) : BookmarksManager::getBookmark(definition.action.mid(10).toULongLong()));
+		BookmarksModel::Bookmark *bookmark(definition.action.startsWith(QLatin1String("bookmarks:/")) ? BookmarksManager::getModel()->getBookmarkByPath(definition.action.mid(11)) : BookmarksManager::getBookmark(definition.action.mid(10).toULongLong()));
 
 		if (bookmark)
 		{
@@ -235,11 +237,6 @@ ContentsWidget* createContentsWidget(const QString &identifier, const QVariantMa
 		return new NotesContentsWidget(parameters, window, parent);
 	}
 
-	if (identifier == QLatin1String("pageInformation"))
-	{
-		return new PageInformationContentsWidget(parameters, parent);
-	}
-
 	if (identifier == QLatin1String("passwords"))
 	{
 		return new PasswordsContentsWidget(parameters, window, parent);
@@ -258,11 +255,26 @@ ContentsWidget* createContentsWidget(const QString &identifier, const QVariantMa
 	return nullptr;
 }
 
-ContentsWidget* createSidebarPanel(const QString &panel, int sidebar, MainWindow *mainWindow, QWidget *parent)
+ContentsWidget* createSidebarPanel(const QString &identifier, int sidebar, MainWindow *mainWindow, QWidget *parent)
 {
 	QVariantMap parameters({{QLatin1String("sidebar"), sidebar}});
 
-	if (panel.startsWith(QLatin1String("web:")))
+	if (identifier == QLatin1String("links"))
+	{
+		return new LinksContentsWidget(parameters, parent);
+	}
+
+	if (identifier == QLatin1String("pageInformation"))
+	{
+		return new PageInformationContentsWidget(parameters, parent);
+	}
+
+	if (identifier == QLatin1String("tabHistory"))
+	{
+		return new TabHistoryContentsWidget(parameters, parent);
+	}
+
+	if (identifier.startsWith(QLatin1String("web:")))
 	{
 		if (!mainWindow || mainWindow->isPrivate())
 		{
@@ -270,17 +282,17 @@ ContentsWidget* createSidebarPanel(const QString &panel, int sidebar, MainWindow
 		}
 
 		WebContentsWidget *webWidget(new WebContentsWidget(parameters, {}, nullptr, nullptr, nullptr));
-		webWidget->setUrl(panel.section(QLatin1Char(':'), 1, -1), false);
+		webWidget->setUrl(identifier.section(QLatin1Char(':'), 1, -1), false);
 
 		return webWidget;
 	}
 
-	if (!AddonsManager::getSpecialPage(panel).types.testFlag(AddonsManager::SpecialPageInformation::SidebarPanelType))
+	if (!AddonsManager::getSpecialPage(identifier).types.testFlag(AddonsManager::SpecialPageInformation::SidebarPanelType))
 	{
 		return nullptr;
 	}
 
-	return createContentsWidget(panel, parameters, nullptr, parent);
+	return createContentsWidget(identifier, parameters, nullptr, parent);
 }
 
 }

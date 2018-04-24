@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -34,6 +34,17 @@ StartupDialog::StartupDialog(const QString &sessionName, QWidget *parent) : Dial
 	m_ui->windowsTreeView->setModel(m_windowsModel);
 	m_ui->homePageButton->setEnabled(!SettingsManager::getOption(SettingsManager::Browser_HomePageOption).toString().isEmpty());
 
+	const QString pluginsPolicy(SettingsManager::getOption(SettingsManager::Permissions_EnablePluginsOption).toString());
+
+	if (pluginsPolicy == QLatin1String("enabled"))
+	{
+		m_ui->enablePluginsCheckBox->setCheckState(Qt::Checked);
+	}
+	else if (pluginsPolicy == QLatin1String("onDemand"))
+	{
+		m_ui->enablePluginsCheckBox->setCheckState(Qt::PartiallyChecked);
+	}
+
 	const QStringList sessionNames(SessionsManager::getSessions());
 	QMultiHash<QString, SessionInformation> information;
 
@@ -57,7 +68,25 @@ StartupDialog::StartupDialog(const QString &sessionName, QWidget *parent) : Dial
 
 	setSession(index);
 
-	connect(m_ui->buttonGroup, static_cast<void(QButtonGroup::*)(int)>(&QButtonGroup::buttonClicked), this, [&]()
+	connect(m_ui->buttonBox, &QDialogButtonBox::accepted, [&]()
+	{
+		switch (m_ui->enablePluginsCheckBox->checkState())
+		{
+			case Qt::Checked:
+				SettingsManager::setOption(SettingsManager::Permissions_EnablePluginsOption, QLatin1String("enabled"));
+
+				break;
+			case Qt::PartiallyChecked:
+				SettingsManager::setOption(SettingsManager::Permissions_EnablePluginsOption, QLatin1String("onDemand"));
+
+				break;
+			default:
+				SettingsManager::setOption(SettingsManager::Permissions_EnablePluginsOption, QLatin1String("disabled"));
+
+				break;
+		}
+	});
+	connect(m_ui->buttonGroup, static_cast<void(QButtonGroup::*)(int)>(&QButtonGroup::buttonClicked), [&]()
 	{
 		m_ui->continueSessionWidget->setEnabled(m_ui->continueSessionButton->isChecked());
 	});
@@ -84,6 +113,7 @@ void StartupDialog::setSession(int index)
 	m_windowsModel->clear();
 
 	const SessionInformation session(SessionsManager::getSession(m_ui->sessionComboBox->itemData(index).toString()));
+	QModelIndex activeIndex;
 	QFont font(m_ui->windowsTreeView->font());
 	font.setBold(true);
 
@@ -92,6 +122,8 @@ void StartupDialog::setSession(int index)
 		QStandardItem *windowItem(new QStandardItem(tr("Window %1").arg(i + 1)));
 		windowItem->setData(session.windows.at(i).geometry, Qt::UserRole);
 
+		m_windowsModel->invisibleRootItem()->appendRow(windowItem);
+
 		for (int j = 0; j < session.windows.at(i).windows.count(); ++j)
 		{
 			QStandardItem *tabItem(new QStandardItem(session.windows.at(i).windows.at(j).getTitle()));
@@ -99,12 +131,14 @@ void StartupDialog::setSession(int index)
 			tabItem->setData(Qt::Checked, Qt::CheckStateRole);
 			tabItem->setData(tr("Title: %1\nAddress: %2").arg(tabItem->text()).arg(session.windows.at(i).windows.at(j).getUrl()), Qt::ToolTipRole);
 
+			windowItem->appendRow(tabItem);
+
 			if (j == session.windows.at(i).index)
 			{
 				tabItem->setData(font, Qt::FontRole);
-			}
 
-			windowItem->appendRow(tabItem);
+				activeIndex = tabItem->index();
+			}
 		}
 
 		if (session.windows.count() > 1)
@@ -112,11 +146,10 @@ void StartupDialog::setSession(int index)
 			windowItem->setFlags(windowItem->flags() | Qt::ItemIsUserCheckable);
 			windowItem->setData(Qt::Checked, Qt::CheckStateRole);
 		}
-
-		m_windowsModel->invisibleRootItem()->appendRow(windowItem);
 	}
 
 	m_ui->windowsTreeView->expandAll();
+	m_ui->windowsTreeView->scrollTo(activeIndex);
 }
 
 SessionInformation StartupDialog::getSession() const

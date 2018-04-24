@@ -17,20 +17,55 @@
 *
 **************************************************************************/
 
-#include "TreeModel.h"
+#include "ItemModel.h"
 
 #include <QtCore/QMimeData>
 
 namespace Otter
 {
 
-TreeModel::TreeModel(QObject *parent) : QStandardItemModel(parent),
+ItemModel::Item::Item(ItemModel::ItemType type) : QStandardItem()
+{
+	setup(type);
+}
+
+ItemModel::Item::Item(const QString &title, ItemModel::ItemType type) : QStandardItem(title)
+{
+	setup(type);
+}
+
+ItemModel::Item::Item(const QIcon &icon, const QString &title, ItemModel::ItemType type) : QStandardItem(icon, title)
+{
+	setup(type);
+}
+
+void ItemModel::Item::setup(ItemModel::ItemType type)
+{
+	setData(type, TypeRole);
+
+	switch (type)
+	{
+		case EntryType:
+			setFlags(flags() | Qt::ItemNeverHasChildren);
+
+			break;
+		case SeparatorType:
+			setData(QLatin1String("separator"), Qt::AccessibleDescriptionRole);
+			setFlags(Qt::ItemIsEnabled | Qt::ItemNeverHasChildren);
+
+			break;
+		default:
+			break;
+	}
+}
+
+ItemModel::ItemModel(QObject *parent) : QStandardItemModel(parent),
 	m_isExclusive(false),
 	m_isIgnoringCheckStateReset(true)
 {
 }
 
-void TreeModel::setupItem(QStandardItem *item, TreeModel::ItemType type)
+void ItemModel::setupItem(QStandardItem *item, ItemModel::ItemType type)
 {
 	item->setData(type, TypeRole);
 
@@ -40,7 +75,7 @@ void TreeModel::setupItem(QStandardItem *item, TreeModel::ItemType type)
 	}
 }
 
-void TreeModel::resetCheckState(const QModelIndex &parent)
+void ItemModel::resetCheckState(const QModelIndex &parent)
 {
 	for (int i = 0; i < rowCount(parent); ++i)
 	{
@@ -58,7 +93,7 @@ void TreeModel::resetCheckState(const QModelIndex &parent)
 	}
 }
 
-void TreeModel::insertRow(QStandardItem *item, QStandardItem *parent, int row, ItemType type)
+void ItemModel::insertRow(QStandardItem *item, QStandardItem *parent, int row, ItemType type)
 {
 	if (!item)
 	{
@@ -82,7 +117,7 @@ void TreeModel::insertRow(QStandardItem *item, QStandardItem *parent, int row, I
 	}
 }
 
-void TreeModel::insertRow(const QList<QStandardItem*> &items, QStandardItem *parent, int row, ItemType type)
+void ItemModel::insertRow(const QList<QStandardItem*> &items, QStandardItem *parent, int row, ItemType type)
 {
 	if (!parent)
 	{
@@ -104,12 +139,12 @@ void TreeModel::insertRow(const QList<QStandardItem*> &items, QStandardItem *par
 	}
 }
 
-void TreeModel::setExclusive(bool isExclusive)
+void ItemModel::setExclusive(bool isExclusive)
 {
 	m_isExclusive = isExclusive;
 }
 
-QMimeData* TreeModel::mimeData(const QModelIndexList &indexes) const
+QMimeData* ItemModel::mimeData(const QModelIndexList &indexes) const
 {
 	QMimeData *mimeData(QStandardItemModel::mimeData(indexes));
 
@@ -121,7 +156,7 @@ QMimeData* TreeModel::mimeData(const QModelIndexList &indexes) const
 	return mimeData;
 }
 
-QVariant TreeModel::data(const QModelIndex &index, int role) const
+QVariant ItemModel::data(const QModelIndex &index, int role) const
 {
 	if (role == Qt::AccessibleDescriptionRole && static_cast<ItemType>(QStandardItemModel::data(index, TypeRole).toInt()) == SeparatorType)
 	{
@@ -131,16 +166,17 @@ QVariant TreeModel::data(const QModelIndex &index, int role) const
 	return QStandardItemModel::data(index, role);
 }
 
-QVariantList TreeModel::getAllData(int role, int column, const QModelIndex &parent) const
+QVariantList ItemModel::getAllData(int role, int column, const QModelIndex &parent) const
 {
 	QVariantList data;
 	const int rowAmount(rowCount(parent));
+	const bool useAllColumns(column < 0);
 
 	for (int i = 0; i < rowAmount; ++i)
 	{
 		const QModelIndex rowIndex(index(i, 0, parent));
 
-		if (column < 0)
+		if (useAllColumns)
 		{
 			const int columnAmount(columnCount(rowIndex));
 
@@ -173,7 +209,7 @@ QVariantList TreeModel::getAllData(int role, int column, const QModelIndex &pare
 	return data;
 }
 
-bool TreeModel::dropMimeData(const QMimeData *data, Qt::DropAction action, int row, int column, const QModelIndex &parent)
+bool ItemModel::dropMimeData(const QMimeData *data, Qt::DropAction action, int row, int column, const QModelIndex &parent)
 {
 	Q_UNUSED(column)
 
@@ -219,12 +255,12 @@ bool TreeModel::dropMimeData(const QMimeData *data, Qt::DropAction action, int r
 	return true;
 }
 
-bool TreeModel::isExclusive() const
+bool ItemModel::isExclusive() const
 {
 	return m_isExclusive;
 }
 
-bool TreeModel::setData(const QModelIndex &index, const QVariant &value, int role)
+bool ItemModel::setData(const QModelIndex &index, const QVariant &value, int role)
 {
 	if (role == Qt::CheckStateRole && m_isExclusive)
 	{

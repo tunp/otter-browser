@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2014 Piotr Wójcik <chocimier@tlen.pl>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -54,7 +54,7 @@ bool NetworkManagerFactory::m_canSendReferrer(true);
 bool NetworkManagerFactory::m_isInitialized(false);
 bool NetworkManagerFactory::m_isWorkingOffline(false);
 
-ProxiesModel::ProxiesModel(const QString &selectedProxy, bool isEditor, QObject *parent) : TreeModel(parent),
+ProxiesModel::ProxiesModel(const QString &selectedProxy, bool isEditor, QObject *parent) : ItemModel(parent),
 	m_isEditor(isEditor)
 {
 	if (isEditor)
@@ -72,6 +72,7 @@ void ProxiesModel::populateProxies(const QStringList &proxies, QStandardItem *pa
 		const ProxyDefinition proxy(proxies.at(i).isEmpty() ? ProxyDefinition() : NetworkManagerFactory::getProxy(proxies.at(i)));
 		ItemType type(EntryType);
 		QStandardItem *item(new QStandardItem(proxy.isValid() ? proxy.getTitle() : QString()));
+		item->setData(item->data(Qt::DisplayRole), Qt::ToolTipRole);
 
 		if (m_isEditor)
 		{
@@ -124,7 +125,7 @@ void ProxiesModel::populateProxies(const QStringList &proxies, QStandardItem *pa
 	}
 }
 
-UserAgentsModel::UserAgentsModel(const QString &selectedUserAgent, bool isEditor, QObject *parent) : TreeModel(parent),
+UserAgentsModel::UserAgentsModel(const QString &selectedUserAgent, bool isEditor, QObject *parent) : ItemModel(parent),
 	m_isEditor(isEditor)
 {
 	if (isEditor)
@@ -142,11 +143,13 @@ void UserAgentsModel::populateUserAgents(const QStringList &userAgents, QStandar
 		const UserAgentDefinition userAgent(userAgents.at(i).isEmpty() ? UserAgentDefinition() : NetworkManagerFactory::getUserAgent(userAgents.at(i)));
 		ItemType type(EntryType);
 		QList<QStandardItem*> items({new QStandardItem(userAgent.isValid() ? userAgent.getTitle() : QString())});
+		items[0]->setData(items[0]->data(Qt::DisplayRole), Qt::ToolTipRole);
 
 		if (m_isEditor)
 		{
 			items.append(new QStandardItem(userAgent.value));
 			items[0]->setFlags(items[0]->flags() | Qt::ItemIsDragEnabled);
+			items[1]->setData(items[1]->data(Qt::DisplayRole), Qt::ToolTipRole);
 			items[1]->setFlags(items[1]->flags() | Qt::ItemIsDragEnabled);
 		}
 

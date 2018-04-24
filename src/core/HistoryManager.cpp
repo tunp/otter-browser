@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2017 Jan Bajer aka bajasoft <jbajer@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -94,7 +94,11 @@ void HistoryManager::timerEvent(QTimerEvent *event)
 
 void HistoryManager::scheduleSave()
 {
-	if (m_saveTimer == 0)
+	if (Application::isAboutToQuit())
+	{
+		save();
+	}
+	else if (m_saveTimer == 0)
 	{
 		m_saveTimer = startTimer(1000);
 	}
@@ -128,14 +132,7 @@ void HistoryManager::clearHistory(uint period)
 	m_browsingHistoryModel->clearRecentEntries(period);
 	m_typedHistoryModel->clearRecentEntries(period);
 
-	if (Application::isAboutToQuit())
-	{
-		m_instance->save();
-	}
-	else
-	{
-		m_instance->scheduleSave();
-	}
+	m_instance->scheduleSave();
 }
 
 void HistoryManager::removeEntry(quint64 identifier)
@@ -194,7 +191,7 @@ void HistoryManager::updateEntry(quint64 identifier, const QUrl &url, const QStr
 		getBrowsingHistoryModel();
 	}
 
-	HistoryEntryItem *item(m_browsingHistoryModel->getEntry(identifier));
+	HistoryModel::Entry *item(m_browsingHistoryModel->getEntry(identifier));
 
 	if (item)
 	{
@@ -318,7 +315,7 @@ QIcon HistoryManager::getIcon(const QUrl &url)
 	return ThemesManager::createIcon(QLatin1String("text-html"));
 }
 
-HistoryEntryItem* HistoryManager::getEntry(quint64 identifier)
+HistoryModel::Entry* HistoryManager::getEntry(quint64 identifier)
 {
 	if (!m_browsingHistoryModel)
 	{
@@ -366,7 +363,7 @@ quint64 HistoryManager::addEntry(const QUrl &url, const QString &title, const QI
 		getBrowsingHistoryModel();
 	}
 
-	const quint64 identifier(m_browsingHistoryModel->addEntry(url, title, icon, QDateTime::currentDateTime())->getIdentifier());
+	const quint64 identifier(m_browsingHistoryModel->addEntry(url, title, icon, QDateTime::currentDateTimeUtc())->getIdentifier());
 
 	if (isTypedIn)
 	{
@@ -375,7 +372,7 @@ quint64 HistoryManager::addEntry(const QUrl &url, const QString &title, const QI
 			getTypedHistoryModel();
 		}
 
-		m_typedHistoryModel->addEntry(url, title, icon, QDateTime::currentDateTime());
+		m_typedHistoryModel->addEntry(url, title, icon, QDateTime::currentDateTimeUtc());
 	}
 
 	const int limit(SettingsManager::getOption(SettingsManager::History_BrowsingLimitAmountGlobalOption).toInt());

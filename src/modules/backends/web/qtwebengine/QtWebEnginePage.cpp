@@ -24,6 +24,7 @@
 #include "../../../../core/Console.h"
 #include "../../../../core/ContentBlockingManager.h"
 #include "../../../../core/ContentBlockingProfile.h"
+#include "../../../../core/HistoryManager.h"
 #include "../../../../core/ThemesManager.h"
 #include "../../../../core/UserScript.h"
 #include "../../../../core/Utils.h"
@@ -33,6 +34,7 @@
 #include <QtCore/QFile>
 #include <QtCore/QRegularExpression>
 #include <QtGui/QDesktopServices>
+#include <QtWebEngineWidgets/QWebEngineHistory>
 #include <QtWebEngineWidgets/QWebEngineProfile>
 #include <QtWebEngineWidgets/QWebEngineScript>
 #include <QtWebEngineWidgets/QWebEngineScriptCollection>
@@ -133,11 +135,11 @@ void QtWebEnginePage::javaScriptConsoleMessage(JavaScriptConsoleMessageLevel lev
 {
 	Console::MessageLevel mappedLevel(Console::LogLevel);
 
-	if (level == QWebEnginePage::WarningMessageLevel)
+	if (level == WarningMessageLevel)
 	{
 		mappedLevel = Console::WarningLevel;
 	}
-	else if (level == QWebEnginePage::ErrorMessageLevel)
+	else if (level == ErrorMessageLevel)
 	{
 		mappedLevel = Console::ErrorLevel;
 	}
@@ -148,6 +150,21 @@ void QtWebEnginePage::javaScriptConsoleMessage(JavaScriptConsoleMessageLevel lev
 void QtWebEnginePage::handleLoadFinished()
 {
 	m_isIgnoringJavaScriptPopups = false;
+
+	const int historyIndex(history()->currentItemIndex());
+	HistoryEntryInformation entry(m_history.value(historyIndex));
+
+	if (entry.isValid)
+	{
+		entry.icon = icon();
+
+		if (entry.identifier > 0)
+		{
+			HistoryManager::updateEntry(entry.identifier, url(), (m_widget ? m_widget->getTitle() : title()), icon());
+		}
+
+		m_history[historyIndex] = entry;
+	}
 
 	toHtml([&](const QString &result)
 	{
@@ -213,9 +230,54 @@ void QtWebEnginePage::handleLoadFinished()
 	});
 }
 
-QWebEnginePage* QtWebEnginePage::createWindow(QWebEnginePage::WebWindowType type)
+void QtWebEnginePage::setHistory(const WindowHistoryInformation &history)
 {
-	if (type != QWebEnginePage::WebDialog)
+	m_history.clear();
+
+	if (history.entries.count() == 0)
+	{
+		this->history()->clear();
+
+		const QVector<UserScript*> scripts(UserScript::getUserScriptsForUrl(QUrl(QLatin1String("about:blank"))));
+
+		for (int i = 0; i < scripts.count(); ++i)
+		{
+			runJavaScript(scripts.at(i)->getSource(), QWebEngineScript::UserWorld);
+		}
+
+		return;
+	}
+
+	m_history.reserve(history.entries.count());
+
+	QByteArray byteArray;
+	QDataStream stream(&byteArray, QIODevice::ReadWrite);
+	stream << static_cast<int>(3) << history.entries.count() << history.index;
+
+	for (int i = 0; i < history.entries.count(); ++i)
+	{
+		const WindowHistoryEntry entry(history.entries.at(i));
+
+		stream << QUrl(entry.url) << entry.title << QByteArray() << static_cast<qint32>(0) << false << QUrl() << static_cast<qint32>(0) << QUrl(entry.url) << false << QDateTime::currentDateTime().toSecsSinceEpoch() << static_cast<int>(200);
+
+		HistoryEntryInformation entryInformation;
+		entryInformation.timeVisited = entry.time;
+		entryInformation.position = entry.position;
+		entryInformation.zoom = entry.zoom;
+		entryInformation.isValid = true;
+
+		m_history.append(entryInformation);
+	}
+
+	stream.device()->reset();
+	stream >> *(this->history());
+
+	this->history()->goToItem(this->history()->itemAt(history.index));
+}
+
+QWebEnginePage* QtWebEnginePage::createWindow(WebWindowType type)
+{
+	if (type != WebDialog)
 	{
 		const QString popupsPolicy((m_widget ? m_widget->getOption(SettingsManager::Permissions_ScriptsCanOpenWindowsOption) : SettingsManager::getOption(SettingsManager::Permissions_ScriptsCanOpenWindowsOption)).toString());
 
@@ -282,25 +344,108 @@ QString QtWebEnginePage::createJavaScriptList(QStringList rules) const
 	return QLatin1Char('\'') + rules.join(QLatin1String("','")) + QLatin1Char('\'');
 }
 
-QStringList QtWebEnginePage::chooseFiles(QWebEnginePage::FileSelectionMode mode, const QStringList &oldFiles, const QStringList &acceptedMimeTypes)
+QVariant QtWebEnginePage::runScriptSource(const QString &script)
+{
+	QVariant result;
+	QEventLoop eventLoop;
+
+	runJavaScript(script, [&](const QVariant &runResult)
+	{
+		result = runResult;
+
+		eventLoop.quit();
+	});
+
+	if (m_widget)
+	{
+		connect(m_widget, &QtWebEngineWebWidget::aboutToReload, &eventLoop, &QEventLoop::quit);
+	}
+
+	connect(this, &QtWebEnginePage::destroyed, &eventLoop, &QEventLoop::quit);
+
+	eventLoop.exec();
+
+	return result;
+}
+
+QVariant QtWebEnginePage::runScriptFile(const QString &path, const QStringList &parameters)
+{
+	QFile file(QLatin1String(":/modules/backends/web/qtwebengine/resources/") + path + QLatin1String(".js"));
+
+	if (!file.open(QIODevice::ReadOnly))
+	{
+		return {};
+	}
+
+	QString script(file.readAll());
+
+	file.close();
+
+	for (int i = 0; i < parameters.count(); ++i)
+	{
+		script = script.arg(parameters.at(i));
+	}
+
+	return runScriptSource(script);
+}
+
+WindowHistoryInformation QtWebEnginePage::getHistory() const
+{
+	const int historyCount(history()->count());
+	WindowHistoryInformation information;
+	information.entries.reserve(historyCount);
+	information.index = history()->currentItemIndex();
+
+	const QString url(requestedUrl().toString());
+
+	for (int i = 0; i < historyCount; ++i)
+	{
+		const QWebEngineHistoryItem item(history()->itemAt(i));
+		const HistoryEntryInformation entryInformation(m_history.value(i));
+		WindowHistoryEntry entry;
+		entry.url = item.url().toString();
+		entry.title = item.title();
+
+		if (entryInformation.isValid)
+		{
+			entry.icon = entryInformation.icon;
+			entry.position = entryInformation.position;
+			entry.time = entryInformation.timeVisited;
+			entry.zoom = entryInformation.zoom;
+		}
+
+		information.entries.append(entry);
+	}
+
+	if (m_widget && m_widget->getLoadingState() == WebWidget::OngoingLoadingState && url != history()->itemAt(history()->currentItemIndex()).url().toString())
+	{
+		WindowHistoryEntry entry;
+		entry.url = url;
+		entry.title = m_widget->getTitle();
+		entry.icon = icon();
+		entry.time = QDateTime::currentDateTime();
+		entry.position = scrollPosition().toPoint();
+		entry.zoom = static_cast<int>(zoomFactor() * 100);
+
+		information.index = historyCount;
+		information.entries.append(entry);
+	}
+
+	return information;
+}
+
+QStringList QtWebEnginePage::chooseFiles(FileSelectionMode mode, const QStringList &oldFiles, const QStringList &acceptedMimeTypes)
 {
 	Q_UNUSED(acceptedMimeTypes)
 
-	return Utils::getOpenPaths(oldFiles, {}, (mode == QWebEnginePage::FileSelectOpenMultiple));
+	return Utils::getOpenPaths(oldFiles, {}, (mode == FileSelectOpenMultiple));
 }
 
-bool QtWebEnginePage::acceptNavigationRequest(const QUrl &url, QWebEnginePage::NavigationType type, bool isMainFrame)
+bool QtWebEnginePage::acceptNavigationRequest(const QUrl &url, NavigationType type, bool isMainFrame)
 {
 	if (m_isPopup)
 	{
 		emit aboutToNavigate(url, type);
-
-		return false;
-	}
-
-	if (isMainFrame && url.scheme() == QLatin1String("javascript"))
-	{
-		runJavaScript(url.path());
 
 		return false;
 	}
@@ -312,7 +457,19 @@ bool QtWebEnginePage::acceptNavigationRequest(const QUrl &url, QWebEnginePage::N
 		return false;
 	}
 
-	if (isMainFrame && type == QWebEnginePage::NavigationTypeReload && m_previousNavigationType == QWebEnginePage::NavigationTypeFormSubmitted && SettingsManager::getOption(SettingsManager::Choices_WarnFormResendOption).toBool())
+	if (!isMainFrame)
+	{
+		return true;
+	}
+
+	if (url.scheme() == QLatin1String("javascript"))
+	{
+		runJavaScript(url.path());
+
+		return false;
+	}
+
+	if (type == NavigationTypeReload && m_previousNavigationType == NavigationTypeFormSubmitted && SettingsManager::getOption(SettingsManager::Choices_WarnFormResendOption).toBool())
 	{
 		bool shouldCancelRequest(false);
 		bool shouldWarnNextTime(true);
@@ -352,40 +509,57 @@ bool QtWebEnginePage::acceptNavigationRequest(const QUrl &url, QWebEnginePage::N
 		}
 	}
 
-	if (isMainFrame && type != QWebEnginePage::NavigationTypeReload)
+	if (type != NavigationTypeReload)
 	{
 		m_previousNavigationType = type;
+
+		if (type != NavigationTypeBackForward)
+		{
+			m_history.resize(history()->currentItemIndex());
+
+			HistoryEntryInformation entry;
+			entry.icon = icon();
+			entry.timeVisited = QDateTime::currentDateTime();
+			entry.position = scrollPosition().toPoint();
+			entry.identifier = HistoryManager::addEntry(url, {}, {});
+			entry.zoom = static_cast<int>(zoomFactor() * 100);
+			entry.isValid = true;
+
+			m_history.append(entry);
+		}
 	}
 
-	if (isMainFrame)
+	scripts().clear();
+
+	const QVector<UserScript*> userScripts(UserScript::getUserScriptsForUrl(url));
+
+	for (int i = 0; i < userScripts.count(); ++i)
 	{
-		scripts().clear();
+		QWebEngineScript::InjectionPoint injectionPoint(QWebEngineScript::DocumentReady);
 
-		const QVector<UserScript*> scripts(UserScript::getUserScriptsForUrl(url));
-
-		for (int i = 0; i < scripts.count(); ++i)
+		switch (userScripts.at(i)->getInjectionTime())
 		{
-			QWebEngineScript::InjectionPoint injectionPoint(QWebEngineScript::DocumentReady);
-
-			if (scripts.at(i)->getInjectionTime() == UserScript::DocumentCreationTime)
-			{
-				injectionPoint = QWebEngineScript::DocumentCreation;
-			}
-			else if (scripts.at(i)->getInjectionTime() == UserScript::DeferredTime)
-			{
+			case UserScript::DeferredTime:
 				injectionPoint = QWebEngineScript::Deferred;
-			}
 
-			QWebEngineScript script;
-			script.setSourceCode(scripts.at(i)->getSource());
-			script.setRunsOnSubFrames(scripts.at(i)->shouldRunOnSubFrames());
-			script.setInjectionPoint(injectionPoint);
+				break;
+			case UserScript::DocumentCreationTime:
+				injectionPoint = QWebEngineScript::DocumentCreation;
 
-			this->scripts().insert(script);
+				break;
+			default:
+				break;
 		}
 
-		emit aboutToNavigate(url, type);
+		QWebEngineScript script;
+		script.setSourceCode(userScripts.at(i)->getSource());
+		script.setRunsOnSubFrames(userScripts.at(i)->shouldRunOnSubFrames());
+		script.setInjectionPoint(injectionPoint);
+
+		scripts().insert(script);
 	}
+
+	emit aboutToNavigate(url, type);
 
 	return true;
 }

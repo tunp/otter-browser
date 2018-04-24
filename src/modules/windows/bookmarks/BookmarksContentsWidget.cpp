@@ -124,7 +124,7 @@ void BookmarksContentsWidget::removeBookmark()
 
 void BookmarksContentsWidget::openBookmark()
 {
-	const BookmarksItem *bookmark(BookmarksManager::getModel()->getBookmark(m_ui->bookmarksViewWidget->currentIndex()));
+	const BookmarksModel::Bookmark *bookmark(BookmarksManager::getModel()->getBookmark(m_ui->bookmarksViewWidget->currentIndex()));
 
 	if (bookmark)
 	{
@@ -136,7 +136,7 @@ void BookmarksContentsWidget::openBookmark()
 
 void BookmarksContentsWidget::bookmarkProperties()
 {
-	BookmarksItem *bookmark(BookmarksManager::getModel()->getBookmark(m_ui->bookmarksViewWidget->currentIndex()));
+	BookmarksModel::Bookmark *bookmark(BookmarksManager::getModel()->getBookmark(m_ui->bookmarksViewWidget->currentIndex()));
 
 	if (bookmark)
 	{
@@ -174,20 +174,20 @@ void BookmarksContentsWidget::showContextMenu(const QPoint &position)
 			{
 				const bool isInTrash(index.data(BookmarksModel::IsTrashedRole).toBool());
 
-				connect(menu.addAction(ThemesManager::createIcon(QLatin1String("document-open")), tr("Open")), &QAction::triggered, this, &BookmarksContentsWidget::openBookmark);
+				connect(menu.addAction(ThemesManager::createIcon(QLatin1String("document-open")), QCoreApplication::translate("actions", "Open")), &QAction::triggered, this, &BookmarksContentsWidget::openBookmark);
 
-				QAction *openInNewTabAction(menu.addAction(tr("Open in New Tab")));
+				QAction *openInNewTabAction(menu.addAction(QCoreApplication::translate("actions", "Open in New Tab")));
 				openInNewTabAction->setData(SessionsManager::NewTabOpen);
 
-				QAction *openInNewBackgroundTabAction(menu.addAction(tr("Open in New Background Tab")));
+				QAction *openInNewBackgroundTabAction(menu.addAction(QCoreApplication::translate("actions", "Open in New Background Tab")));
 				openInNewBackgroundTabAction->setData(static_cast<int>(SessionsManager::NewTabOpen | SessionsManager::BackgroundOpen));
 
 				menu.addSeparator();
 
-				QAction *openInNewWindowAction(menu.addAction(tr("Open in New Window")));
+				QAction *openInNewWindowAction(menu.addAction(QCoreApplication::translate("actions", "Open in New Window")));
 				openInNewWindowAction->setData(SessionsManager::NewWindowOpen);
 
-				QAction *openInNewBackgroundWindowAction(menu.addAction(tr("Open in New Background Window")));
+				QAction *openInNewBackgroundWindowAction(menu.addAction(QCoreApplication::translate("actions", "Open in New Background Window")));
 				openInNewBackgroundWindowAction->setData(static_cast<int>(SessionsManager::NewWindowOpen | SessionsManager::BackgroundOpen));
 
 				if (type == BookmarksModel::SeparatorBookmark || (type == BookmarksModel::FolderBookmark && index.child(0, 0).data(BookmarksModel::TypeRole).toInt() == 0))
@@ -314,7 +314,7 @@ void BookmarksContentsWidget::print(QPrinter *printer)
 BookmarksContentsWidget::BookmarkLocation BookmarksContentsWidget::getBookmarkCreationLocation()
 {
 	const QModelIndex index(m_ui->bookmarksViewWidget->currentIndex());
-	BookmarksItem *item(BookmarksManager::getModel()->getBookmark(index));
+	BookmarksModel::Bookmark *item(BookmarksManager::getModel()->getBookmark(index));
 	BookmarkLocation location;
 
 	if (!item || item == BookmarksManager::getModel()->getRootItem() || item == BookmarksManager::getModel()->getTrashItem())
@@ -324,9 +324,9 @@ BookmarksContentsWidget::BookmarkLocation BookmarksContentsWidget::getBookmarkCr
 		return location;
 	}
 
-	const BookmarksModel::BookmarkType type(static_cast<BookmarksModel::BookmarkType>(item->getType()));
+	const BookmarksModel::BookmarkType type(item->getType());
 
-	location.folder = ((type == BookmarksModel::RootBookmark || type == BookmarksModel::FolderBookmark) ? item : static_cast<BookmarksItem*>(item->parent()));
+	location.folder = ((type == BookmarksModel::RootBookmark || type == BookmarksModel::FolderBookmark) ? item : static_cast<BookmarksModel::Bookmark*>(item->parent()));
 	location.row = ((location.folder && location.folder->index() == index) ? -1 : (index.row() + 1));
 
 	return location;
@@ -404,7 +404,7 @@ bool BookmarksContentsWidget::eventFilter(QObject *object, QEvent *event)
 
 		if (mouseEvent && ((mouseEvent->button() == Qt::LeftButton && mouseEvent->modifiers() != Qt::NoModifier) || mouseEvent->button() == Qt::MiddleButton))
 		{
-			const BookmarksItem *bookmark(BookmarksManager::getModel()->getBookmark(m_ui->bookmarksViewWidget->indexAt(mouseEvent->pos())));
+			const BookmarksModel::Bookmark *bookmark(BookmarksManager::getModel()->getBookmark(m_ui->bookmarksViewWidget->indexAt(mouseEvent->pos())));
 
 			if (bookmark)
 			{
@@ -421,7 +421,7 @@ bool BookmarksContentsWidget::eventFilter(QObject *object, QEvent *event)
 		if (helpEvent)
 		{
 			const QModelIndex index(m_ui->bookmarksViewWidget->indexAt(helpEvent->pos()));
-			const BookmarksItem *bookmark(BookmarksManager::getModel()->getBookmark(index));
+			const BookmarksModel::Bookmark *bookmark(BookmarksManager::getModel()->getBookmark(index));
 
 			if (bookmark)
 			{

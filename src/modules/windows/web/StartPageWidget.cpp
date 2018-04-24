@@ -350,6 +350,7 @@ StartPageWidget::StartPageWidget(Window *parent) : QScrollArea(parent),
 	m_listView->viewport()->setMouseTracking(true);
 	m_listView->viewport()->installEventFilter(this);
 
+	setAcceptDrops(true);
 	setWidget(m_contentsWidget);
 	setWidgetResizable(true);
 	setAlignment(Qt::AlignHCenter);
@@ -408,6 +409,61 @@ void StartPageWidget::wheelEvent(QWheelEvent *event)
 	if (event->buttons() == Qt::NoButton && event->modifiers() == Qt::NoModifier)
 	{
 		QScrollArea::wheelEvent(event);
+	}
+}
+
+void StartPageWidget::dragEnterEvent(QDragEnterEvent *event)
+{
+	if (event->mimeData()->hasUrls() || event->mimeData()->hasText())
+	{
+		event->accept();
+	}
+	else
+	{
+		event->ignore();
+	}
+}
+
+void StartPageWidget::dropEvent(QDropEvent *event)
+{
+	if (event->mimeData()->hasUrls() || event->mimeData()->hasText())
+	{
+		event->accept();
+
+		const QVector<QUrl> urls(Utils::extractUrls(event->mimeData()));
+
+		if (urls.isEmpty())
+		{
+			const InputInterpreter::InterpreterResult result(InputInterpreter::interpret(event->mimeData()->text(), (InputInterpreter::NoBookmarkKeywordsFlag | InputInterpreter::NoSearchKeywordsFlag)));
+
+			if (result.isValid())
+			{
+				switch (result.type)
+				{
+					case InputInterpreter::InterpreterResult::UrlType:
+						Application::triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), result.url}}, parentWidget());
+
+						break;
+					case InputInterpreter::InterpreterResult::SearchType:
+						m_window->search(result.searchQuery, result.searchEngine);
+
+						break;
+					default:
+						break;
+				}
+			}
+		}
+		else
+		{
+			for (int i = 0; i < urls.count(); ++i)
+			{
+				Application::triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), urls.at(i)}}, parentWidget());
+			}
+		}
+	}
+	else
+	{
+		event->ignore();
 	}
 }
 
@@ -540,7 +596,7 @@ void StartPageWidget::openTile()
 
 	if (type == BookmarksModel::FolderBookmark)
 	{
-		const BookmarksItem *bookmark(BookmarksManager::getModel()->getBookmark(m_currentIndex));
+		const BookmarksModel::Bookmark *bookmark(BookmarksManager::getModel()->getBookmark(m_currentIndex));
 
 		if (bookmark && bookmark->rowCount() > 0)
 		{
@@ -569,7 +625,7 @@ void StartPageWidget::openTile()
 
 void StartPageWidget::editTile()
 {
-	BookmarksItem *bookmark(BookmarksManager::getModel()->getBookmark(m_currentIndex));
+	BookmarksModel::Bookmark *bookmark(BookmarksManager::getModel()->getBookmark(m_currentIndex));
 
 	if (bookmark)
 	{
@@ -605,7 +661,7 @@ void StartPageWidget::reloadTile()
 
 void StartPageWidget::removeTile()
 {
-	BookmarksItem *bookmark(BookmarksManager::getModel()->getBookmark(m_currentIndex));
+	BookmarksModel::Bookmark *bookmark(BookmarksManager::getModel()->getBookmark(m_currentIndex));
 
 	if (bookmark)
 	{
@@ -782,7 +838,7 @@ void StartPageWidget::showContextMenu(const QPoint &position)
 
 	if (index.isValid() && index.data(Qt::AccessibleDescriptionRole).toString() != QLatin1String("add"))
 	{
-		connect(menu.addAction(ThemesManager::createIcon(QLatin1String("document-open")), tr("Open")), &QAction::triggered, this, &StartPageWidget::openTile);
+		connect(menu.addAction(ThemesManager::createIcon(QLatin1String("document-open")), QCoreApplication::translate("actions", "Open")), &QAction::triggered, this, &StartPageWidget::openTile);
 
 		menu.addSeparator();
 
@@ -869,14 +925,12 @@ bool StartPageWidget::eventFilter(QObject *object, QEvent *event)
 			}
 		}
 
-		QVector<GesturesManager::GesturesContext> contexts;
+		QVector<GesturesManager::GesturesContext> contexts({GesturesManager::GenericContext});
 
 		if (m_currentIndex.isValid())
 		{
-			contexts.append(GesturesManager::LinkContext);
+			contexts.prepend(GesturesManager::LinkContext);
 		}
-
-		contexts.append(GesturesManager::GenericContext);
 
 		if (GesturesManager::startGesture(object, event, contexts))
 		{
@@ -908,7 +962,7 @@ bool StartPageWidget::eventFilter(QObject *object, QEvent *event)
 				{
 					case BookmarksModel::FolderBookmark:
 						{
-							const BookmarksItem *bookmark(BookmarksManager::getModel()->getBookmark(m_currentIndex));
+							const BookmarksModel::Bookmark *bookmark(BookmarksManager::getModel()->getBookmark(m_currentIndex));
 
 							if (bookmark && bookmark->rowCount() > 0)
 							{
@@ -990,7 +1044,7 @@ bool StartPageWidget::eventFilter(QObject *object, QEvent *event)
 
 				if (type == BookmarksModel::FolderBookmark)
 				{
-					const BookmarksItem *bookmark(BookmarksManager::getModel()->getBookmark(m_currentIndex));
+					const BookmarksModel::Bookmark *bookmark(BookmarksManager::getModel()->getBookmark(m_currentIndex));
 
 					if (bookmark && bookmark->rowCount() > 0)
 					{

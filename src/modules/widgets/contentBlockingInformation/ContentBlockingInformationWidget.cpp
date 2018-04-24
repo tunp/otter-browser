@@ -501,10 +501,8 @@ void ContentBlockingInformationWidget::setHostsDisabledState()
 	}
 }
 
-void ContentBlockingInformationWidget::handleRequest(const NetworkManager::ResourceInformation &request)
+void ContentBlockingInformationWidget::handleRequest()
 {
-	Q_UNUSED(request)
-
 	++m_amount;
 
 	updateState();
