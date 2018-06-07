@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -369,7 +369,7 @@ void CookiesContentsWidget::print(QPrinter *printer)
 	m_ui->cookiesViewWidget->render(printer);
 }
 
-void CookiesContentsWidget::triggerAction(int identifier, const QVariantMap &parameters)
+void CookiesContentsWidget::triggerAction(int identifier, const QVariantMap &parameters, ActionsManager::TriggerType trigger)
 {
 	switch (identifier)
 	{
@@ -391,7 +391,7 @@ void CookiesContentsWidget::triggerAction(int identifier, const QVariantMap &par
 
 			break;
 		default:
-			ContentsWidget::triggerAction(identifier, parameters);
+			ContentsWidget::triggerAction(identifier, parameters, trigger);
 
 			break;
 	}
@@ -498,16 +498,11 @@ WebWidget::LoadingState CookiesContentsWidget::getLoadingState() const
 
 bool CookiesContentsWidget::eventFilter(QObject *object, QEvent *event)
 {
-	if (object == m_ui->cookiesViewWidget && event->type() == QEvent::KeyPress)
+	if (object == m_ui->cookiesViewWidget && event->type() == QEvent::KeyPress && static_cast<QKeyEvent*>(event)->key() == Qt::Key_Delete)
 	{
-		const QKeyEvent *keyEvent(static_cast<QKeyEvent*>(event));
+		removeCookies();
 
-		if (keyEvent && keyEvent->key() == Qt::Key_Delete)
-		{
-			removeCookies();
-
-			return true;
-		}
+		return true;
 	}
 
 	return ContentsWidget::eventFilter(object, event);

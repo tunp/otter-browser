@@ -23,7 +23,7 @@
 #include "PasswordBarWidget.h"
 #include "PermissionBarWidget.h"
 #include "PopupsBarWidget.h"
-#include "ProgressBarWidget.h"
+#include "ProgressToolBarWidget.h"
 #include "SearchBarWidget.h"
 #include "SelectPasswordDialog.h"
 #include "StartPageWidget.h"
@@ -180,7 +180,7 @@ void WebContentsWidget::showEvent(QShowEvent *event)
 
 	if (m_window && !m_progressBarWidget && getLoadingState() == WebWidget::OngoingLoadingState && ToolBarsManager::getToolBarDefinition(ToolBarsManager::ProgressBar).normalVisibility == ToolBarsManager::AlwaysVisibleToolBar)
 	{
-		m_progressBarWidget = new ProgressBarWidget(m_window, m_webWidget);
+		m_progressBarWidget = new ProgressToolBarWidget(m_window, m_webWidget);
 	}
 }
 
@@ -328,7 +328,7 @@ void WebContentsWidget::print(QPrinter *printer)
 	m_webWidget->print(printer);
 }
 
-void WebContentsWidget::triggerAction(int identifier, const QVariantMap &parameters)
+void WebContentsWidget::triggerAction(int identifier, const QVariantMap &parameters, ActionsManager::TriggerType trigger)
 {
 	switch (identifier)
 	{
@@ -357,7 +357,7 @@ void WebContentsWidget::triggerAction(int identifier, const QVariantMap &paramet
 
 									if (mainWindow)
 									{
-										mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), result.url}, {QLatin1String("hints"), QVariant(hints)}});
+										mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), result.url}, {QLatin1String("hints"), QVariant(hints)}}, trigger);
 									}
 								}
 
@@ -380,9 +380,11 @@ void WebContentsWidget::triggerAction(int identifier, const QVariantMap &paramet
 
 				if (!passwords.isEmpty())
 				{
+					PasswordsManager::PasswordInformation password;
+
 					if (passwords.count() == 1)
 					{
-						m_webWidget->fillPassword(passwords.first());
+						password = passwords.first();
 					}
 					else
 					{
@@ -390,8 +392,17 @@ void WebContentsWidget::triggerAction(int identifier, const QVariantMap &paramet
 
 						if (dialog.exec() == QDialog::Accepted)
 						{
-							m_webWidget->fillPassword(dialog.getPassword());
+							password = dialog.getPassword();
 						}
+					}
+
+					if (password.isValid())
+					{
+						m_webWidget->fillPassword(password);
+
+						password.timeUsed = QDateTime::currentDateTimeUtc();
+
+						PasswordsManager::addPassword(password);
 					}
 				}
 			}
@@ -443,7 +454,7 @@ void WebContentsWidget::triggerAction(int identifier, const QVariantMap &paramet
 
 								if (mainWindow)
 								{
-									mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), result.url}, {QLatin1String("hints"), QVariant(hints)}});
+									mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), result.url}, {QLatin1String("hints"), QVariant(hints)}}, trigger);
 								}
 							}
 
@@ -577,7 +588,7 @@ void WebContentsWidget::triggerAction(int identifier, const QVariantMap &paramet
 		case ActionsManager::PrintAction:
 		case ActionsManager::PrintPreviewAction:
 		case ActionsManager::BookmarkPageAction:
-			ContentsWidget::triggerAction(identifier, parameters);
+			ContentsWidget::triggerAction(identifier, parameters, trigger);
 
 			break;
 		case ActionsManager::EnableJavaScriptAction:
@@ -652,7 +663,7 @@ void WebContentsWidget::triggerAction(int identifier, const QVariantMap &paramet
 					case ActionsManager::OpenLinkInNewPrivateWindowAction:
 					case ActionsManager::OpenLinkInNewPrivateWindowBackgroundAction:
 					case ActionsManager::ContextMenuAction:
-						m_startPageWidget->triggerAction(identifier, parameters);
+						m_startPageWidget->triggerAction(identifier, parameters, trigger);
 
 						return;
 					default:
@@ -660,7 +671,7 @@ void WebContentsWidget::triggerAction(int identifier, const QVariantMap &paramet
 				}
 			}
 
-			m_webWidget->triggerAction(identifier, parameters);
+			m_webWidget->triggerAction(identifier, parameters, trigger);
 
 			break;
 	}
@@ -999,7 +1010,7 @@ void WebContentsWidget::handleLoadingStateChange(WebWidget::LoadingState state)
 	}
 	else if (m_window && !m_progressBarWidget && state == WebWidget::OngoingLoadingState && ToolBarsManager::getToolBarDefinition(ToolBarsManager::ProgressBar).normalVisibility == ToolBarsManager::AutoVisibilityToolBar)
 	{
-		m_progressBarWidget = new ProgressBarWidget(m_window, m_webWidget);
+		m_progressBarWidget = new ProgressToolBarWidget(m_window, m_webWidget);
 	}
 }
 

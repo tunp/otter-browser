@@ -22,6 +22,7 @@
 #include "AddonsManager.h"
 #include "BookmarksManager.h"
 #include "Console.h"
+#include "FeedsManager.h"
 #include "GesturesManager.h"
 #include "HandlersManager.h"
 #include "HistoryManager.h"
@@ -407,6 +408,8 @@ Application::Application(int &argc, char **argv) : QApplication(argc, argv), Act
 
 	BookmarksManager::createInstance();
 
+	FeedsManager::createInstance();
+
 	GesturesManager::createInstance();
 
 	HandlersManager::createInstance();
@@ -514,12 +517,12 @@ Application::~Application()
 	}
 }
 
-void Application::triggerAction(int identifier, const QVariantMap &parameters)
+void Application::triggerAction(int identifier, const QVariantMap &parameters, ActionsManager::TriggerType trigger)
 {
-	triggerAction(identifier, parameters, nullptr);
+	triggerAction(identifier, parameters, nullptr, trigger);
 }
 
-void Application::triggerAction(int identifier, const QVariantMap &parameters, QObject *target)
+void Application::triggerAction(int identifier, const QVariantMap &parameters, QObject *target, ActionsManager::TriggerType trigger)
 {
 	switch (identifier)
 	{
@@ -546,11 +549,11 @@ void Application::triggerAction(int identifier, const QVariantMap &parameters, Q
 
 					if (actionIdentifier.type() == QVariant::Int)
 					{
-						triggerAction(actionIdentifier.toInt(), actionParameters, target);
+						triggerAction(actionIdentifier.toInt(), actionParameters, target, trigger);
 					}
 					else
 					{
-						triggerAction(ActionsManager::getActionIdentifier(actionIdentifier.toString()), actionParameters, target);
+						triggerAction(ActionsManager::getActionIdentifier(actionIdentifier.toString()), actionParameters, target, trigger);
 					}
 				}
 			}
@@ -827,12 +830,12 @@ void Application::triggerAction(int identifier, const QVariantMap &parameters, Q
 
 			if (window)
 			{
-				window->triggerAction(identifier, parameters);
+				window->triggerAction(identifier, parameters, trigger);
 			}
 		}
 		else if (mainWindow)
 		{
-			mainWindow->triggerAction(identifier, parameters);
+			mainWindow->triggerAction(identifier, parameters, trigger);
 		}
 	}
 }
@@ -1276,6 +1279,8 @@ MainWindow* Application::createWindow(const QVariantMap &parameters, const Sessi
 	connect(mainWindow, &MainWindow::activated, [=]()
 	{
 		m_activeWindow = mainWindow;
+
+		emit m_instance->currentWindowChanged(mainWindow);
 	});
 
 	return mainWindow;

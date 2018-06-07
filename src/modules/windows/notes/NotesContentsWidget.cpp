@@ -223,7 +223,7 @@ void NotesContentsWidget::showContextMenu(const QPoint &position)
 	menu.exec(m_ui->notesViewWidget->mapToGlobal(position));
 }
 
-void NotesContentsWidget::triggerAction(int identifier, const QVariantMap &parameters)
+void NotesContentsWidget::triggerAction(int identifier, const QVariantMap &parameters, ActionsManager::TriggerType trigger)
 {
 	switch (identifier)
 	{
@@ -267,7 +267,7 @@ void NotesContentsWidget::triggerAction(int identifier, const QVariantMap &param
 
 			break;
 		default:
-			ContentsWidget::triggerAction(identifier, parameters);
+			ContentsWidget::triggerAction(identifier, parameters, trigger);
 
 			break;
 	}
@@ -304,7 +304,7 @@ void NotesContentsWidget::updateText()
 	if (index.isValid() && static_cast<BookmarksModel::BookmarkType>(index.data(BookmarksModel::TypeRole).toInt()) == BookmarksModel::UrlBookmark)
 	{
 		m_ui->notesViewWidget->model()->setData(index, m_ui->textEditWidget->toPlainText(), BookmarksModel::DescriptionRole);
-		m_ui->notesViewWidget->model()->setData(index, QDateTime::currentDateTime(), BookmarksModel::TimeModifiedRole);
+		m_ui->notesViewWidget->model()->setData(index, QDateTime::currentDateTimeUtc(), BookmarksModel::TimeModifiedRole);
 	}
 	else
 	{
@@ -390,31 +390,26 @@ bool NotesContentsWidget::eventFilter(QObject *object, QEvent *event)
 {
 	if (object == m_ui->notesViewWidget && event->type() == QEvent::KeyPress)
 	{
-		const QKeyEvent *keyEvent(static_cast<QKeyEvent*>(event));
-
-		if (keyEvent)
+		switch (static_cast<QKeyEvent*>(event)->key())
 		{
-			switch (keyEvent->key())
-			{
-				case Qt::Key_Enter:
-				case Qt::Key_Return:
-					openUrl();
+			case Qt::Key_Enter:
+			case Qt::Key_Return:
+				openUrl();
 
-					return true;
-				case Qt::Key_Delete:
-					removeNote();
+				return true;
+			case Qt::Key_Delete:
+				removeNote();
 
-					return true;
-				default:
-					break;
-			}
+				return true;
+			default:
+				break;
 		}
 	}
 	else if (object == m_ui->notesViewWidget->viewport() && event->type() == QEvent::MouseButtonRelease)
 	{
 		const QMouseEvent *mouseEvent(static_cast<QMouseEvent*>(event));
 
-		if (mouseEvent && ((mouseEvent->button() == Qt::LeftButton && mouseEvent->modifiers() != Qt::NoModifier) || mouseEvent->button() == Qt::MiddleButton))
+		if ((mouseEvent->button() == Qt::LeftButton && mouseEvent->modifiers() != Qt::NoModifier) || mouseEvent->button() == Qt::MiddleButton)
 		{
 			const BookmarksModel::Bookmark *bookmark(NotesManager::getModel()->getBookmark(m_ui->notesViewWidget->indexAt(mouseEvent->pos())));
 
@@ -429,19 +424,15 @@ bool NotesContentsWidget::eventFilter(QObject *object, QEvent *event)
 	else if (object == m_ui->notesViewWidget->viewport() && event->type() == QEvent::ToolTip)
 	{
 		const QHelpEvent *helpEvent(static_cast<QHelpEvent*>(event));
+		const QModelIndex index(m_ui->notesViewWidget->indexAt(helpEvent->pos()));
+		const BookmarksModel::Bookmark *bookmark(NotesManager::getModel()->getBookmark(index));
 
-		if (helpEvent)
+		if (bookmark)
 		{
-			const QModelIndex index(m_ui->notesViewWidget->indexAt(helpEvent->pos()));
-			const BookmarksModel::Bookmark *bookmark(NotesManager::getModel()->getBookmark(index));
-
-			if (bookmark)
-			{
-				QToolTip::showText(helpEvent->globalPos(), QFontMetrics(QToolTip::font()).elidedText(bookmark->toolTip(), Qt::ElideRight, (QApplication::desktop()->screenGeometry(m_ui->notesViewWidget).width() / 2)), m_ui->notesViewWidget, m_ui->notesViewWidget->visualRect(index));
-			}
-
-			return true;
+			QToolTip::showText(helpEvent->globalPos(), QFontMetrics(QToolTip::font()).elidedText(bookmark->toolTip(), Qt::ElideRight, (QApplication::desktop()->screenGeometry(m_ui->notesViewWidget).width() / 2)), m_ui->notesViewWidget, m_ui->notesViewWidget->visualRect(index));
 		}
+
+		return true;
 	}
 
 	return ContentsWidget::eventFilter(object, event);

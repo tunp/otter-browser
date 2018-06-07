@@ -21,8 +21,7 @@
 #define OTTER_WINDOWSCONTENTSWIDGET_H
 
 #include "../../../ui/ContentsWidget.h"
-
-#include <QtWidgets/QStyledItemDelegate>
+#include "../../../ui/ItemDelegate.h"
 
 namespace Otter
 {
@@ -35,12 +34,19 @@ namespace Ui
 class Window;
 
 
-class EntryItemDelegate final : public QStyledItemDelegate
+class EntryItemDelegate final : public ItemDelegate
 {
 public:
 	explicit EntryItemDelegate(QObject *parent = nullptr);
 
 	void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override;
+
+protected:
+	void initStyleOption(QStyleOptionViewItem *option, const QModelIndex &index) const override;
+	int calculateDecorationWidth(QStyleOptionViewItem *option, const QModelIndex &index) const;
+
+private:
+	static int m_decorationSize;
 };
 
 class WindowsContentsWidget final : public ContentsWidget
@@ -58,7 +64,7 @@ public:
 	QIcon getIcon() const override;
 
 public slots:
-	void triggerAction(int identifier, const QVariantMap &parameters = {}) override;
+	void triggerAction(int identifier, const QVariantMap &parameters = {}, ActionsManager::TriggerType trigger = ActionsManager::UnknownTrigger) override;
 
 protected:
 	void changeEvent(QEvent *event) override;

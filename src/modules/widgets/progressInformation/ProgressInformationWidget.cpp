@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2016 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2016 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -20,6 +20,7 @@
 #include "ProgressInformationWidget.h"
 #include "../../../core/Utils.h"
 #include "../../../ui/ContentsWidget.h"
+#include "../../../ui/ProgressBarWidget.h"
 #include "../../../ui/ToolBarWidget.h"
 #include "../../../ui/Window.h"
 
@@ -69,7 +70,7 @@ ProgressInformationWidget::ProgressInformationWidget(Window *window, const ToolB
 
 	if (m_type == DocumentProgressType || m_type == TotalProgressType)
 	{
-		m_progressBar = new QProgressBar(this);
+		m_progressBar = new ProgressBarWidget(this);
 		m_progressBar->setRange(0, 100);
 		m_progressBar->setAlignment(Qt::AlignCenter);
 
@@ -144,10 +145,9 @@ void ProgressInformationWidget::updateStatus(WebWidget::PageInformation key, con
 		case ElapsedTimeType:
 			if (key == WebWidget::LoadingTimeInformation)
 			{
-				int minutes(value.toInt() / 60);
-				int seconds(value.toInt() - (minutes * 60));
+				const int minutes(value.toInt() / 60);
 
-				m_label->setText(tr("Time: %1").arg(QStringLiteral("%1:%2").arg(minutes).arg(seconds, 2, 10, QLatin1Char('0'))));
+				m_label->setText(tr("Time: %1").arg(QStringLiteral("%1:%2").arg(minutes).arg((value.toInt() - (minutes * 60)), 2, 10, QLatin1Char('0'))));
 			}
 
 			break;

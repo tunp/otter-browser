@@ -22,6 +22,7 @@
 #define OTTER_CONTENTBLOCKINGDIALOG_H
 
 #include "../Dialog.h"
+#include "../ItemDelegate.h"
 
 namespace Otter
 {
@@ -31,7 +32,29 @@ namespace Ui
 	class ContentBlockingDialog;
 }
 
+class Animation;
 class ContentBlockingProfile;
+
+class ContentBlockingTitleDelegate final : public ItemDelegate
+{
+public:
+	explicit ContentBlockingTitleDelegate(QObject *parent = nullptr);
+
+	bool helpEvent(QHelpEvent *event, QAbstractItemView *view, const QStyleOptionViewItem &option, const QModelIndex &index) override;
+
+protected:
+	void initStyleOption(QStyleOptionViewItem *option, const QModelIndex &index) const override;
+};
+
+class ContentBlockingIntervalDelegate final : public ItemDelegate
+{
+public:
+	explicit ContentBlockingIntervalDelegate(QObject *parent = nullptr);
+
+	void setModelData(QWidget *editor, QAbstractItemModel *model, const QModelIndex &index) const override;
+	QWidget* createEditor(QWidget *parent, const QStyleOptionViewItem &option, const QModelIndex &index) const override;
+	QString displayText(const QVariant &value, const QLocale &locale) const override;
+};
 
 class ContentBlockingDialog final : public Dialog
 {
@@ -40,6 +63,8 @@ class ContentBlockingDialog final : public Dialog
 public:
 	explicit ContentBlockingDialog(QWidget *parent = nullptr);
 	~ContentBlockingDialog();
+
+	static Animation* getUpdateAnimation();
 
 protected:
 	void changeEvent(QEvent *event) override;
@@ -60,6 +85,8 @@ protected slots:
 
 private:
 	Ui::ContentBlockingDialog *m_ui;
+
+	static Animation* m_updateAnimation;
 };
 
 }

@@ -1,25 +1,27 @@
 #define MyAppName "Otter Browser"
-#define MyAppVersion "0.9.98-dev"
+#define MyAppVersion "0.9.99-dev"
 #define MyAppURL "https://otter-browser.org/"
 #define MyAppExeName "otter-browser.exe"
 #define MyAppIdentifier "OtterBrowser"
+#define MyWorkingDir "Z:\otter-browser-inno"
 
 [Setup]
 AppId={{A0517512-5271-465D-AE59-D08F487B5CAF}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+AppPublisher="Otter Browser Team"
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 DefaultDirName={pf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
-LicenseFile=Z:\otter-browser-inno\input\COPYING
-OutputDir=Z:\otter-browser-inno\output\
+LicenseFile={#MyWorkingDir}\input\COPYING
+OutputDir={#MyWorkingDir}\output\
 OutputBaseFilename=otter-browser-{#MyAppVersion}-setup
 Compression=lzma2/ultra64
 SolidCompression=yes
-VersionInfoVersion=0.9.98
+VersionInfoVersion=0.9.99
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -55,7 +57,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked; OnlyBelowVersion: 0,6.1
 
 [Files]
-Source: "Z:\otter-browser-inno\input\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
+Source: "{#MyWorkingDir}\input\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 
 [Registry]
 Root: HKLM; Subkey: "Software\Clients\StartMenuInternet\{#MyAppIdentifier}"; Flags: uninsdeletekey

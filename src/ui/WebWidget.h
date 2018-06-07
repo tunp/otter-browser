@@ -240,7 +240,7 @@ public:
 	virtual bool isPrivate() const = 0;
 
 public slots:
-	virtual void triggerAction(int identifier, const QVariantMap &parameters = {}) override;
+	virtual void triggerAction(int identifier, const QVariantMap &parameters = {}, ActionsManager::TriggerType trigger = ActionsManager::UnknownTrigger) override;
 	virtual void clearOptions();
 	virtual void fillPassword(const PasswordsManager::PasswordInformation &password);
 	virtual void showContextMenu(const QPoint &position = {});
@@ -263,6 +263,7 @@ protected:
 	void handleToolTipEvent(QHelpEvent *event, QWidget *widget);
 	void updateHitTestResult(const QPoint &position);
 	void setClickPosition(const QPoint &position);
+	QString suggestSaveFileName(const QString &extension) const;
 	QString suggestSaveFileName(SaveFormat format) const;
 	QString getSavePath(const QVector<SaveFormat> &allowedFormats, SaveFormat *selectedFormat) const;
 	QString getOpenActionText(SessionsManager::OpenHints hints) const;
@@ -274,6 +275,7 @@ protected:
 	virtual bool canGoForward() const;
 	virtual bool canFastForward() const;
 	virtual bool canInspect() const;
+	virtual bool canTakeScreenshot() const;
 	virtual bool canRedo() const;
 	virtual bool canUndo() const;
 	virtual bool canShowContextMenu(const QPoint &position) const;

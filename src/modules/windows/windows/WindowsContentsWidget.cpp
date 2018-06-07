@@ -27,28 +27,92 @@
 
 #include "ui_WindowsContentsWidget.h"
 
+#include <QtGui/QPainter>
 #include <QtWidgets/QMenu>
 
 namespace Otter
 {
 
-EntryItemDelegate::EntryItemDelegate(QObject *parent) : QStyledItemDelegate(parent)
+int EntryItemDelegate::m_decorationSize = -1;
+
+EntryItemDelegate::EntryItemDelegate(QObject *parent) : ItemDelegate(parent)
 {
+	connect(ThemesManager::getInstance(), &ThemesManager::widgetStyleChanged, [&]()
+	{
+		m_decorationSize = -1;
+	});
 }
 
 void EntryItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const
 {
-	if (index.data(SessionModel::IsActiveRole).toBool())
+	ItemDelegate::paint(painter, option, index);
+
+	if (index.data(SessionModel::IsAudibleRole).toBool() || index.data(SessionModel::IsAudioMutedRole).toBool())
 	{
 		QStyleOptionViewItem mutableOption(option);
-		mutableOption.font.setBold(true);
+		mutableOption.features |= QStyleOptionViewItem::HasDecoration;
 
-		QStyledItemDelegate::paint(painter, mutableOption, index);
+		QRect rectangle(QApplication::style()->subElementRect(QStyle::SE_ItemViewItemText, &mutableOption));
+		const int availableWidth(rectangle.width());
+		const int decorationWidth(calculateDecorationWidth(&mutableOption, index));
+
+		if (availableWidth > (decorationWidth + 100))
+		{
+			const int offset((decorationWidth - option.decorationSize.width()) / 2);
+
+			if (option.direction == Qt::RightToLeft)
+			{
+				rectangle.setWidth(decorationWidth);
+			}
+			else
+			{
+				rectangle.setLeft(rectangle.right() - decorationWidth);
+			}
+
+			ThemesManager::createIcon(index.data(SessionModel::IsAudioMutedRole).toBool() ? QLatin1String("audio-volume-muted") : QLatin1String("audio-volume-medium")).paint(painter, rectangle.adjusted(offset, 0, -offset, 0));
+		}
 	}
-	else
+}
+
+void EntryItemDelegate::initStyleOption(QStyleOptionViewItem *option, const QModelIndex &index) const
+{
+	ItemDelegate::initStyleOption(option, index);
+
+	if (index.data(SessionModel::IsActiveRole).toBool())
 	{
-		QStyledItemDelegate::paint(painter, option, index);
+		option->font.setBold(true);
 	}
+
+	if (index.data(SessionModel::IsAudibleRole).toBool() || index.data(SessionModel::IsAudioMutedRole).toBool())
+	{
+		const int availableWidth(QApplication::style()->subElementRect(QStyle::SE_ItemViewItemText, option).width());
+		const int decorationWidth(calculateDecorationWidth(option, index));
+
+		if (availableWidth > (decorationWidth + 100))
+		{
+			option->text = Utils::elideText(option->text, QFontMetrics(option->font), nullptr, (availableWidth - decorationWidth));
+		}
+	}
+}
+
+int EntryItemDelegate::calculateDecorationWidth(QStyleOptionViewItem *option, const QModelIndex &index) const
+{
+	if (m_decorationSize < 0)
+	{
+		QStyleOptionViewItem mutableOption(*(option));
+
+		ItemDelegate::initStyleOption(&mutableOption, index);
+
+		mutableOption.features &= ~QStyleOptionViewItem::HasDecoration;
+
+		const int width(QApplication::style()->subElementRect(QStyle::SE_ItemViewItemText, &mutableOption).width());
+
+		mutableOption.features |= QStyleOptionViewItem::HasDecoration;
+
+		m_decorationSize = (width - QApplication::style()->subElementRect(QStyle::SE_ItemViewItemText, &mutableOption).width());
+	}
+
+	return m_decorationSize;
 }
 
 WindowsContentsWidget::WindowsContentsWidget(const QVariantMap &parameters, Window *window, QWidget *parent) : ContentsWidget(parameters, window, parent),
@@ -63,10 +127,14 @@ WindowsContentsWidget::WindowsContentsWidget(const QVariantMap &parameters, Wind
 	m_ui->windowsViewWidget->expandAll();
 	m_ui->windowsViewWidget->viewport()->setMouseTracking(true);
 
+	connect(SessionsManager::getModel(), &SessionModel::rowsInserted, [&](const QModelIndex &index)
+	{
+		m_ui->windowsViewWidget->setExpanded(index, true);
+	});
+	connect(SessionsManager::getModel(), &SessionModel::modelModified, m_ui->windowsViewWidget->viewport(), static_cast<void(QWidget::*)()>(&QWidget::update));
 	connect(m_ui->filterLineEditWidget, &LineEditWidget::textChanged, m_ui->windowsViewWidget, &ItemViewWidget::setFilterString);
 	connect(m_ui->windowsViewWidget, &ItemViewWidget::customContextMenuRequested, this, &WindowsContentsWidget::showContextMenu);
 	connect(m_ui->windowsViewWidget, &ItemViewWidget::clicked, this, &WindowsContentsWidget::activateWindow);
-	connect(m_ui->windowsViewWidget->getSourceModel(), &QStandardItemModel::dataChanged, m_ui->windowsViewWidget, static_cast<void(ItemViewWidget::*)()>(&ItemViewWidget::update));
 }
 
 WindowsContentsWidget::~WindowsContentsWidget()
@@ -89,7 +157,7 @@ void WindowsContentsWidget::print(QPrinter *printer)
 	m_ui->windowsViewWidget->render(printer);
 }
 
-void WindowsContentsWidget::triggerAction(int identifier, const QVariantMap &parameters)
+void WindowsContentsWidget::triggerAction(int identifier, const QVariantMap &parameters, ActionsManager::TriggerType trigger)
 {
 	switch (identifier)
 	{
@@ -102,7 +170,7 @@ void WindowsContentsWidget::triggerAction(int identifier, const QVariantMap &par
 
 			break;
 		default:
-			ContentsWidget::triggerAction(identifier, parameters);
+			ContentsWidget::triggerAction(identifier, parameters, trigger);
 
 			break;
 	}
@@ -161,6 +229,7 @@ void WindowsContentsWidget::showContextMenu(const QPoint &position)
 					{
 						executor = ActionExecutor::Object(mainWindowItem->getMainWindow(), mainWindowItem->getMainWindow());
 
+						menu.addSeparator();
 						menu.addAction(new Action(ActionsManager::NewTabAction, {}, executor, &menu));
 						menu.addAction(new Action(ActionsManager::NewTabPrivateAction, {}, executor, &menu));
 						menu.addSeparator();

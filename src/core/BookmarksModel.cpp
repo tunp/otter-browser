@@ -20,6 +20,7 @@
 
 #include "BookmarksModel.h"
 #include "Console.h"
+#include "FeedsManager.h"
 #include "HistoryManager.h"
 #include "SessionsManager.h"
 #include "ThemesManager.h"
@@ -72,15 +73,15 @@ void BookmarksModel::Bookmark::setItemData(const QVariant &value, int role)
 QStandardItem* BookmarksModel::Bookmark::clone() const
 {
 	Bookmark *bookmark(new Bookmark());
-	bookmark->setData(data(BookmarksModel::TypeRole), BookmarksModel::TypeRole);
-	bookmark->setData(data(BookmarksModel::UrlRole), BookmarksModel::UrlRole);
-	bookmark->setData(data(BookmarksModel::TitleRole), BookmarksModel::TitleRole);
-	bookmark->setData(data(BookmarksModel::DescriptionRole), BookmarksModel::DescriptionRole);
-	bookmark->setData(data(BookmarksModel::KeywordRole), BookmarksModel::KeywordRole);
-	bookmark->setData(data(BookmarksModel::TimeAddedRole), BookmarksModel::TimeAddedRole);
-	bookmark->setData(data(BookmarksModel::TimeModifiedRole), BookmarksModel::TimeModifiedRole);
-	bookmark->setData(data(BookmarksModel::TimeVisitedRole), BookmarksModel::TimeVisitedRole);
-	bookmark->setData(data(BookmarksModel::VisitsRole), BookmarksModel::VisitsRole);
+	bookmark->setData(data(TypeRole), TypeRole);
+	bookmark->setData(data(UrlRole), UrlRole);
+	bookmark->setData(data(TitleRole), TitleRole);
+	bookmark->setData(data(DescriptionRole), DescriptionRole);
+	bookmark->setData(data(KeywordRole), KeywordRole);
+	bookmark->setData(data(TimeAddedRole), TimeAddedRole);
+	bookmark->setData(data(TimeModifiedRole), TimeModifiedRole);
+	bookmark->setData(data(TimeVisitedRole), TimeVisitedRole);
+	bookmark->setData(data(VisitsRole), VisitsRole);
 
 	return bookmark;
 }
@@ -99,37 +100,37 @@ BookmarksModel::Bookmark* BookmarksModel::Bookmark::getChild(int index) const
 
 QString BookmarksModel::Bookmark::getTitle() const
 {
-	return data(BookmarksModel::TitleRole).toString();
+	return data(TitleRole).toString();
 }
 
 QString BookmarksModel::Bookmark::getDescription() const
 {
-	return QStandardItem::data(BookmarksModel::DescriptionRole).toString();
+	return QStandardItem::data(DescriptionRole).toString();
 }
 
 QString BookmarksModel::Bookmark::getKeyword() const
 {
-	return QStandardItem::data(BookmarksModel::KeywordRole).toString();
+	return QStandardItem::data(KeywordRole).toString();
 }
 
 QUrl BookmarksModel::Bookmark::getUrl() const
 {
-	return QStandardItem::data(BookmarksModel::UrlRole).toUrl();
+	return QStandardItem::data(UrlRole).toUrl();
 }
 
 QDateTime BookmarksModel::Bookmark::getTimeAdded() const
 {
-	return QStandardItem::data(BookmarksModel::TimeAddedRole).toDateTime();
+	return QStandardItem::data(TimeAddedRole).toDateTime();
 }
 
 QDateTime BookmarksModel::Bookmark::getTimeModified() const
 {
-	return QStandardItem::data(BookmarksModel::TimeModifiedRole).toDateTime();
+	return QStandardItem::data(TimeModifiedRole).toDateTime();
 }
 
 QDateTime BookmarksModel::Bookmark::getTimeVisited() const
 {
-	return QStandardItem::data(BookmarksModel::TimeVisitedRole).toDateTime();
+	return QStandardItem::data(TimeVisitedRole).toDateTime();
 }
 
 QIcon BookmarksModel::Bookmark::getIcon() const
@@ -141,21 +142,35 @@ QVariant BookmarksModel::Bookmark::data(int role) const
 {
 	if (role == Qt::DisplayRole)
 	{
-		const BookmarksModel::BookmarkType type(static_cast<BookmarksModel::BookmarkType>(data(BookmarksModel::TypeRole).toInt()));
+		const BookmarkType type(static_cast<BookmarkType>(data(TypeRole).toInt()));
 
 		switch (type)
 		{
-			case BookmarksModel::UrlBookmark:
-			case BookmarksModel::FolderBookmark:
+			case RootBookmark:
+				{
+					const BookmarksModel *model(qobject_cast<BookmarksModel*>(this->model()));
+
+					if (model && model->getFormatMode() == NotesMode)
+					{
+						return QCoreApplication::translate("Otter::BookmarksModel", "Notes");
+					}
+				}
+
+				return QCoreApplication::translate("Otter::BookmarksModel", "Bookmarks");
+			case TrashBookmark:
+				return QCoreApplication::translate("Otter::BookmarksModel", "Trash");
+			case FeedBookmark:
+			case FolderBookmark:
+			case UrlBookmark:
 				if (QStandardItem::data(role).isNull())
 				{
-					if (type == BookmarksModel::UrlBookmark)
+					if (type == UrlBookmark)
 					{
 						const BookmarksModel *model(qobject_cast<BookmarksModel*>(this->model()));
 
-						if (model && model->getFormatMode() == BookmarksModel::NotesMode)
+						if (model && model->getFormatMode() == NotesMode)
 						{
-							const QString text(data(BookmarksModel::DescriptionRole).toString());
+							const QString text(data(DescriptionRole).toString());
 							const int newLinePosition(text.indexOf(QLatin1Char('\n')));
 
 							if (newLinePosition > 0 && newLinePosition < (text.count() - 1))
@@ -171,19 +186,6 @@ QVariant BookmarksModel::Bookmark::data(int role) const
 				}
 
 				break;
-			case BookmarksModel::RootBookmark:
-				{
-					const BookmarksModel *model(qobject_cast<BookmarksModel*>(this->model()));
-
-					if (model && model->getFormatMode() == BookmarksModel::NotesMode)
-					{
-						return QCoreApplication::translate("Otter::BookmarksModel", "Notes");
-					}
-				}
-
-				return QCoreApplication::translate("Otter::BookmarksModel", "Bookmarks");
-			case BookmarksModel::TrashBookmark:
-				return QCoreApplication::translate("Otter::BookmarksModel", "Trash");
 			default:
 				break;
 		}
@@ -191,15 +193,17 @@ QVariant BookmarksModel::Bookmark::data(int role) const
 
 	if (role == Qt::DecorationRole)
 	{
-		switch (static_cast<BookmarksModel::BookmarkType>(data(BookmarksModel::TypeRole).toInt()))
+		switch (static_cast<BookmarkType>(data(TypeRole).toInt()))
 		{
-			case BookmarksModel::FolderBookmark:
-			case BookmarksModel::RootBookmark:
+			case RootBookmark:
+			case FolderBookmark:
 				return ThemesManager::createIcon(QLatin1String("inode-directory"));
-			case BookmarksModel::TrashBookmark:
+			case FeedBookmark:
+				return ThemesManager::createIcon(QLatin1String("application-rss+xml"));
+			case TrashBookmark:
 				return ThemesManager::createIcon(QLatin1String("user-trash"));
-			case BookmarksModel::UrlBookmark:
-				return HistoryManager::getIcon(data(BookmarksModel::UrlRole).toUrl());
+			case UrlBookmark:
+				return HistoryManager::getIcon(data(UrlRole).toUrl());
 			default:
 				break;
 		}
@@ -207,27 +211,27 @@ QVariant BookmarksModel::Bookmark::data(int role) const
 		return {};
 	}
 
-	if (role == Qt::AccessibleDescriptionRole && static_cast<BookmarksModel::BookmarkType>(data(BookmarksModel::TypeRole).toInt()) == BookmarksModel::SeparatorBookmark)
+	if (role == Qt::AccessibleDescriptionRole && static_cast<BookmarkType>(data(TypeRole).toInt()) == SeparatorBookmark)
 	{
 		return QLatin1String("separator");
 	}
 
-	if (role == BookmarksModel::IsTrashedRole)
+	if (role == IsTrashedRole)
 	{
 		QModelIndex parent(index().parent());
 
 		while (parent.isValid())
 		{
-			const BookmarksModel::BookmarkType type(static_cast<BookmarksModel::BookmarkType>(parent.data(BookmarksModel::TypeRole).toInt()));
+			const BookmarkType type(static_cast<BookmarkType>(parent.data(TypeRole).toInt()));
 
-			if (type == BookmarksModel::TrashBookmark)
-			{
-				return true;
-			}
-
-			if (type == BookmarksModel::RootBookmark)
+			if (type == RootBookmark)
 			{
 				break;
+			}
+
+			if (type == TrashBookmark)
+			{
+				return true;
 			}
 
 			parent = parent.parent();
@@ -248,9 +252,9 @@ QVector<QUrl> BookmarksModel::Bookmark::getUrls() const
 {
 	QVector<QUrl> urls;
 
-	if (static_cast<BookmarksModel::BookmarkType>(data(BookmarksModel::TypeRole).toInt()) == BookmarksModel::UrlBookmark)
+	if (static_cast<BookmarkType>(data(TypeRole).toInt()) == UrlBookmark)
 	{
-		urls.append(data(BookmarksModel::UrlRole).toUrl());
+		urls.append(data(UrlRole).toUrl());
 	}
 
 	for (int i = 0; i < rowCount(); ++i)
@@ -262,9 +266,9 @@ QVector<QUrl> BookmarksModel::Bookmark::getUrls() const
 			continue;
 		}
 
-		const BookmarksModel::BookmarkType type(bookmark->getType());
+		const BookmarkType type(bookmark->getType());
 
-		if (type == BookmarksModel::FolderBookmark)
+		if (type == FolderBookmark)
 		{
 #if QT_VERSION >= 0x050500
 			urls.append(bookmark->getUrls());
@@ -272,7 +276,7 @@ QVector<QUrl> BookmarksModel::Bookmark::getUrls() const
 			urls += bookmark->getUrls();
 #endif
 		}
-		else if (type == BookmarksModel::UrlBookmark)
+		else if (type == UrlBookmark)
 		{
 			urls.append(bookmark->getUrl());
 		}
@@ -283,17 +287,17 @@ QVector<QUrl> BookmarksModel::Bookmark::getUrls() const
 
 quint64 BookmarksModel::Bookmark::getIdentifier() const
 {
-	return QStandardItem::data(BookmarksModel::IdentifierRole).toULongLong();
+	return QStandardItem::data(IdentifierRole).toULongLong();
 }
 
 BookmarksModel::BookmarkType BookmarksModel::Bookmark::getType() const
 {
-	return static_cast<BookmarkType>(QStandardItem::data(BookmarksModel::TypeRole).toInt());
+	return static_cast<BookmarkType>(QStandardItem::data(TypeRole).toInt());
 }
 
 int BookmarksModel::Bookmark::getVisits() const
 {
-	return QStandardItem::data(BookmarksModel::VisitsRole).toInt();
+	return QStandardItem::data(VisitsRole).toInt();
 }
 
 bool BookmarksModel::Bookmark::isAncestorOf(Bookmark *child) const
@@ -320,9 +324,9 @@ bool BookmarksModel::Bookmark::isAncestorOf(Bookmark *child) const
 
 bool BookmarksModel::Bookmark::operator<(const QStandardItem &other) const
 {
-	const BookmarksModel::BookmarkType type(static_cast<BookmarksModel::BookmarkType>(data(BookmarksModel::TypeRole).toInt()));
+	const BookmarkType type(static_cast<BookmarkType>(data(TypeRole).toInt()));
 
-	if (type == BookmarksModel::RootBookmark || type == BookmarksModel::TrashBookmark)
+	if (type == RootBookmark || type == TrashBookmark)
 	{
 		return false;
 	}
@@ -337,10 +341,8 @@ BookmarksModel::BookmarksModel(const QString &path, FormatMode mode, QObject *pa
 	m_mode(mode)
 {
 	m_rootItem->setData(RootBookmark, TypeRole);
-	m_rootItem->setData(((mode == NotesMode) ? tr("Notes") : tr("Bookmarks")), TitleRole);
 	m_rootItem->setDragEnabled(false);
 	m_trashItem->setData(TrashBookmark, TypeRole);
-	m_trashItem->setData(tr("Trash"), TitleRole);
 	m_trashItem->setDragEnabled(false);
 	m_trashItem->setEnabled(false);
 
@@ -362,7 +364,7 @@ BookmarksModel::BookmarksModel(const QString &path, FormatMode mode, QObject *pa
 		return;
 	}
 
-	QXmlStreamReader reader(file.readAll());
+	QXmlStreamReader reader(&file);
 
 	if (reader.readNextStartElement() && reader.name() == QLatin1String("xbel") && reader.attributes().value(QLatin1String("version")).toString() == QLatin1String("1.0"))
 	{
@@ -615,7 +617,9 @@ void BookmarksModel::readBookmark(QXmlStreamReader *reader, Bookmark *parent)
 	}
 	else if (reader->name() == QLatin1String("bookmark"))
 	{
-		bookmark = addBookmark(UrlBookmark, {{IdentifierRole, reader->attributes().value(QLatin1String("id")).toULongLong()}, {UrlRole, reader->attributes().value(QLatin1String("href")).toString()}, {TimeAddedRole, readDateTime(reader, QLatin1String("added"))}, {TimeModifiedRole, readDateTime(reader, QLatin1String("modified"))}, {TimeVisitedRole, readDateTime(reader, QLatin1String("visited"))}}, parent);
+		const bool isFeed(reader->attributes().hasAttribute(QLatin1String("feed")));
+
+		bookmark = addBookmark((isFeed ? FeedBookmark : UrlBookmark), {{IdentifierRole, reader->attributes().value(QLatin1String("id")).toULongLong()}, {UrlRole, reader->attributes().value(QLatin1String("href")).toString()}, {TimeAddedRole, readDateTime(reader, QLatin1String("added"))}, {TimeModifiedRole, readDateTime(reader, QLatin1String("modified"))}, {TimeVisitedRole, readDateTime(reader, QLatin1String("visited"))}}, parent);
 
 		while (reader->readNext())
 		{
@@ -692,6 +696,26 @@ void BookmarksModel::readBookmark(QXmlStreamReader *reader, Bookmark *parent)
 				return;
 			}
 		}
+
+		if (isFeed)
+		{
+			const QUrl normalizedUrl(Utils::normalizeUrl(bookmark->getUrl()));
+			Feed *feed(FeedsManager::createFeed(bookmark->getUrl(), bookmark->getTitle()));
+
+			if (!m_feeds.contains(normalizedUrl))
+			{
+				m_feeds[normalizedUrl] = {};
+
+				connect(feed, &Feed::feedModified, this, &BookmarksModel::handleFeedModified);
+			}
+
+			m_feeds[normalizedUrl].append(bookmark);
+
+			if (feed)
+			{
+				handleFeedModified(feed);
+			}
+		}
 	}
 	else if (reader->name() == QLatin1String("separator"))
 	{
@@ -708,50 +732,19 @@ void BookmarksModel::writeBookmark(QXmlStreamWriter *writer, Bookmark *bookmark)
 		return;
 	}
 
-	switch (static_cast<BookmarkType>(bookmark->data(TypeRole).toInt()))
+	const BookmarkType type(static_cast<BookmarkType>(bookmark->data(TypeRole).toInt()));
+
+	switch (type)
 	{
-		case FolderBookmark:
-			writer->writeStartElement(QLatin1String("folder"));
-			writer->writeAttribute(QLatin1String("id"), QString::number(bookmark->getRawData(IdentifierRole).toULongLong()));
-
-			if (bookmark->getRawData(TimeAddedRole).toDateTime().isValid())
-			{
-				writer->writeAttribute(QLatin1String("added"), bookmark->getRawData(TimeAddedRole).toDateTime().toString(Qt::ISODate));
-			}
-
-			if (bookmark->getRawData(TimeModifiedRole).toDateTime().isValid())
-			{
-				writer->writeAttribute(QLatin1String("modified"), bookmark->getRawData(TimeModifiedRole).toDateTime().toString(Qt::ISODate));
-			}
-
-			writer->writeTextElement(QLatin1String("title"), bookmark->getRawData(TitleRole).toString());
-
-			if (!bookmark->getRawData(DescriptionRole).toString().isEmpty())
-			{
-				writer->writeTextElement(QLatin1String("desc"), bookmark->getRawData(DescriptionRole).toString());
-			}
-
-			if (m_mode == BookmarksMode && !bookmark->getRawData(KeywordRole).toString().isEmpty())
-			{
-				writer->writeStartElement(QLatin1String("info"));
-				writer->writeStartElement(QLatin1String("metadata"));
-				writer->writeAttribute(QLatin1String("owner"), QLatin1String("http://otter-browser.org/otter-xbel-bookmark"));
-				writer->writeTextElement(QLatin1String("keyword"), bookmark->getRawData(KeywordRole).toString());
-				writer->writeEndElement();
-				writer->writeEndElement();
-			}
-
-			for (int i = 0; i < bookmark->rowCount(); ++i)
-			{
-				writeBookmark(writer, static_cast<Bookmark*>(bookmark->child(i, 0)));
-			}
-
-			writer->writeEndElement();
-
-			break;
+		case FeedBookmark:
 		case UrlBookmark:
 			writer->writeStartElement(QLatin1String("bookmark"));
 			writer->writeAttribute(QLatin1String("id"), QString::number(bookmark->getRawData(IdentifierRole).toULongLong()));
+
+			if (type == FeedBookmark)
+			{
+				writer->writeAttribute(QLatin1String("feed"), QLatin1String("true"));
+			}
 
 			if (!bookmark->getRawData(UrlRole).toString().isEmpty())
 			{
@@ -801,6 +794,45 @@ void BookmarksModel::writeBookmark(QXmlStreamWriter *writer, Bookmark *bookmark)
 
 				writer->writeEndElement();
 				writer->writeEndElement();
+			}
+
+			writer->writeEndElement();
+
+			break;
+		case FolderBookmark:
+			writer->writeStartElement(QLatin1String("folder"));
+			writer->writeAttribute(QLatin1String("id"), QString::number(bookmark->getRawData(IdentifierRole).toULongLong()));
+
+			if (bookmark->getRawData(TimeAddedRole).toDateTime().isValid())
+			{
+				writer->writeAttribute(QLatin1String("added"), bookmark->getRawData(TimeAddedRole).toDateTime().toString(Qt::ISODate));
+			}
+
+			if (bookmark->getRawData(TimeModifiedRole).toDateTime().isValid())
+			{
+				writer->writeAttribute(QLatin1String("modified"), bookmark->getRawData(TimeModifiedRole).toDateTime().toString(Qt::ISODate));
+			}
+
+			writer->writeTextElement(QLatin1String("title"), bookmark->getRawData(TitleRole).toString());
+
+			if (!bookmark->getRawData(DescriptionRole).toString().isEmpty())
+			{
+				writer->writeTextElement(QLatin1String("desc"), bookmark->getRawData(DescriptionRole).toString());
+			}
+
+			if (m_mode == BookmarksMode && !bookmark->getRawData(KeywordRole).toString().isEmpty())
+			{
+				writer->writeStartElement(QLatin1String("info"));
+				writer->writeStartElement(QLatin1String("metadata"));
+				writer->writeAttribute(QLatin1String("owner"), QLatin1String("http://otter-browser.org/otter-xbel-bookmark"));
+				writer->writeTextElement(QLatin1String("keyword"), bookmark->getRawData(KeywordRole).toString());
+				writer->writeEndElement();
+				writer->writeEndElement();
+			}
+
+			for (int i = 0; i < bookmark->rowCount(); ++i)
+			{
+				writeBookmark(writer, static_cast<Bookmark*>(bookmark->child(i, 0)));
 			}
 
 			writer->writeEndElement();
@@ -887,6 +919,40 @@ void BookmarksModel::emptyTrash()
 	emit modelModified();
 }
 
+void BookmarksModel::handleFeedModified(Feed *feed)
+{
+	if (!hasFeed(feed->getUrl()))
+	{
+		return;
+	}
+
+	const QUrl normalizedUrl(Utils::normalizeUrl(feed->getUrl()));
+	QVector<Bookmark*> bookmarks(m_feeds.value(feed->getUrl()));
+
+	if (feed->getUrl() != normalizedUrl)
+	{
+		bookmarks.append(m_feeds.value(normalizedUrl));
+	}
+
+	for (int i = 0; i < bookmarks.count(); ++i)
+	{
+		Bookmark *bookmark(bookmarks.at(i));
+		bookmark->removeRows(0, bookmark->rowCount());
+
+		const QVector<Feed::Entry> entries(feed->getEntries());
+
+		for (int j = 0; j < entries.count(); ++j)
+		{
+			const Feed::Entry entry(entries.at(j));
+
+			if (entry.url.isValid())
+			{
+				addBookmark(UrlBookmark, {{UrlRole, entry.url}, {TitleRole, entry.title}, {DescriptionRole, entry.summary}}, bookmark);
+			}
+		}
+	}
+}
+
 void BookmarksModel::handleKeywordChanged(Bookmark *bookmark, const QString &newKeyword, const QString &oldKeyword)
 {
 	if (!oldKeyword.isEmpty() && m_keywords.contains(oldKeyword))
@@ -949,7 +1015,7 @@ BookmarksModel::Bookmark* BookmarksModel::addBookmark(BookmarkType type, const Q
 		bookmark->setDropEnabled(false);
 	}
 
-	if (type == FolderBookmark || type == UrlBookmark)
+	if (type == FeedBookmark || type == FolderBookmark || type == UrlBookmark)
 	{
 		quint64 identifier(metaData.value(IdentifierRole).toULongLong());
 
@@ -972,7 +1038,7 @@ BookmarksModel::Bookmark* BookmarksModel::addBookmark(BookmarkType type, const Q
 			bookmark->setItemData(currentDateTime, TimeModifiedRole);
 		}
 
-		if (type == UrlBookmark)
+		if (type == FeedBookmark || type == UrlBookmark)
 		{
 			const QUrl url(metaData.value(UrlRole).toUrl());
 
@@ -981,7 +1047,10 @@ BookmarksModel::Bookmark* BookmarksModel::addBookmark(BookmarkType type, const Q
 				handleUrlChanged(bookmark, url);
 			}
 
-			bookmark->setFlags(bookmark->flags() | Qt::ItemNeverHasChildren);
+			if (type == UrlBookmark)
+			{
+				bookmark->setFlags(bookmark->flags() | Qt::ItemNeverHasChildren);
+			}
 		}
 	}
 
@@ -1441,6 +1510,11 @@ bool BookmarksModel::setData(const QModelIndex &index, const QVariant &value, in
 bool BookmarksModel::hasBookmark(const QUrl &url) const
 {
 	return (m_urls.contains(Utils::normalizeUrl(url)) || m_urls.contains(url));
+}
+
+bool BookmarksModel::hasFeed(const QUrl &url) const
+{
+	return (m_feeds.contains(Utils::normalizeUrl(url)) || m_feeds.contains(url));
 }
 
 bool BookmarksModel::hasKeyword(const QString &keyword) const

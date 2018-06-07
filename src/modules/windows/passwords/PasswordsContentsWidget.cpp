@@ -43,9 +43,10 @@ PasswordsContentsWidget::PasswordsContentsWidget(const QVariantMap &parameters, 
 	m_ui->setupUi(this);
 	m_ui->filterLineEditWidget->setClearOnEscape(true);
 	m_ui->passwordsViewWidget->installEventFilter(this);
-
 	m_ui->passwordsViewWidget->setViewMode(ItemViewWidget::TreeViewMode);
 	m_ui->passwordsViewWidget->setModel(m_model);
+
+	m_model->setHeaderData(0, Qt::Horizontal, 500, HeaderViewWidget::WidthRole);
 
 	QTimer::singleShot(100, this, &PasswordsContentsWidget::populatePasswords);
 
@@ -74,6 +75,7 @@ void PasswordsContentsWidget::populatePasswords()
 {
 	m_model->clear();
 	m_model->setHorizontalHeaderLabels({tr("Name"), tr("Value")});
+	m_model->setHeaderData(0, Qt::Horizontal, 500, HeaderViewWidget::WidthRole);
 
 	const QStringList hosts(PasswordsManager::getHosts());
 
@@ -294,7 +296,7 @@ void PasswordsContentsWidget::print(QPrinter *printer)
 	m_ui->passwordsViewWidget->render(printer);
 }
 
-void PasswordsContentsWidget::triggerAction(int identifier, const QVariantMap &parameters)
+void PasswordsContentsWidget::triggerAction(int identifier, const QVariantMap &parameters, ActionsManager::TriggerType trigger)
 {
 	switch (identifier)
 	{
@@ -316,7 +318,7 @@ void PasswordsContentsWidget::triggerAction(int identifier, const QVariantMap &p
 
 			break;
 		default:
-			ContentsWidget::triggerAction(identifier, parameters);
+			ContentsWidget::triggerAction(identifier, parameters, trigger);
 
 			break;
 	}
@@ -430,16 +432,11 @@ WebWidget::LoadingState PasswordsContentsWidget::getLoadingState() const
 
 bool PasswordsContentsWidget::eventFilter(QObject *object, QEvent *event)
 {
-	if (object == m_ui->passwordsViewWidget && event->type() == QEvent::KeyPress)
+	if (object == m_ui->passwordsViewWidget && event->type() == QEvent::KeyPress && static_cast<QKeyEvent*>(event)->key() == Qt::Key_Delete)
 	{
-		const QKeyEvent *keyEvent(static_cast<QKeyEvent*>(event));
+		removePasswords();
 
-		if (keyEvent && keyEvent->key() == Qt::Key_Delete)
-		{
-			removePasswords();
-
-			return true;
-		}
+		return true;
 	}
 
 	return ContentsWidget::eventFilter(object, event);

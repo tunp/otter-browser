@@ -90,10 +90,11 @@ void WebWidget::timerEvent(QTimerEvent *event)
 	}
 }
 
-void WebWidget::triggerAction(int identifier, const QVariantMap &parameters)
+void WebWidget::triggerAction(int identifier, const QVariantMap &parameters, ActionsManager::TriggerType trigger)
 {
 	Q_UNUSED(identifier)
 	Q_UNUSED(parameters)
+	Q_UNUSED(trigger)
 }
 
 void WebWidget::search(const QString &query, const QString &searchEngine)
@@ -677,29 +678,10 @@ QString WebWidget::getDescription() const
 	return {};
 }
 
-QString WebWidget::suggestSaveFileName(SaveFormat format) const
+QString WebWidget::suggestSaveFileName(const QString &extension) const
 {
 	const QUrl url(getUrl());
 	QString fileName(url.fileName());
-	QString extension;
-
-	switch (format)
-	{
-		case MhtmlSaveFormat:
-			extension = QLatin1String(".mht");
-
-			break;
-		case PdfSaveFormat:
-			extension = QLatin1String(".pdf");
-
-			break;
-		case SingleFileSaveFormat:
-			extension = QLatin1String(".html");
-
-			break;
-		default:
-			break;
-	}
 
 	if (fileName.isEmpty() && !url.path().isEmpty() && url.path() != QLatin1String("/"))
 	{
@@ -722,6 +704,23 @@ QString WebWidget::suggestSaveFileName(SaveFormat format) const
 	}
 
 	return fileName;
+}
+
+QString WebWidget::suggestSaveFileName(SaveFormat format) const
+{
+	switch (format)
+	{
+		case MhtmlSaveFormat:
+			return suggestSaveFileName(QLatin1String(".mht"));
+		case PdfSaveFormat:
+			return suggestSaveFileName(QLatin1String(".pdf"));
+		case SingleFileSaveFormat:
+			return suggestSaveFileName(QLatin1String(".html"));
+		default:
+			break;
+	}
+
+	return suggestSaveFileName({});
 }
 
 QString WebWidget::getSavePath(const QVector<SaveFormat> &allowedFormats, SaveFormat *selectedFormat) const
@@ -1273,6 +1272,10 @@ ActionsManager::ActionDefinition::State WebWidget::getActionState(int identifier
 			state.isEnabled = m_hitResult.flags.testFlag(HitTestResult::IsFormTest);
 
 			break;
+		case ActionsManager::TakeScreenshotAction:
+			state.isEnabled = canTakeScreenshot();
+
+			break;
 		case ActionsManager::BookmarkPageAction:
 			state.text = (BookmarksManager::hasBookmark(getUrl()) ? QCoreApplication::translate("actions", "Edit Bookmark…") : QCoreApplication::translate("actions", "Add Bookmark…"));
 
@@ -1518,6 +1521,11 @@ bool WebWidget::canFastForward() const
 }
 
 bool WebWidget::canInspect() const
+{
+	return false;
+}
+
+bool WebWidget::canTakeScreenshot() const
 {
 	return false;
 }

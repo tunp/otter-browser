@@ -46,12 +46,13 @@ public:
 	explicit ToolBarWidget(int identifier, Window *window, QWidget *parent);
 
 	static QMenu* createCustomizationMenu(int identifier, QVector<QAction*> actions = {}, QWidget *parent = nullptr);
-	void reload();
 	void setDefinition(const ToolBarsManager::ToolBarDefinition &definition);
 	void setState(const ToolBarState &state);
 	QString getTitle() const;
 	ToolBarsManager::ToolBarDefinition getDefinition() const;
 	ToolBarState getState() const;
+	QVector<QPointer<QWidget> > getAddressFields() const;
+	QVector<QPointer<QWidget> > getSearchFields() const;
 	Qt::ToolBarArea getArea() const;
 	Qt::ToolButtonStyle getButtonStyle() const;
 	int getIdentifier() const;
@@ -64,6 +65,7 @@ public:
 	bool event(QEvent *event) override;
 
 public slots:
+	void reload();
 	void resetGeometry();
 	void setArea(Qt::ToolBarArea area);
 
@@ -87,6 +89,8 @@ protected:
 	virtual void populateEntries();
 	void updateDropIndex(const QPoint &position);
 	void updateToggleGeometry();
+	void setAddressFields(QVector<QPointer<QWidget> > addressFields);
+	void setSearchFields(QVector<QPointer<QWidget> > searchFields);
 	MainWindow* getMainWindow() const;
 	Window* getWindow() const;
 	bool isDragHandle(const QPoint &position) const;
@@ -112,6 +116,8 @@ private:
 	BookmarksModel::Bookmark *m_dropBookmark;
 	QPushButton *m_toggleButton;
 	QPoint m_dragStartPosition;
+	QVector<QPointer<QWidget> > m_addressFields;
+	QVector<QPointer<QWidget> > m_searchFields;
 	ToolBarState m_state;
 	Qt::ToolBarArea m_area;
 	int m_reloadTimer;

@@ -95,6 +95,13 @@ public:
 		GenericContext
 	};
 
+	enum TriggerType
+	{
+		UnknownTrigger = 0,
+		KeyboardTrigger,
+		MouseTrigger
+	};
+
 	enum ActionIdentifier
 	{
 		RunMacroAction = 0,
@@ -223,6 +230,7 @@ public:
 		EndScrollAction,
 		PrintAction,
 		PrintPreviewAction,
+		TakeScreenshotAction,
 		ActivateAddressFieldAction,
 		ActivateSearchFieldAction,
 		ActivateContentAction,

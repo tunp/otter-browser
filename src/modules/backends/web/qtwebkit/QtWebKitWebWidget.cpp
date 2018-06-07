@@ -31,6 +31,7 @@
 #include "../../../../core/ContentBlockingManager.h"
 #include "../../../../core/GesturesManager.h"
 #include "../../../../core/HistoryManager.h"
+#include "../../../../core/JsonSettings.h"
 #include "../../../../core/NetworkCache.h"
 #include "../../../../core/NetworkManager.h"
 #include "../../../../core/NetworkManagerFactory.h"
@@ -259,7 +260,7 @@ void QtWebKitWebWidget::saveState(QWebFrame *frame, QWebHistoryItem *item)
 
 		if (state.isEmpty() || state.count() < 4)
 		{
-			state = {0, getZoom(), m_page->mainFrame()->scrollPosition(), QDateTime::currentDateTime()};
+			state = {0, getZoom(), m_page->mainFrame()->scrollPosition(), QDateTime::currentDateTimeUtc()};
 		}
 		else
 		{
@@ -603,7 +604,7 @@ void QtWebKitWebWidget::handleHistory()
 
 	if (identifier == 0)
 	{
-		m_page->history()->currentItem().setUserData(QVariantList({(Utils::isUrlEmpty(url) ? 0 : HistoryManager::addEntry(url, getTitle(), m_page->mainFrame()->icon(), m_isTyped)), getZoom(), QPoint(0, 0), QDateTime::currentDateTime()}));
+		m_page->history()->currentItem().setUserData(QVariantList({(Utils::isUrlEmpty(url) ? 0 : HistoryManager::addEntry(url, getTitle(), m_page->mainFrame()->icon(), m_isTyped)), getZoom(), QPoint(0, 0), QDateTime::currentDateTimeUtc()}));
 
 		if (m_isTyped)
 		{
@@ -864,7 +865,7 @@ void QtWebKitWebWidget::fillPassword(const PasswordsManager::PasswordInformation
 	}
 }
 
-void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &parameters)
+void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &parameters, ActionsManager::TriggerType trigger)
 {
 	switch (identifier)
 	{
@@ -938,7 +939,7 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 
 			break;
 		case ActionsManager::PurgeTabHistoryAction:
-			triggerAction(ActionsManager::ClearTabHistoryAction, {{QLatin1String("clearGlobalHistory"), true}});
+			triggerAction(ActionsManager::ClearTabHistoryAction, {{QLatin1String("clearGlobalHistory"), true}}, trigger);
 
 			break;
 #ifndef OTTER_ENABLE_QTWEBKIT_LEGACY
@@ -1044,7 +1045,7 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 				const QWebHitTestResult hitResult(m_page->mainFrame()->hitTestContent(getCurrentHitTestResult().hitPosition));
 				const QString title(getCurrentHitTestResult().title);
 
-				Application::triggerAction(ActionsManager::BookmarkPageAction, {{QLatin1String("url"), getCurrentHitTestResult().linkUrl}, {QLatin1String("title"), (title.isEmpty() ? hitResult.element().toPlainText() : title)}}, parentWidget());
+				Application::triggerAction(ActionsManager::BookmarkPageAction, {{QLatin1String("url"), getCurrentHitTestResult().linkUrl}, {QLatin1String("title"), (title.isEmpty() ? hitResult.element().toPlainText() : title)}}, parentWidget(), trigger);
 			}
 
 			break;
@@ -1197,7 +1198,7 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 
 				if (getUrl().matches(getCurrentHitTestResult().imageUrl, (QUrl::NormalizePathSegments | QUrl::RemoveFragment | QUrl::StripTrailingSlash)))
 				{
-					triggerAction(ActionsManager::ReloadAndBypassCacheAction);
+					triggerAction(ActionsManager::ReloadAndBypassCacheAction, {}, trigger);
 				}
 				else
 				{
@@ -1365,11 +1366,11 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 		case ActionsManager::ReloadOrStopAction:
 			if (m_loadingState == OngoingLoadingState)
 			{
-				triggerAction(ActionsManager::StopAction);
+				triggerAction(ActionsManager::StopAction, {}, trigger);
 			}
 			else
 			{
-				triggerAction(ActionsManager::ReloadAction);
+				triggerAction(ActionsManager::ReloadAction, {}, trigger);
 			}
 
 			break;
@@ -1438,7 +1439,7 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 
 			break;
 		case ActionsManager::CopyPlainTextAction:
-			triggerAction(ActionsManager::CopyAction, {{QLatin1String("mode"), QLatin1String("plainText")}});
+			triggerAction(ActionsManager::CopyAction, {{QLatin1String("mode"), QLatin1String("plainText")}}, trigger);
 
 			break;
 		case ActionsManager::CopyAddressAction:
@@ -1456,7 +1457,7 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 
 				if (bookmark)
 				{
-					triggerAction(ActionsManager::PasteAction, {{QLatin1String("text"), bookmark->getDescription()}});
+					triggerAction(ActionsManager::PasteAction, {{QLatin1String("text"), bookmark->getDescription()}}, trigger);
 				}
 			}
 			else if (parameters.contains(QLatin1String("text")))
@@ -1510,8 +1511,8 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 
 			break;
 		case ActionsManager::ClearAllAction:
-			triggerAction(ActionsManager::SelectAllAction);
-			triggerAction(ActionsManager::DeleteAction);
+			triggerAction(ActionsManager::SelectAllAction, {}, trigger);
+			triggerAction(ActionsManager::DeleteAction, {}, trigger);
 
 			break;
 		case ActionsManager::CheckSpellingAction:
@@ -1668,6 +1669,40 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 			m_page->mainFrame()->setScrollPosition(QPoint(qMin(m_page->mainFrame()->scrollBarMaximum(Qt::Horizontal), (m_page->mainFrame()->scrollPosition().x() + m_webView->width())), m_page->mainFrame()->scrollPosition().y()));
 
 			break;
+		case ActionsManager::TakeScreenshotAction:
+			{
+				const QString mode(parameters.value(QLatin1String("mode"), QLatin1String("viewport")).toString());
+				const QSize viewportSize(m_page->viewportSize());
+				const QSize contentsSize((mode == QLatin1String("viewport")) ? viewportSize : m_page->mainFrame()->contentsSize());
+				const QRect rectangle((mode == QLatin1String("area")) ? JsonSettings::readRectangle(parameters.value(QLatin1String("geometry"))) : QRect());
+				QPixmap pixmap(rectangle.isValid() ? rectangle.size() : contentsSize);
+				QPainter painter(&pixmap);
+
+				m_page->setViewportSize(contentsSize);
+
+				if (rectangle.isValid())
+				{
+					painter.translate(-rectangle.topLeft());
+
+					m_page->mainFrame()->render(&painter, {rectangle});
+				}
+				else
+				{
+					m_page->mainFrame()->render(&painter);
+				}
+
+				m_page->setViewportSize(viewportSize);
+
+				const QStringList filters({tr("PNG image (*.png)"), tr("JPEG image (*.jpg *.jpeg)")});
+				const SaveInformation result(Utils::getSavePath(suggestSaveFileName(QLatin1String(".png")), {}, filters));
+
+				if (result.canSave)
+				{
+					pixmap.save(result.path, ((filters.indexOf(result.filter) == 0) ? "PNG" : "JPEG"));
+				}
+			}
+
+			break;
 		case ActionsManager::ActivateContentAction:
 			{
 				m_webView->setFocus();
@@ -1747,7 +1782,7 @@ void QtWebKitWebWidget::triggerAction(int identifier, const QVariantMap &paramet
 
 			break;
 		case ActionsManager::InspectElementAction:
-			triggerAction(ActionsManager::InspectPageAction, {{QLatin1String("isChecked"), true}});
+			triggerAction(ActionsManager::InspectPageAction, {{QLatin1String("isChecked"), true}}, trigger);
 
 			m_page->triggerAction(QWebPage::InspectElement);
 
@@ -2333,7 +2368,7 @@ WindowHistoryInformation QtWebKitWebWidget::getHistory() const
 
 	if (state.isEmpty() || state.count() < 4)
 	{
-		state = {0, getZoom(), m_page->mainFrame()->scrollPosition(), QDateTime::currentDateTime()};
+		state = {0, getZoom(), m_page->mainFrame()->scrollPosition(), QDateTime::currentDateTimeUtc()};
 	}
 	else
 	{
@@ -2686,6 +2721,11 @@ bool QtWebKitWebWidget::canFastForward() const
 bool QtWebKitWebWidget::canInspect() const
 {
 	return !Utils::isUrlEmpty(getUrl());
+}
+
+bool QtWebKitWebWidget::canTakeScreenshot() const
+{
+	return true;
 }
 
 bool QtWebKitWebWidget::canRedo() const

@@ -29,6 +29,8 @@
 namespace Otter
 {
 
+class Feed;
+
 class BookmarksModel final : public QStandardItemModel
 {
 	Q_OBJECT
@@ -39,6 +41,7 @@ public:
 		UnknownBookmark = 0,
 		RootBookmark,
 		TrashBookmark,
+		FeedBookmark,
 		FolderBookmark,
 		UrlBookmark,
 		SeparatorBookmark
@@ -130,6 +133,7 @@ public:
 	bool save(const QString &path) const;
 	bool setData(const QModelIndex &index, const QVariant &value, int role) override;
 	bool hasBookmark(const QUrl &url) const;
+	bool hasFeed(const QUrl &url) const;
 	bool hasKeyword(const QString &keyword) const;
 
 public slots:
@@ -145,6 +149,7 @@ protected:
 	static QDateTime readDateTime(QXmlStreamReader *reader, const QString &attribute);
 
 protected slots:
+	void handleFeedModified(Feed *feed);
 	void notifyBookmarkModified(const QModelIndex &index);
 
 private:
@@ -152,6 +157,7 @@ private:
 	Bookmark *m_trashItem;
 	Bookmark *m_importTargetItem;
 	QHash<Bookmark*, QPair<QModelIndex, int> > m_trash;
+	QHash<QUrl, QVector<Bookmark*> > m_feeds;
 	QHash<QUrl, QVector<Bookmark*> > m_urls;
 	QHash<QString, Bookmark*> m_keywords;
 	QMap<quint64, Bookmark*> m_identifiers;

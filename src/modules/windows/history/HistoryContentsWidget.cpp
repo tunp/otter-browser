@@ -50,8 +50,8 @@ HistoryContentsWidget::HistoryContentsWidget(const QVariantMap &parameters, Wind
 	}
 
 	m_model->setHorizontalHeaderLabels({tr("Address"), tr("Title"), tr("Date")});
-	m_model->setHeaderData(0, Qt::Horizontal, QSize(300, 0), Qt::SizeHintRole);
-	m_model->setHeaderData(1, Qt::Horizontal, QSize(300, 0), Qt::SizeHintRole);
+	m_model->setHeaderData(0, Qt::Horizontal, 300, HeaderViewWidget::WidthRole);
+	m_model->setHeaderData(1, Qt::Horizontal, 300, HeaderViewWidget::WidthRole);
 	m_model->setSortRole(Qt::DisplayRole);
 
 	m_ui->historyViewWidget->setViewMode(ItemViewWidget::TreeViewMode);
@@ -94,7 +94,7 @@ void HistoryContentsWidget::changeEvent(QEvent *event)
 	}
 }
 
-void HistoryContentsWidget::triggerAction(int identifier, const QVariantMap &parameters)
+void HistoryContentsWidget::triggerAction(int identifier, const QVariantMap &parameters, ActionsManager::TriggerType trigger)
 {
 	switch (identifier)
 	{
@@ -108,7 +108,7 @@ void HistoryContentsWidget::triggerAction(int identifier, const QVariantMap &par
 
 			break;
 		default:
-			ContentsWidget::triggerAction(identifier, parameters);
+			ContentsWidget::triggerAction(identifier, parameters, trigger);
 
 			break;
 	}
@@ -481,7 +481,7 @@ bool HistoryContentsWidget::eventFilter(QObject *object, QEvent *event)
 	{
 		const QMouseEvent *mouseEvent(static_cast<QMouseEvent*>(event));
 
-		if (mouseEvent && ((mouseEvent->button() == Qt::LeftButton && mouseEvent->modifiers() != Qt::NoModifier) || mouseEvent->button() == Qt::MiddleButton))
+		if ((mouseEvent->button() == Qt::LeftButton && mouseEvent->modifiers() != Qt::NoModifier) || mouseEvent->button() == Qt::MiddleButton)
 		{
 			const QModelIndex entryIndex(m_ui->historyViewWidget->currentIndex());
 

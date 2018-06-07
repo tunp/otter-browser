@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -222,12 +222,16 @@ QVariant WindowSessionItem::data(int role) const
 			return m_window->getZoom();
 		case SessionModel::IsActiveRole:
 			return m_window->isActive();
+		case SessionModel::IsAudibleRole:
+			return ((m_window->getLoadingState() != WebWidget::DeferredLoadingState && m_window->getWebWidget()) ? m_window->getWebWidget()->isAudible() : false);
+		case SessionModel::IsAudioMutedRole:
+			return ((m_window->getLoadingState() != WebWidget::DeferredLoadingState && m_window->getWebWidget()) ? m_window->getWebWidget()->isAudioMuted() : false);
+		case SessionModel::IsDeferredRole:
+			return (m_window->getLoadingState() == WebWidget::DeferredLoadingState);
 		case SessionModel::IsPinnedRole:
 			return m_window->isPinned();
 		case SessionModel::IsPrivateRole:
 			return m_window->isPrivate();
-		case SessionModel::IsSuspendedRole:
-			return (m_window->getLoadingState() == WebWidget::DeferredLoadingState);
 		default:
 			break;
 	}
@@ -259,6 +263,11 @@ SessionModel::SessionModel(QObject *parent) : QStandardItemModel(parent),
 
 	connect(Application::getInstance(), &Application::windowAdded, this, &SessionModel::handleMainWindowAdded);
 	connect(Application::getInstance(), &Application::windowRemoved, this, &SessionModel::handleMainWindowRemoved);
+	connect(Application::getInstance(), &Application::currentWindowChanged, this, &SessionModel::modelModified);
+	connect(this, &SessionModel::itemChanged, this, &SessionModel::modelModified);
+	connect(this, &SessionModel::rowsInserted, this, &SessionModel::modelModified);
+	connect(this, &SessionModel::rowsRemoved, this, &SessionModel::modelModified);
+	connect(this, &SessionModel::rowsMoved, this, &SessionModel::modelModified);
 }
 
 void SessionModel::handleMainWindowAdded(MainWindow *mainWindow)
@@ -281,6 +290,8 @@ void SessionModel::handleMainWindowAdded(MainWindow *mainWindow)
 	m_rootItem->appendRow(item);
 
 	m_mainWindowItems[mainWindow] = item;
+
+	connect(mainWindow, &MainWindow::currentWindowChanged, this, &SessionModel::modelModified);
 }
 
 void SessionModel::handleMainWindowRemoved(MainWindow *mainWindow)

@@ -12,7 +12,7 @@ project(otter-browser)
 
 set(MAJOR_VERSION "0")
 set(MINOR_VERSION "9")
-set(PATCH_VERSION "98")
+set(PATCH_VERSION "99")
 set(WEEKLY_VERSION "" CACHE STRING "")
 
 add_definitions(-DOTTER_VERSION_MAIN="${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION}" -DOTTER_INSTALL_PREFIX="${CMAKE_INSTALL_PREFIX}")
@@ -103,6 +103,9 @@ set(otter_src
 	src/core/ContentBlockingProfile.cpp
 	src/core/Console.cpp
 	src/core/CookieJar.cpp
+	src/core/FeedParser.cpp
+	src/core/FeedsManager.cpp
+	src/core/FeedsModel.cpp
 	src/core/GesturesManager.cpp
 	src/core/HandlersManager.cpp
 	src/core/HistoryManager.cpp
@@ -157,6 +160,7 @@ set(otter_src
 	src/ui/ContentsWidget.cpp
 	src/ui/CookiePropertiesDialog.cpp
 	src/ui/Dialog.cpp
+	src/ui/FeedPropertiesDialog.cpp
 	src/ui/FilePathWidget.cpp
 	src/ui/IconWidget.cpp
 	src/ui/ImagePropertiesDialog.cpp
@@ -175,6 +179,7 @@ set(otter_src
 	src/ui/OptionWidget.cpp
 	src/ui/PreferencesDialog.cpp
 	src/ui/PreviewWidget.cpp
+	src/ui/ProgressBarWidget.cpp
 	src/ui/ProxyModel.cpp
 	src/ui/ReloadTimeDialog.cpp
 	src/ui/ReportDialog.cpp
@@ -207,7 +212,6 @@ set(otter_src
 	src/ui/WorkspaceWidget.cpp
 	src/ui/preferences/AcceptLanguageDialog.cpp
 	src/ui/preferences/ContentBlockingDialog.cpp
-	src/ui/preferences/ContentBlockingIntervalDelegate.cpp
 	src/ui/preferences/ContentBlockingProfileDialog.cpp
 	src/ui/preferences/CookiesExceptionsDialog.cpp
 	src/ui/preferences/JavaScriptPreferencesDialog.cpp
@@ -246,6 +250,7 @@ set(otter_src
 	src/modules/windows/configuration/ConfigurationContentsWidget.cpp
 	src/modules/windows/cookies/CookiesContentsWidget.cpp
 	src/modules/windows/history/HistoryContentsWidget.cpp
+	src/modules/windows/feeds/FeedsContentsWidget.cpp
 	src/modules/windows/links/LinksContentsWidget.cpp
 	src/modules/windows/notes/NotesContentsWidget.cpp
 	src/modules/windows/pageInformation/PageInformationContentsWidget.cpp
@@ -255,7 +260,7 @@ set(otter_src
 	src/modules/windows/web/PasswordBarWidget.cpp
 	src/modules/windows/web/PermissionBarWidget.cpp
 	src/modules/windows/web/PopupsBarWidget.cpp
-	src/modules/windows/web/ProgressBarWidget.cpp
+	src/modules/windows/web/ProgressToolBarWidget.cpp
 	src/modules/windows/web/SearchBarWidget.cpp
 	src/modules/windows/web/SelectPasswordDialog.cpp
 	src/modules/windows/web/StartPageModel.cpp
@@ -279,6 +284,7 @@ qt5_wrap_ui(otter_ui
 	src/ui/CertificateDialog.ui
 	src/ui/ClearHistoryDialog.ui
 	src/ui/CookiePropertiesDialog.ui
+	src/ui/FeedPropertiesDialog.ui
 	src/ui/ImagePropertiesDialog.ui
 	src/ui/ImportDialog.ui
 	src/ui/LocaleDialog.ui
@@ -319,6 +325,7 @@ qt5_wrap_ui(otter_ui
 	src/modules/windows/cache/CacheContentsWidget.ui
 	src/modules/windows/configuration/ConfigurationContentsWidget.ui
 	src/modules/windows/cookies/CookiesContentsWidget.ui
+	src/modules/windows/feeds/FeedsContentsWidget.ui
 	src/modules/windows/history/HistoryContentsWidget.ui
 	src/modules/windows/links/LinksContentsWidget.ui
 	src/modules/windows/notes/NotesContentsWidget.ui

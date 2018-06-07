@@ -85,7 +85,7 @@ void CacheContentsWidget::print(QPrinter *printer)
 	m_ui->cacheViewWidget->render(printer);
 }
 
-void CacheContentsWidget::triggerAction(int identifier, const QVariantMap &parameters)
+void CacheContentsWidget::triggerAction(int identifier, const QVariantMap &parameters, ActionsManager::TriggerType trigger)
 {
 	switch (identifier)
 	{
@@ -103,7 +103,7 @@ void CacheContentsWidget::triggerAction(int identifier, const QVariantMap &param
 
 			break;
 		default:
-			ContentsWidget::triggerAction(identifier, parameters);
+			ContentsWidget::triggerAction(identifier, parameters, trigger);
 
 			break;
 	}
@@ -113,8 +113,8 @@ void CacheContentsWidget::populateCache()
 {
 	m_model->clear();
 	m_model->setHorizontalHeaderLabels({tr("Address"), tr("Type"), tr("Size"), tr("Last Modified"), tr("Expires")});
-	m_model->setHeaderData(0, Qt::Horizontal, QSize(500, 0), Qt::SizeHintRole);
-	m_model->setHeaderData(2, Qt::Horizontal, QSize(150, 0), Qt::SizeHintRole);
+	m_model->setHeaderData(0, Qt::Horizontal, 500, HeaderViewWidget::WidthRole);
+	m_model->setHeaderData(2, Qt::Horizontal, 150, HeaderViewWidget::WidthRole);
 	m_model->setSortRole(Qt::DisplayRole);
 
 	const NetworkCache *cache(NetworkManagerFactory::getCache());
@@ -598,7 +598,7 @@ bool CacheContentsWidget::eventFilter(QObject *object, QEvent *event)
 	{
 		const QMouseEvent *mouseEvent(static_cast<QMouseEvent*>(event));
 
-		if (mouseEvent && ((mouseEvent->button() == Qt::LeftButton && mouseEvent->modifiers() != Qt::NoModifier) || mouseEvent->button() == Qt::MiddleButton))
+		if ((mouseEvent->button() == Qt::LeftButton && mouseEvent->modifiers() != Qt::NoModifier) || mouseEvent->button() == Qt::MiddleButton)
 		{
 			const QModelIndex entryIndex(m_ui->cacheViewWidget->currentIndex());
 

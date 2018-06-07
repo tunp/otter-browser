@@ -36,6 +36,12 @@ class HeaderViewWidget final : public QHeaderView
 	Q_OBJECT
 
 public:
+	enum DataRole
+	{
+		WidthRole = Qt::UserRole,
+		UserRole
+	};
+
 	explicit HeaderViewWidget(Qt::Orientation orientation, QWidget *parent = nullptr);
 
 public slots:
@@ -116,6 +122,7 @@ public slots:
 
 protected:
 	void showEvent(QShowEvent *event) override;
+	void resizeEvent(QResizeEvent *event) override;
 	void keyPressEvent(QKeyEvent *event) override;
 	void dropEvent(QDropEvent *event) override;
 	void startDrag(Qt::DropActions supportedActions) override;
@@ -130,6 +137,7 @@ protected slots:
 	void handleOptionChanged(int identifier, const QVariant &value);
 	void notifySelectionChanged();
 	void updateFilter();
+	void updateSize();
 
 private:
 	HeaderViewWidget *m_headerWidget;

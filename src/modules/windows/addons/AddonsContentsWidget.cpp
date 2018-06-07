@@ -452,7 +452,7 @@ void AddonsContentsWidget::print(QPrinter *printer)
 	m_ui->addonsViewWidget->render(printer);
 }
 
-void AddonsContentsWidget::triggerAction(int identifier, const QVariantMap &parameters)
+void AddonsContentsWidget::triggerAction(int identifier, const QVariantMap &parameters, ActionsManager::TriggerType trigger)
 {
 	switch (identifier)
 	{
@@ -474,7 +474,7 @@ void AddonsContentsWidget::triggerAction(int identifier, const QVariantMap &para
 
 			break;
 		default:
-			ContentsWidget::triggerAction(identifier, parameters);
+			ContentsWidget::triggerAction(identifier, parameters, trigger);
 
 			break;
 	}
@@ -533,16 +533,11 @@ WebWidget::LoadingState AddonsContentsWidget::getLoadingState() const
 
 bool AddonsContentsWidget::eventFilter(QObject *object, QEvent *event)
 {
-	if (object == m_ui->addonsViewWidget && event->type() == QEvent::KeyPress)
+	if (object == m_ui->addonsViewWidget && event->type() == QEvent::KeyPress && static_cast<QKeyEvent*>(event)->key() == Qt::Key_Delete)
 	{
-		const QKeyEvent *keyEvent(static_cast<QKeyEvent*>(event));
+		removeAddons();
 
-		if (keyEvent && keyEvent->key() == Qt::Key_Delete)
-		{
-			removeAddons();
-
-			return true;
-		}
+		return true;
 	}
 
 	return ContentsWidget::eventFilter(object, event);

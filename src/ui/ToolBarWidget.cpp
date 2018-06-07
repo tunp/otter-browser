@@ -397,6 +397,9 @@ void ToolBarWidget::populateEntries()
 	const ToolBarsManager::ToolBarDefinition definition(getDefinition());
 	const bool isHorizontal(m_area != Qt::LeftToolBarArea && m_area != Qt::RightToolBarArea);
 
+	m_addressFields.clear();
+	m_searchFields.clear();
+
 	switch (definition.type)
 	{
 		case ToolBarsManager::BookmarksBarType:
@@ -427,6 +430,9 @@ void ToolBarWidget::populateEntries()
 
 			break;
 		default:
+			m_addressFields.clear();
+			m_searchFields.clear();
+
 			for (int i = 0; i < definition.entries.count(); ++i)
 			{
 				if (definition.entries.at(i).action == QLatin1String("separator"))
@@ -440,6 +446,15 @@ void ToolBarWidget::populateEntries()
 					if (widget)
 					{
 						addWidget(widget);
+
+						if (definition.entries.at(i).action == QLatin1String("AddressWidget"))
+						{
+							m_addressFields.append(widget);
+						}
+						else if (definition.entries.at(i).action == QLatin1String("SearchWidget"))
+						{
+							m_searchFields.append(widget);
+						}
 
 						layout()->setAlignment(widget, (isHorizontal ? Qt::AlignVCenter : Qt::AlignHCenter));
 					}
@@ -794,6 +809,16 @@ void ToolBarWidget::updateToggleGeometry()
 	}
 }
 
+void ToolBarWidget::setAddressFields(QVector<QPointer<QWidget> > addressFields)
+{
+	m_addressFields = addressFields;
+}
+
+void ToolBarWidget::setSearchFields(QVector<QPointer<QWidget> > searchFields)
+{
+	m_searchFields = searchFields;
+}
+
 void ToolBarWidget::setArea(Qt::ToolBarArea area)
 {
 	if (area != m_area)
@@ -937,6 +962,16 @@ ToolBarState ToolBarWidget::getState() const
 	return m_state;
 }
 
+QVector<QPointer<QWidget> > ToolBarWidget::getAddressFields() const
+{
+	return m_addressFields;
+}
+
+QVector<QPointer<QWidget> > ToolBarWidget::getSearchFields() const
+{
+	return m_searchFields;
+}
+
 Qt::ToolBarArea ToolBarWidget::getArea() const
 {
 	return m_area;
@@ -1019,21 +1054,11 @@ bool ToolBarWidget::event(QEvent *event)
 
 		if (event->type() == QEvent::Wheel)
 		{
-			const QWheelEvent *wheelEvent(static_cast<QWheelEvent*>(event));
-
-			if (wheelEvent)
-			{
-				position = wheelEvent->pos();
-			}
+			position = static_cast<QWheelEvent*>(event)->pos();
 		}
 		else
 		{
-			const QMouseEvent *mouseEvent(static_cast<QMouseEvent*>(event));
-
-			if (mouseEvent)
-			{
-				position = mouseEvent->pos();
-			}
+			position = static_cast<QMouseEvent*>(event)->pos();
 		}
 
 		if (position.isNull() || !isDragHandle(position))
@@ -1239,6 +1264,8 @@ void TabBarToolBarWidget::populateEntries()
 {
 	const ToolBarsManager::ToolBarDefinition definition(getDefinition());
 	const bool isHorizontal(getArea() != Qt::LeftToolBarArea && getArea() != Qt::RightToolBarArea);
+	QVector<QPointer<QWidget> > addressFields;
+	QVector<QPointer<QWidget> > searchFields;
 
 	findTabBar();
 
@@ -1282,6 +1309,15 @@ void TabBarToolBarWidget::populateEntries()
 					}
 					else
 					{
+						if (definition.entries.at(i).action == QLatin1String("AddressWidget"))
+						{
+							addressFields.append(widget);
+						}
+						else if (definition.entries.at(i).action == QLatin1String("SearchWidget"))
+						{
+							searchFields.append(widget);
+						}
+
 						layout()->setAlignment(widget, (isHorizontal ? Qt::AlignVCenter : Qt::AlignHCenter));
 					}
 				}
@@ -1313,6 +1349,9 @@ void TabBarToolBarWidget::populateEntries()
 
 		QTimer::singleShot(200, m_tabBar, &TabBarWidget::updateSize);
 	}
+
+	setAddressFields(addressFields);
+	setSearchFields(searchFields);
 }
 
 void TabBarToolBarWidget::updateVisibility()

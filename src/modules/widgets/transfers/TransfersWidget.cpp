@@ -23,6 +23,7 @@
 #include "../../../core/TransfersManager.h"
 #include "../../../core/Utils.h"
 #include "../../../ui/Action.h"
+#include "../../../ui/ProgressBarWidget.h"
 
 #include <QtCore/QDir>
 #include <QtCore/QFileInfo>
@@ -32,6 +33,7 @@
 #include <QtWidgets/QFileIconProvider>
 #include <QtWidgets/QFrame>
 #include <QtWidgets/QMenu>
+#include <QtWidgets/QToolTip>
 #include <QtWidgets/QWidgetAction>
 
 namespace Otter
@@ -151,9 +153,10 @@ QIcon TransfersWidget::getIcon() const
 
 TransferActionWidget::TransferActionWidget(Transfer *transfer, QWidget *parent) : QWidget(parent),
 	m_transfer(transfer),
+	m_detailsLabel(new QLabel(this)),
 	m_fileNameLabel(new QLabel(this)),
 	m_iconLabel(new QLabel(this)),
-	m_progressBar(new QProgressBar(this)),
+	m_progressBar(new ProgressBarWidget(this)),
 	m_toolButton(new QToolButton(this)),
 	m_centralWidget(new QWidget(this))
 {
@@ -161,6 +164,7 @@ TransferActionWidget::TransferActionWidget(Transfer *transfer, QWidget *parent) 
 	centralLayout->setContentsMargins(0, 0, 0, 0);
 	centralLayout->addWidget(m_fileNameLabel);
 	centralLayout->addWidget(m_progressBar);
+	centralLayout->addWidget(m_detailsLabel);
 
 	QFrame *leftSeparatorFrame(new QFrame(this));
 	leftSeparatorFrame->setFrameShape(QFrame::VLine);
@@ -179,6 +183,7 @@ TransferActionWidget::TransferActionWidget(Transfer *transfer, QWidget *parent) 
 	updateState();
 
 	m_iconLabel->setFixedSize(32, 32);
+	m_progressBar->setMode(ProgressBarWidget::ThinMode);
 	m_toolButton->setIconSize({16, 16});
 	m_toolButton->setAutoRaise(true);
 
@@ -200,7 +205,7 @@ TransferActionWidget::TransferActionWidget(Transfer *transfer, QWidget *parent) 
 
 				break;
 			default:
-				m_transfer->cancel();
+				m_transfer->stop();
 
 				break;
 		}
@@ -225,11 +230,34 @@ void TransferActionWidget::mouseReleaseEvent(QMouseEvent *event)
 void TransferActionWidget::updateState()
 {
 	const QString iconName(m_transfer->getMimeType().iconName());
+	QString details;
+	QVector<QPair<QString, QString> > detailsValues({{tr("From:"), Utils::extractHost(m_transfer->getSource())}});
 	const bool isIndeterminate(m_transfer->getBytesTotal() <= 0);
 	const bool hasError(m_transfer->getState() == Transfer::UnknownState || m_transfer->getState() == Transfer::ErrorState);
 
-	m_fileNameLabel->setText(Utils::elideText(QFileInfo(m_transfer->getTarget()).fileName(), nullptr, 300));
+	if (m_transfer->getState() == Transfer::FinishedState)
+	{
+		detailsValues.append({tr("Size:"), tr("%1 (download completed)").arg(Utils::formatUnit(m_transfer->getBytesTotal()))});
+	}
+	else
+	{
+		detailsValues.append({tr("Size:"), tr("%1 (%2% downloaded)").arg(Utils::formatUnit(m_transfer->getBytesTotal())).arg(Utils::calculatePercent(m_transfer->getBytesReceived(), m_transfer->getBytesTotal()), 0, 'f', 1)});
+	}
+
+	for (int i = 0; i < detailsValues.count(); ++i)
+	{
+		details.append(detailsValues.at(i).first + QLatin1Char(' ') + detailsValues.at(i).second);
+
+		if (i < (detailsValues.count() - 1))
+		{
+			details.append(QLatin1String("<br>"));
+		}
+	}
+
+	m_fileNameLabel->setText(Utils::elideText(QFileInfo(m_transfer->getTarget()).fileName(), m_fileNameLabel->fontMetrics(), nullptr, 300));
+	m_detailsLabel->setText(QLatin1String("<small>") + details + QLatin1String("</small>"));
 	m_iconLabel->setPixmap(QIcon::fromTheme(iconName, QFileIconProvider().icon(iconName)).pixmap(32, 32));
+	m_progressBar->setHasError(hasError);
 	m_progressBar->setRange(0, ((isIndeterminate && !hasError) ? 0 : 100));
 	m_progressBar->setValue(isIndeterminate ? (hasError ? 0 : -1) : ((m_transfer->getBytesTotal() > 0) ? qFloor(Utils::calculatePercent(m_transfer->getBytesReceived(), m_transfer->getBytesTotal())) : -1));
 	m_progressBar->setFormat(isIndeterminate ? tr("Unknown") : QLatin1String("%p%"));
@@ -249,7 +277,7 @@ void TransferActionWidget::updateState()
 			break;
 		default:
 			m_toolButton->setIcon(ThemesManager::createIcon(QLatin1String("task-reject")));
-			m_toolButton->setToolTip(tr("Cancel"));
+			m_toolButton->setToolTip(tr("Stop"));
 
 			break;
 	}
@@ -258,6 +286,20 @@ void TransferActionWidget::updateState()
 Transfer* TransferActionWidget::getTransfer() const
 {
 	return m_transfer;
+}
+
+bool TransferActionWidget::event(QEvent *event)
+{
+	if (event->type() == QEvent::ToolTip)
+	{
+		const bool isIndeterminate(m_transfer->getBytesTotal() <= 0);
+
+		QToolTip::showText(static_cast<QHelpEvent*>(event)->globalPos(), tr("<div style=\"white-space:pre;\">Source: %1\nTarget: %2\nSize: %3\nDownloaded: %4\nProgress: %5</div>").arg(m_transfer->getSource().toDisplayString().toHtmlEscaped()).arg(m_transfer->getTarget().toHtmlEscaped()).arg(isIndeterminate ? tr("Unknown") : Utils::formatUnit(m_transfer->getBytesTotal(), false, 1, true)).arg(Utils::formatUnit(m_transfer->getBytesReceived(), false, 1, true)).arg(isIndeterminate ? tr("Unknown") : QStringLiteral("%1%").arg(Utils::calculatePercent(m_transfer->getBytesReceived(), m_transfer->getBytesTotal()), 0, 'f', 1)));
+
+		return true;
+	}
+
+	return QWidget::event(event);
 }
 
 }

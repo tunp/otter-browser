@@ -20,8 +20,7 @@
 #ifndef OTTER_JOB_H
 #define OTTER_JOB_H
 
-#include "SearchEnginesManager.h"
-
+#include <QtGui/QIcon>
 #include <QtNetwork/QNetworkReply>
 
 namespace Otter
@@ -70,6 +69,23 @@ private:
 	bool m_isSuccess;
 };
 
+class DataFetchJob final : public FetchJob
+{
+	Q_OBJECT
+
+public:
+	explicit DataFetchJob(const QUrl &url, QObject *parent = nullptr);
+
+	QIODevice* getData() const;
+	QMap<QByteArray, QByteArray> getHeaders() const;
+
+protected:
+	void handleSuccessfulReply(QNetworkReply *reply) override;
+
+private:
+	QNetworkReply *m_reply;
+};
+
 class IconFetchJob final : public FetchJob
 {
 	Q_OBJECT
@@ -84,23 +100,6 @@ protected:
 
 private:
 	QIcon m_icon;
-};
-
-class SearchEngineFetchJob final : public FetchJob
-{
-	Q_OBJECT
-
-public:
-	explicit SearchEngineFetchJob(const QUrl &url, const QString &identifier = {}, bool saveSearchEngine = true, QObject *parent = nullptr);
-
-	SearchEnginesManager::SearchEngineDefinition getSearchEngine() const;
-
-protected:
-	void handleSuccessfulReply(QNetworkReply *reply) override;
-
-private:
-	SearchEnginesManager::SearchEngineDefinition m_searchEngine;
-	bool m_needsToSaveSearchEngine;
 };
 
 }

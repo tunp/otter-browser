@@ -409,6 +409,7 @@ ActionsManager::ActionsManager(QObject *parent) : QObject(parent),
 	registerAction(EndScrollAction, QT_TRANSLATE_NOOP("actions", "Exit Scroll Mode"), {}, {}, ActionDefinition::WindowScope);
 	registerAction(PrintAction, QT_TRANSLATE_NOOP("actions", "Print…"), {}, ThemesManager::createIcon(QLatin1String("document-print")), ActionDefinition::WindowScope);
 	registerAction(PrintPreviewAction, QT_TRANSLATE_NOOP("actions", "Print Preview"), {}, ThemesManager::createIcon(QLatin1String("document-print-preview")), ActionDefinition::WindowScope);
+	registerAction(TakeScreenshotAction, QT_TRANSLATE_NOOP("actions", "Take Screenshot"), {}, {}, ActionDefinition::WindowScope, ActionDefinition::NoFlags);
 	registerAction(ActivateAddressFieldAction, QT_TRANSLATE_NOOP("actions", "Activate Address Field"), {}, {}, ActionDefinition::MainWindowScope);
 	registerAction(ActivateSearchFieldAction, QT_TRANSLATE_NOOP("actions", "Activate Search Field"), {}, {}, ActionDefinition::MainWindowScope);
 	registerAction(ActivateContentAction, QT_TRANSLATE_NOOP("actions", "Activate Content"), {}, {}, ActionDefinition::WindowScope);
@@ -508,9 +509,23 @@ void ActionsManager::loadProfiles()
 				const KeyboardProfile::Action definition(iterator.value().at(j));
 				QVector<QKeySequence> shortcuts;
 
-				if (m_shortcuts.contains(definition.action))
+				if (definition.parameters.isEmpty() && m_shortcuts.contains(definition.action))
 				{
 					shortcuts = m_shortcuts[definition.action];
+				}
+				else if (!definition.parameters.isEmpty() && m_extraShortcuts.contains(definition.action))
+				{
+					const QList<QPair<QVariantMap, QVector<QKeySequence> > > extraDefinitions(m_extraShortcuts.values(definition.action));
+
+					for (int k = 0; k < extraDefinitions.count(); ++k)
+					{
+						if (extraDefinitions.at(k).first == definition.parameters)
+						{
+							shortcuts = extraDefinitions.at(k).second;
+
+							break;
+						}
+					}
 				}
 
 				for (int k = 0; k < definition.shortcuts.count(); ++k)

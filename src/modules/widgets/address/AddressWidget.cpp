@@ -43,6 +43,7 @@
 #include <QtGui/QPainter>
 #include <QtGui/QTextBlock>
 #include <QtGui/QTextDocument>
+#include <QtWidgets/QApplication>
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QToolTip>
 
@@ -619,7 +620,7 @@ void AddressWidget::mouseReleaseEvent(QMouseEvent *event)
 
 					if (feeds.count() == 1 && m_window)
 					{
-						m_window->setUrl(feeds.at(0).url);
+						m_window->setUrl(QUrl(QLatin1String("view-feed:") + feeds.first().url.toDisplayString()));
 					}
 					else if (feeds.count() > 1)
 					{
@@ -627,7 +628,7 @@ void AddressWidget::mouseReleaseEvent(QMouseEvent *event)
 
 						for (int i = 0; i < feeds.count(); ++i)
 						{
-							menu.addAction(feeds.at(i).title.isEmpty() ? tr("(Untitled)") : feeds.at(i).title)->setData(feeds.at(i).url);
+							menu.addAction(feeds.at(i).title.isEmpty() ? tr("(Untitled)") : feeds.at(i).title)->setData(QUrl(QLatin1String("view-feed:") + feeds.at(i).url.toDisplayString()));
 						}
 
 						connect(&menu, &QMenu::triggered, this, [&](QAction *action)
@@ -1292,8 +1293,6 @@ void AddressWidget::setWindow(Window *window)
 
 	if (m_window && !m_window->isAboutToClose() && (!sender() || sender() != m_window))
 	{
-		m_window->detachAddressWidget(this);
-
 		disconnect(this, &AddressWidget::requestedSearch, m_window.data(), &Window::requestedSearch);
 		disconnect(m_window.data(), &Window::urlChanged, this, &AddressWidget::setUrl);
 		disconnect(m_window.data(), &Window::iconChanged, this, &AddressWidget::setIcon);
@@ -1311,7 +1310,15 @@ void AddressWidget::setWindow(Window *window)
 			disconnect(this, &AddressWidget::requestedSearch, mainWindow, &MainWindow::search);
 		}
 
-		window->attachAddressWidget(this);
+		if (isVisible() && window->isActive() && Utils::isUrlEmpty(window->getUrl()))
+		{
+			const AddressWidget *addressWidget(qobject_cast<AddressWidget*>(QApplication::focusWidget()));
+
+			if (!addressWidget)
+			{
+				setFocus();
+			}
+		}
 
 		connect(this, &AddressWidget::requestedSearch, window, &Window::requestedSearch);
 		connect(window, &Window::urlChanged, this, &AddressWidget::setUrl);
@@ -1405,23 +1412,42 @@ bool AddressWidget::event(QEvent *event)
 
 		if (entry != UnknownEntry && entry != AddressEntry)
 		{
+			QString toolTip;
+			QKeySequence shortcut;
 			const QString title(m_entries[entry].title);
 
 			if (!title.isEmpty())
 			{
-				if (entry == WebsiteInformationEntry)
+				toolTip = tr(title.toUtf8().constData());
+			}
+
+			switch (entry)
+			{
+				case HistoryDropdownEntry:
+					shortcut = ActionsManager::getActionShortcut(ActionsManager::ActivateAddressFieldAction, {{QLatin1String("showTypedHistoryDropdown"), true}});
+
+					break;
+				case WebsiteInformationEntry:
+					shortcut = ActionsManager::getActionShortcut(ActionsManager::WebsiteInformationAction);
+
+					break;
+				default:
+					break;
+			}
+
+			if (!shortcut.isEmpty())
+			{
+				if (!toolTip.isEmpty())
 				{
-					const QKeySequence shortcut(ActionsManager::getActionShortcut(ActionsManager::WebsiteInformationAction));
-
-					if (!shortcut.isEmpty())
-					{
-						QToolTip::showText(helpEvent->globalPos(), tr(title.toUtf8().constData()) + QLatin1String(" (") + shortcut.toString(QKeySequence::NativeText) + QLatin1Char(')'));
-
-						return true;
-					}
+					toolTip.append(QLatin1Char(' '));
 				}
 
-				QToolTip::showText(helpEvent->globalPos(), tr(title.toUtf8().constData()));
+				toolTip.append(QLatin1Char('(') + shortcut.toString(QKeySequence::NativeText) + QLatin1Char(')'));
+			}
+
+			if (!toolTip.isEmpty())
+			{
+				QToolTip::showText(helpEvent->globalPos(), toolTip);
 
 				return true;
 			}

@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2017 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -92,6 +92,114 @@ JsonSettings::JsonSettings(const QString &path) : QJsonDocument(),
 void JsonSettings::setComment(const QString &comment)
 {
 	m_comment = comment;
+}
+
+QRect JsonSettings::readRectangle(const QVariant &value)
+{
+	QRect rectangle;
+
+	switch (value.type())
+	{
+		case QVariant::String:
+			{
+				const QStringList list(value.toString().split(QLatin1Char(',')));
+
+				if (list.count() == 4)
+				{
+					rectangle = {list.at(0).simplified().toInt(), list.at(1).simplified().toInt(), list.at(2).simplified().toInt(), list.at(3).simplified().toInt()};
+				}
+			}
+
+			break;
+		case QVariant::Map:
+			{
+				const QVariantMap map(value.toMap());
+
+				rectangle = {map.value(QLatin1String("x")).toInt(), map.value(QLatin1String("y")).toInt(), map.value(QLatin1String("width")).toInt(), map.value(QLatin1String("height")).toInt()};
+			}
+
+			break;
+		case QVariant::Rect:
+			rectangle = value.toRect();
+
+			break;
+		default:
+			break;
+	}
+
+	return rectangle;
+}
+
+QPoint JsonSettings::readPoint(const QVariant &value)
+{
+	QPoint point;
+
+	switch (value.type())
+	{
+		case QVariant::String:
+			{
+				const QStringList list(value.toString().split(QLatin1Char(',')));
+
+				if (list.count() == 2)
+				{
+					point = {list.at(0).simplified().toInt(), list.at(1).simplified().toInt()};
+				}
+			}
+
+			break;
+		case QVariant::Map:
+			{
+				const QVariantMap map(value.toMap());
+
+				point = {map.value(QLatin1String("x")).toInt(), map.value(QLatin1String("y")).toInt()};
+			}
+
+			break;
+		case QVariant::Point:
+			point = value.toPoint();
+
+			break;
+		default:
+			break;
+	}
+
+	return point;
+}
+
+QSize JsonSettings::readSize(const QVariant &value)
+{
+	QSize size;
+
+	switch (value.type())
+	{
+		case QVariant::String:
+			{
+				const QStringList list(value.toString().split(QLatin1Char(',')));
+
+				if (list.count() == 2)
+				{
+					size = {list.at(0).simplified().toInt(), list.at(1).simplified().toInt()};
+				}
+			}
+
+			break;
+		case QVariant::Map:
+			{
+				const QVariantMap map(value.toMap());
+
+				size = {map.value(QLatin1String("width")).toInt(), map.value(QLatin1String("height")).toInt()};
+			}
+
+			break;
+		case QVariant::Size:
+			size = value.toSize();
+
+			break;
+		default:
+			break;
+	}
+
+	return size;
 }
 
 QString JsonSettings::getComment() const

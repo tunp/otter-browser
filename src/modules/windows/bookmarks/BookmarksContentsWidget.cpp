@@ -52,10 +52,10 @@ BookmarksContentsWidget::BookmarksContentsWidget(const QVariantMap &parameters, 
 	connect(addMenu->addAction(tr("Add Separator")), &QAction::triggered, this, &BookmarksContentsWidget::addSeparator);
 
 	ProxyModel *model(new ProxyModel(BookmarksManager::getModel(), QVector<QPair<QString, int> >({{tr("Title"), BookmarksModel::TitleRole}, {tr("Address"), BookmarksModel::UrlRole}, {tr("Description"), BookmarksModel::DescriptionRole}, {tr("Keyword"), BookmarksModel::KeywordRole}, {tr("Added"), BookmarksModel::TimeAddedRole}, {tr("Modified"), BookmarksModel::TimeModifiedRole}, {tr("Visited"), BookmarksModel::TimeVisitedRole}, {tr("Visits"), BookmarksModel::VisitsRole}}), this));
-	model->setHeaderData(0, Qt::Horizontal, QSize(300, 0), Qt::SizeHintRole);
-	model->setHeaderData(1, Qt::Horizontal, QSize(300, 0), Qt::SizeHintRole);
-	model->setHeaderData(3, Qt::Horizontal, QSize(150, 0), Qt::SizeHintRole);
-	model->setHeaderData(7, Qt::Horizontal, QSize(150, 0), Qt::SizeHintRole);
+	model->setHeaderData(0, Qt::Horizontal, 300, HeaderViewWidget::WidthRole);
+	model->setHeaderData(1, Qt::Horizontal, 300, HeaderViewWidget::WidthRole);
+	model->setHeaderData(3, Qt::Horizontal, 150, HeaderViewWidget::WidthRole);
+	model->setHeaderData(7, Qt::Horizontal, 150, HeaderViewWidget::WidthRole);
 
 	m_ui->addButton->setMenu(addMenu);
 	m_ui->bookmarksViewWidget->setViewMode(ItemViewWidget::TreeViewMode);
@@ -259,7 +259,7 @@ void BookmarksContentsWidget::showContextMenu(const QPoint &position)
 	menu.exec(m_ui->bookmarksViewWidget->mapToGlobal(position));
 }
 
-void BookmarksContentsWidget::triggerAction(int identifier, const QVariantMap &parameters)
+void BookmarksContentsWidget::triggerAction(int identifier, const QVariantMap &parameters, ActionsManager::TriggerType trigger)
 {
 	switch (identifier)
 	{
@@ -284,7 +284,7 @@ void BookmarksContentsWidget::triggerAction(int identifier, const QVariantMap &p
 
 			break;
 		default:
-			ContentsWidget::triggerAction(identifier, parameters);
+			ContentsWidget::triggerAction(identifier, parameters, trigger);
 
 			break;
 	}
@@ -378,31 +378,26 @@ bool BookmarksContentsWidget::eventFilter(QObject *object, QEvent *event)
 {
 	if (object == m_ui->bookmarksViewWidget && event->type() == QEvent::KeyPress)
 	{
-		const QKeyEvent *keyEvent(static_cast<QKeyEvent*>(event));
-
-		if (keyEvent)
+		switch (static_cast<QKeyEvent*>(event)->key())
 		{
-			switch (keyEvent->key())
-			{
-				case Qt::Key_Delete:
-					removeBookmark();
+			case Qt::Key_Delete:
+				removeBookmark();
 
-					return true;
-				case Qt::Key_Enter:
-				case Qt::Key_Return:
-					openBookmark();
+				return true;
+			case Qt::Key_Enter:
+			case Qt::Key_Return:
+				openBookmark();
 
-					return true;
-				default:
-					break;
-			}
+				return true;
+			default:
+				break;
 		}
 	}
 	else if (object == m_ui->bookmarksViewWidget->viewport() && event->type() == QEvent::MouseButtonRelease)
 	{
 		const QMouseEvent *mouseEvent(static_cast<QMouseEvent*>(event));
 
-		if (mouseEvent && ((mouseEvent->button() == Qt::LeftButton && mouseEvent->modifiers() != Qt::NoModifier) || mouseEvent->button() == Qt::MiddleButton))
+		if ((mouseEvent->button() == Qt::LeftButton && mouseEvent->modifiers() != Qt::NoModifier) || mouseEvent->button() == Qt::MiddleButton)
 		{
 			const BookmarksModel::Bookmark *bookmark(BookmarksManager::getModel()->getBookmark(m_ui->bookmarksViewWidget->indexAt(mouseEvent->pos())));
 
@@ -417,19 +412,15 @@ bool BookmarksContentsWidget::eventFilter(QObject *object, QEvent *event)
 	else if (object == m_ui->bookmarksViewWidget->viewport() && event->type() == QEvent::ToolTip)
 	{
 		const QHelpEvent *helpEvent(static_cast<QHelpEvent*>(event));
+		const QModelIndex index(m_ui->bookmarksViewWidget->indexAt(helpEvent->pos()));
+		const BookmarksModel::Bookmark *bookmark(BookmarksManager::getModel()->getBookmark(index));
 
-		if (helpEvent)
+		if (bookmark)
 		{
-			const QModelIndex index(m_ui->bookmarksViewWidget->indexAt(helpEvent->pos()));
-			const BookmarksModel::Bookmark *bookmark(BookmarksManager::getModel()->getBookmark(index));
-
-			if (bookmark)
-			{
-				QToolTip::showText(helpEvent->globalPos(), QFontMetrics(QToolTip::font()).elidedText(bookmark->toolTip(), Qt::ElideRight, (QApplication::desktop()->screenGeometry(m_ui->bookmarksViewWidget).width() / 2)), m_ui->bookmarksViewWidget, m_ui->bookmarksViewWidget->visualRect(index));
-			}
-
-			return true;
+			QToolTip::showText(helpEvent->globalPos(), QFontMetrics(QToolTip::font()).elidedText(bookmark->toolTip(), Qt::ElideRight, (QApplication::desktop()->screenGeometry(m_ui->bookmarksViewWidget).width() / 2)), m_ui->bookmarksViewWidget, m_ui->bookmarksViewWidget->visualRect(index));
 		}
+
+		return true;
 	}
 
 	return ContentsWidget::eventFilter(object, event);

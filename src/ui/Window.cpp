@@ -21,7 +21,6 @@
 
 #include "Window.h"
 #include "MainWindow.h"
-#include "OpenAddressDialog.h"
 #include "WidgetFactory.h"
 #include "../core/Application.h"
 #include "../core/HistoryManager.h"
@@ -122,19 +121,10 @@ void Window::focusInEvent(QFocusEvent *event)
 		m_suspendTimer = 0;
 	}
 
-	AddressWidget *addressWidget(findAddressWidget());
-
-	if (Utils::isUrlEmpty(getUrl()) && (!m_contentsWidget || m_contentsWidget->getLoadingState() != WebWidget::OngoingLoadingState) && addressWidget)
-	{
-		addressWidget->setFocus();
-	}
-	else if (m_contentsWidget)
-	{
-		m_contentsWidget->setFocus();
-	}
+	updateFocus();
 }
 
-void Window::triggerAction(int identifier, const QVariantMap &parameters)
+void Window::triggerAction(int identifier, const QVariantMap &parameters, ActionsManager::TriggerType trigger)
 {
 	switch (identifier)
 	{
@@ -164,7 +154,7 @@ void Window::triggerAction(int identifier, const QVariantMap &parameters)
 				QVariantMap mutableParameters(parameters);
 				mutableParameters[QLatin1String("tab")] = m_identifier;
 
-				m_mainWindow->triggerAction(identifier, mutableParameters);
+				m_mainWindow->triggerAction(identifier, mutableParameters, trigger);
 			}
 
 			break;
@@ -184,71 +174,15 @@ void Window::triggerAction(int identifier, const QVariantMap &parameters)
 			}
 
 			break;
-		case ActionsManager::GoAction:
-		case ActionsManager::ActivateAddressFieldAction:
-		case ActionsManager::ActivateSearchFieldAction:
-			{
-				AddressWidget *addressWidget(findAddressWidget());
-				SearchWidget *searchWidget(nullptr);
-
-				for (int i = 0; i < m_searchWidgets.count(); ++i)
-				{
-					if (m_searchWidgets.at(i) && m_searchWidgets.at(i)->isVisible())
-					{
-						searchWidget = m_searchWidgets.at(i);
-
-						break;
-					}
-				}
-
-				if (identifier == ActionsManager::ActivateSearchFieldAction && searchWidget)
-				{
-					searchWidget->activate(Qt::ShortcutFocusReason);
-				}
-				else if (addressWidget)
-				{
-					if (identifier == ActionsManager::ActivateAddressFieldAction)
-					{
-						addressWidget->activate(Qt::ShortcutFocusReason);
-					}
-					else if (identifier == ActionsManager::ActivateSearchFieldAction)
-					{
-						addressWidget->setText(QLatin1String("? "));
-						addressWidget->activate(Qt::OtherFocusReason);
-					}
-					else if (identifier == ActionsManager::GoAction)
-					{
-						addressWidget->handleUserInput(addressWidget->text(), SessionsManager::CurrentTabOpen);
-
-						return;
-					}
-				}
-				else if (identifier == ActionsManager::ActivateAddressFieldAction || identifier == ActionsManager::ActivateSearchFieldAction)
-				{
-					OpenAddressDialog dialog(ActionExecutor::Object(this, this), this);
-
-					if (identifier == ActionsManager::ActivateSearchFieldAction)
-					{
-						dialog.setText(QLatin1String("? "));
-					}
-
-					if (dialog.exec() == QDialog::Accepted && dialog.getResult().type == InputInterpreter::InterpreterResult::SearchType)
-					{
-						handleSearchRequest(dialog.getResult().searchQuery, dialog.getResult().searchEngine, SessionsManager::calculateOpenHints(SessionsManager::CurrentTabOpen));
-					}
-				}
-			}
-
-			break;
 		case ActionsManager::FullScreenAction:
 			if (m_contentsWidget)
 			{
-				m_contentsWidget->triggerAction(identifier, parameters);
+				m_contentsWidget->triggerAction(identifier, parameters, trigger);
 			}
 
 			break;
 		default:
-			getContentsWidget()->triggerAction(identifier, parameters);
+			getContentsWidget()->triggerAction(identifier, parameters, trigger);
 
 			break;
 	}
@@ -264,42 +198,6 @@ void Window::clear()
 
 		emit urlChanged(getUrl(), true);
 	}
-}
-
-void Window::attachAddressWidget(AddressWidget *widget)
-{
-	if (!m_addressWidgets.contains(widget))
-	{
-		m_addressWidgets.append(widget);
-
-		if (widget->isVisible() && isActive() && Utils::isUrlEmpty(m_contentsWidget->getUrl()))
-		{
-			const AddressWidget *addressWidget(qobject_cast<AddressWidget*>(QApplication::focusWidget()));
-
-			if (!addressWidget)
-			{
-				widget->setFocus();
-			}
-		}
-	}
-}
-
-void Window::detachAddressWidget(AddressWidget *widget)
-{
-	m_addressWidgets.removeAll(widget);
-}
-
-void Window::attachSearchWidget(SearchWidget *widget)
-{
-	if (!m_searchWidgets.contains(widget))
-	{
-		m_searchWidgets.append(widget);
-	}
-}
-
-void Window::detachSearchWidget(SearchWidget *widget)
-{
-	m_searchWidgets.removeAll(widget);
 }
 
 void Window::requestClose()
@@ -412,12 +310,21 @@ void Window::handleToolBarStateChanged(int identifier, const ToolBarState &state
 	}
 }
 
-void Window::updateNavigationBar()
+void Window::updateFocus()
 {
-	if (m_addressBar)
+	QTimer::singleShot(100, this, [&]()
 	{
-		m_addressBar->reload();
-	}
+		AddressWidget *addressWidget(m_mainWindow->findAddressField());
+
+		if (Utils::isUrlEmpty(getUrl()) && (!m_contentsWidget || m_contentsWidget->getLoadingState() != WebWidget::OngoingLoadingState) && addressWidget)
+		{
+			addressWidget->setFocus();
+		}
+		else if (m_contentsWidget)
+		{
+			m_contentsWidget->setFocus();
+		}
+	});
 }
 
 void Window::setSession(const SessionWindow &session, bool deferLoading)
@@ -463,7 +370,7 @@ void Window::setUrl(const QUrl &url, bool isTyped)
 {
 	ContentsWidget *newWidget(nullptr);
 
-	if (url.scheme() == QLatin1String("about"))
+	if (url.scheme() == QLatin1String("about") || url.scheme() == QLatin1String("view-feed"))
 	{
 		if (m_session.historyIndex < 0 && !Utils::isUrlEmpty(getUrl()) && SessionsManager::hasUrl(url, true))
 		{
@@ -472,11 +379,16 @@ void Window::setUrl(const QUrl &url, bool isTyped)
 			return;
 		}
 
-		newWidget = WidgetFactory::createContentsWidget(url.path(), {}, this, this);
+		newWidget = WidgetFactory::createContentsWidget(((url.scheme() == QLatin1String("view-feed")) ? QLatin1String("feeds") : url.path()), {}, this, this);
 
-		if (newWidget && !newWidget->canClone())
+		if (newWidget)
 		{
-			SessionsManager::removeStoredUrl(newWidget->getUrl().toString());
+			newWidget->setUrl(url);
+
+			if (!newWidget->canClone())
+			{
+				SessionsManager::removeStoredUrl(newWidget->getUrl().toString());
+			}
 		}
 	}
 
@@ -595,7 +507,7 @@ void Window::setContentsWidget(ContentsWidget *widget)
 		}
 		else
 		{
-			const AddressWidget *addressWidget(findAddressWidget());
+			const AddressWidget *addressWidget(m_mainWindow->findAddressField());
 
 			if (Utils::isUrlEmpty(m_contentsWidget->getUrl()) && addressWidget)
 			{
@@ -603,6 +515,8 @@ void Window::setContentsWidget(ContentsWidget *widget)
 			}
 		}
 	}
+
+	updateFocus();
 
 	m_session = SessionWindow();
 
@@ -634,20 +548,7 @@ void Window::setContentsWidget(ContentsWidget *widget)
 	connect(m_contentsWidget, &ContentsWidget::optionChanged, this, &Window::optionChanged);
 	connect(m_contentsWidget, &ContentsWidget::zoomChanged, this, &Window::zoomChanged);
 	connect(m_contentsWidget, &ContentsWidget::canZoomChanged, this, &Window::canZoomChanged);
-	connect(m_contentsWidget, &ContentsWidget::webWidgetChanged, this, &Window::updateNavigationBar);
-}
-
-AddressWidget* Window::findAddressWidget() const
-{
-	for (int i = 0; i < m_addressWidgets.count(); ++i)
-	{
-		if (m_addressWidgets.at(i) && m_addressWidgets.at(i)->isVisible())
-		{
-			return m_addressWidgets.at(i);
-		}
-	}
-
-	return m_addressWidgets.value(0, nullptr);
+	connect(m_contentsWidget, &ContentsWidget::webWidgetChanged, m_addressBar, &WindowToolBarWidget::reload);
 }
 
 Window* Window::clone(bool cloneHistory, MainWindow *mainWindow) const
@@ -670,6 +571,11 @@ Window* Window::clone(bool cloneHistory, MainWindow *mainWindow) const
 MainWindow* Window::getMainWindow() const
 {
 	return m_mainWindow;
+}
+
+WindowToolBarWidget* Window::getAddressBar() const
+{
+	return m_addressBar;
 }
 
 ContentsWidget* Window::getContentsWidget()

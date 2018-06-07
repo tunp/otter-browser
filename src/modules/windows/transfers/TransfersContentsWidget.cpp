@@ -22,6 +22,7 @@
 #include "../../../core/TransfersManager.h"
 #include "../../../core/Utils.h"
 #include "../../../ui/Menu.h"
+#include "../../../ui/ProgressBarWidget.h"
 
 #include "ui_TransfersContentsWidget.h"
 
@@ -32,7 +33,6 @@
 #include <QtGui/QKeyEvent>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QMessageBox>
-#include <QtWidgets/QProgressBar>
 
 namespace Otter
 {
@@ -43,7 +43,7 @@ ProgressBarDelegate::ProgressBarDelegate(QObject *parent) : ItemDelegate(parent)
 
 void ProgressBarDelegate::setEditorData(QWidget *editor, const QModelIndex &index) const
 {
-	QProgressBar *progressBar(qobject_cast<QProgressBar*>(editor));
+	ProgressBarWidget *progressBar(qobject_cast<ProgressBarWidget*>(editor));
 
 	if (progressBar)
 	{
@@ -51,6 +51,7 @@ void ProgressBarDelegate::setEditorData(QWidget *editor, const QModelIndex &inde
 		const bool isIndeterminate(index.data(TransfersContentsWidget::BytesTotalRole).toLongLong() <= 0);
 		const bool hasError(state == Transfer::UnknownState || state == Transfer::ErrorState);
 
+		progressBar->setHasError(hasError);
 		progressBar->setRange(0, ((isIndeterminate && !hasError) ? 0 : 100));
 		progressBar->setValue(isIndeterminate ? (hasError ? 0 : -1) : index.data(TransfersContentsWidget::ProgressRole).toInt());
 		progressBar->setFormat(isIndeterminate ? tr("Unknown") : QLatin1String("%p%"));
@@ -61,7 +62,7 @@ QWidget* ProgressBarDelegate::createEditor(QWidget *parent, const QStyleOptionVi
 {
 	Q_UNUSED(option)
 
-	QProgressBar *editor(new QProgressBar(parent));
+	ProgressBarWidget *editor(new ProgressBarWidget(parent));
 	editor->setAlignment(Qt::AlignCenter);
 
 	setEditorData(editor, index);
@@ -77,12 +78,12 @@ TransfersContentsWidget::TransfersContentsWidget(const QVariantMap &parameters, 
 	m_ui->setupUi(this);
 
 	m_model->setHorizontalHeaderLabels({tr("Status"), tr("Filename"), tr("Size"), tr("Progress"), tr("Time"), tr("Speed"), tr("Started"), tr("Finished")});
-	m_model->setHeaderData(0, Qt::Horizontal, QSize(28, 0), Qt::SizeHintRole);
-	m_model->setHeaderData(1, Qt::Horizontal, QSize(500, 0), Qt::SizeHintRole);
-	m_model->setHeaderData(2, Qt::Horizontal, QSize(150, 0), Qt::SizeHintRole);
-	m_model->setHeaderData(3, Qt::Horizontal, QSize(250, 0), Qt::SizeHintRole);
-	m_model->setHeaderData(4, Qt::Horizontal, QSize(150, 0), Qt::SizeHintRole);
-	m_model->setHeaderData(5, Qt::Horizontal, QSize(150, 0), Qt::SizeHintRole);
+	m_model->setHeaderData(0, Qt::Horizontal, 28, HeaderViewWidget::WidthRole);
+	m_model->setHeaderData(1, Qt::Horizontal, 500, HeaderViewWidget::WidthRole);
+	m_model->setHeaderData(2, Qt::Horizontal, 150, HeaderViewWidget::WidthRole);
+	m_model->setHeaderData(3, Qt::Horizontal, 250, HeaderViewWidget::WidthRole);
+	m_model->setHeaderData(4, Qt::Horizontal, 150, HeaderViewWidget::WidthRole);
+	m_model->setHeaderData(5, Qt::Horizontal, 150, HeaderViewWidget::WidthRole);
 
 	m_ui->transfersViewWidget->setModel(m_model);
 	m_ui->transfersViewWidget->setItemDelegateForColumn(3, new ProgressBarDelegate(this));
@@ -484,7 +485,7 @@ void TransfersContentsWidget::print(QPrinter *printer)
 	m_ui->transfersViewWidget->render(printer);
 }
 
-void TransfersContentsWidget::triggerAction(int identifier, const QVariantMap &parameters)
+void TransfersContentsWidget::triggerAction(int identifier, const QVariantMap &parameters, ActionsManager::TriggerType trigger)
 {
 	switch (identifier)
 	{
@@ -524,7 +525,7 @@ void TransfersContentsWidget::triggerAction(int identifier, const QVariantMap &p
 
 			break;
 		default:
-			ContentsWidget::triggerAction(identifier, parameters);
+			ContentsWidget::triggerAction(identifier, parameters, trigger);
 
 			break;
 	}
@@ -608,34 +609,24 @@ bool TransfersContentsWidget::eventFilter(QObject *object, QEvent *event)
 {
 	if (object == m_ui->transfersViewWidget && event->type() == QEvent::KeyPress)
 	{
-		const QKeyEvent *keyEvent(static_cast<QKeyEvent*>(event));
-
-		if (keyEvent)
+		switch (static_cast<QKeyEvent*>(event)->key())
 		{
-			switch (keyEvent->key())
-			{
-				case Qt::Key_Delete:
-					removeTransfer();
+			case Qt::Key_Delete:
+				removeTransfer();
 
-					return true;
-				case Qt::Key_Enter:
-				case Qt::Key_Return:
-					openTransfer();
+				return true;
+			case Qt::Key_Enter:
+			case Qt::Key_Return:
+				openTransfer();
 
-					return true;
-				default:
-					break;
-			}
+				return true;
+			default:
+				break;
 		}
 	}
-	else if (object == m_ui->downloadLineEditWidget && event->type() == QEvent::KeyPress)
+	else if (object == m_ui->downloadLineEditWidget && event->type() == QEvent::KeyPress && static_cast<QKeyEvent*>(event)->key() == Qt::Key_Escape)
 	{
-		const QKeyEvent *keyEvent(static_cast<QKeyEvent*>(event));
-
-		if (keyEvent->key() == Qt::Key_Escape)
-		{
-			m_ui->downloadLineEditWidget->clear();
-		}
+		m_ui->downloadLineEditWidget->clear();
 	}
 
 	return ContentsWidget::eventFilter(object, event);

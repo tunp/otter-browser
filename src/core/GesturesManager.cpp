@@ -64,32 +64,20 @@ MouseProfile::Gesture::Step::Step(const QInputEvent *event) : type(event->type()
 		case QEvent::MouseButtonPress:
 		case QEvent::MouseButtonRelease:
 		case QEvent::MouseButtonDblClick:
-			{
-				const QMouseEvent *mouseEvent(static_cast<const QMouseEvent*>(event));
-
-				if (mouseEvent)
-				{
-					button = mouseEvent->button();
-				}
-			}
+			button = static_cast<const QMouseEvent*>(event)->button();
 
 			break;
 		case QEvent::Wheel:
 			{
-				const QWheelEvent *wheelEvent(static_cast<const QWheelEvent*>(event));
+				const QPoint delta(static_cast<const QWheelEvent*>(event)->angleDelta());
 
-				if (wheelEvent)
+				if (qAbs(delta.x()) > qAbs(delta.y()))
 				{
-					const QPoint delta(wheelEvent->angleDelta());
-
-					if (qAbs(delta.x()) > qAbs(delta.y()))
-					{
-						direction = (delta.x() > 0) ? MouseGestures::MoveRightMouseAction : MouseGestures::MoveLeftMouseAction;
-					}
-					else if (qAbs(delta.y()) > 0)
-					{
-						direction = (delta.y() > 0) ? MouseGestures::MoveUpMouseAction : MouseGestures::MoveDownMouseAction;
-					}
+					direction = (delta.x() > 0) ? MouseGestures::MoveRightMouseAction : MouseGestures::MoveLeftMouseAction;
+				}
+				else if (qAbs(delta.y()) > 0)
+				{
+					direction = (delta.y() > 0) ? MouseGestures::MoveUpMouseAction : MouseGestures::MoveDownMouseAction;
 				}
 			}
 
@@ -341,7 +329,7 @@ MouseProfile::Gesture::Step MouseProfile::Gesture::Step::fromString(const QStrin
 
 bool MouseProfile::Gesture::Step::operator ==(const Step &other) const
 {
-	return (type == other.type) && (button == other.button) && (direction == other.direction) && (modifiers == other.modifiers || type == QEvent::MouseMove);
+	return (type == other.type && button == other.button && direction == other.direction && (modifiers == other.modifiers || type == QEvent::MouseMove));
 }
 
 bool MouseProfile::Gesture::Step::operator !=(const Step &other) const
@@ -616,26 +604,10 @@ void GesturesManager::createInstance()
 {
 	if (!m_instance)
 	{
-		QVector<QVector<MouseProfile::Gesture::Step> > generic;
-		generic.reserve(3);
-		generic.append({MouseProfile::Gesture::Step(QEvent::MouseButtonDblClick, Qt::LeftButton)});
-		generic.append({MouseProfile::Gesture::Step(QEvent::MouseButtonPress, Qt::LeftButton), MouseProfile::Gesture::Step(QEvent::MouseButtonRelease, Qt::LeftButton)});
-		generic.append({MouseProfile::Gesture::Step(QEvent::MouseButtonPress, Qt::LeftButton), MouseProfile::Gesture::Step(QEvent::MouseMove, MouseGestures::UnknownMouseAction)});
-
-		QVector<QVector<MouseProfile::Gesture::Step> > link;
-		link.append({MouseProfile::Gesture::Step(QEvent::MouseButtonPress, Qt::LeftButton), MouseProfile::Gesture::Step(QEvent::MouseButtonRelease, Qt::LeftButton)});
-		link.append({MouseProfile::Gesture::Step(QEvent::MouseButtonPress, Qt::LeftButton), MouseProfile::Gesture::Step(QEvent::MouseMove, MouseGestures::UnknownMouseAction)});
-
-		QVector<QVector<MouseProfile::Gesture::Step> > contentEditable;
-		contentEditable.append({MouseProfile::Gesture::Step(QEvent::MouseButtonPress, Qt::MiddleButton)});
-
-		QVector<QVector<MouseProfile::Gesture::Step> > tabHandle;
-		tabHandle.append({MouseProfile::Gesture::Step(QEvent::MouseButtonPress, Qt::LeftButton), MouseProfile::Gesture::Step(QEvent::MouseMove, MouseGestures::UnknownMouseAction)});
-
-		m_nativeGestures[GesturesManager::GenericContext] = generic;
-		m_nativeGestures[GesturesManager::LinkContext] = link;
-		m_nativeGestures[GesturesManager::ContentEditableContext] = contentEditable;
-		m_nativeGestures[GesturesManager::TabHandleContext] = tabHandle;
+		m_nativeGestures[GesturesManager::GenericContext] = {{{QEvent::MouseButtonDblClick, Qt::LeftButton}}, {{QEvent::MouseButtonPress, Qt::LeftButton}, {QEvent::MouseButtonRelease, Qt::LeftButton}}, {{QEvent::MouseButtonPress, Qt::LeftButton}, {QEvent::MouseMove, MouseGestures::UnknownMouseAction}}};
+		m_nativeGestures[GesturesManager::LinkContext] = {{{QEvent::MouseButtonPress, Qt::LeftButton}, {QEvent::MouseButtonRelease, Qt::LeftButton}}, {{QEvent::MouseButtonPress, Qt::LeftButton}, {QEvent::MouseMove, MouseGestures::UnknownMouseAction}}};
+		m_nativeGestures[GesturesManager::ContentEditableContext] = {{{QEvent::MouseButtonPress, Qt::MiddleButton}}};
+		m_nativeGestures[GesturesManager::TabHandleContext] = {{{QEvent::MouseButtonPress, Qt::LeftButton}, {QEvent::MouseMove, MouseGestures::UnknownMouseAction}}};
 
 		m_instance = new GesturesManager(QCoreApplication::instance());
 		m_gesturesContextEnumerator = GesturesManager::staticMetaObject.indexOfEnumerator(QLatin1String("GesturesContext").data());
@@ -1071,7 +1043,7 @@ bool GesturesManager::triggerAction(const MouseProfile::Gesture &gesture)
 		QVariantMap parameters(gesture.parameters);
 		parameters.unite(m_paramaters);
 
-		Application::triggerAction(gesture.action, parameters, m_trackedObject);
+		Application::triggerAction(gesture.action, parameters, m_trackedObject, ActionsManager::MouseTrigger);
 	}
 
 	if (m_trackedObject)

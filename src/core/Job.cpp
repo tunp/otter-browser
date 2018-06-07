@@ -36,6 +36,9 @@ FetchJob::FetchJob(const QUrl &url, QObject *parent) : Job(parent),
 	m_isSuccess(true)
 {
 	QNetworkRequest request(url);
+#if QT_VERSION >= 0x050600
+	request.setAttribute(QNetworkRequest::FollowRedirectsAttribute, true);
+#endif
 	request.setHeader(QNetworkRequest::UserAgentHeader, NetworkManagerFactory::getUserAgent());
 
 	m_reply = NetworkManagerFactory::getNetworkManager()->get(request);
@@ -121,6 +124,36 @@ QUrl FetchJob::getUrl() const
 	return m_reply->request().url();
 }
 
+DataFetchJob::DataFetchJob(const QUrl &url, QObject *parent) : FetchJob(url, parent),
+	m_reply(nullptr)
+{
+}
+
+void DataFetchJob::handleSuccessfulReply(QNetworkReply *reply)
+{
+	m_reply = reply;
+
+	markAsFinished();
+}
+
+QIODevice* DataFetchJob::getData() const
+{
+	return m_reply;
+}
+
+QMap<QByteArray, QByteArray> DataFetchJob::getHeaders() const
+{
+	QMap<QByteArray, QByteArray> headers;
+	const QList<QNetworkReply::RawHeaderPair> rawHeaders(m_reply->rawHeaderPairs());
+
+	for (int i = 0; i < rawHeaders.count(); ++i)
+	{
+		headers[rawHeaders.at(i).first] = rawHeaders.at(i).second;
+	}
+
+	return headers;
+}
+
 IconFetchJob::IconFetchJob(const QUrl &url, QObject *parent) : FetchJob(url, parent)
 {
 	setSizeLimit(20480);
@@ -147,62 +180,6 @@ void IconFetchJob::handleSuccessfulReply(QNetworkReply *reply)
 QIcon IconFetchJob::getIcon() const
 {
 	return m_icon;
-}
-
-SearchEngineFetchJob::SearchEngineFetchJob(const QUrl &url, const QString &identifier, bool saveSearchEngine, QObject *parent) : FetchJob(url, parent),
-	m_needsToSaveSearchEngine(saveSearchEngine)
-{
-	m_searchEngine.identifier = (identifier.isEmpty() ? Utils::createIdentifier({}, SearchEnginesManager::getSearchEngines()) : identifier);
-}
-
-SearchEnginesManager::SearchEngineDefinition SearchEngineFetchJob::getSearchEngine() const
-{
-	return m_searchEngine;
-}
-
-void SearchEngineFetchJob::handleSuccessfulReply(QNetworkReply *reply)
-{
-	m_searchEngine = SearchEnginesManager::loadSearchEngine(reply, m_searchEngine.identifier);
-
-	if (!m_searchEngine.isValid())
-	{
-		markAsFailure();
-
-		return;
-	}
-
-	if (m_searchEngine.selfUrl.isEmpty())
-	{
-		m_searchEngine.selfUrl = reply->request().url();
-	}
-
-	if (m_needsToSaveSearchEngine)
-	{
-		SearchEnginesManager::addSearchEngine(m_searchEngine);
-	}
-
-	if (m_searchEngine.iconUrl.isValid())
-	{
-		const IconFetchJob *job(new IconFetchJob(m_searchEngine.iconUrl, this));
-
-		connect(job, &IconFetchJob::jobFinished, this, [=]()
-		{
-			m_searchEngine.icon = job->getIcon();
-
-			if (m_needsToSaveSearchEngine)
-			{
-				SearchEnginesManager::addSearchEngine(m_searchEngine);
-			}
-
-			deleteLater();
-
-			emit jobFinished(true);
-		});
-	}
-	else
-	{
-		markAsFinished();
-	}
 }
 
 }

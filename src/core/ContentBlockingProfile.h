@@ -34,6 +34,14 @@ class ContentBlockingProfile final : public QObject
 	Q_OBJECT
 
 public:
+	enum ProfileError
+	{
+		NoError = 0,
+		ReadError,
+		DownloadError,
+		ChecksumError
+	};
+
 	enum ProfileFlag
 	{
 		NoFlags = 0,
@@ -68,10 +76,12 @@ public:
 	ContentBlockingManager::CosmeticFiltersResult getCosmeticFilters(const QStringList &domains, bool isDomainOnly);
 	QVector<QLocale::Language> getLanguages() const;
 	ProfileCategory getCategory() const;
+	ProfileError getError() const;
 	ProfileFlags getFlags() const;
 	int getUpdateInterval() const;
 	bool downloadRules();
 	bool remove();
+	bool isUpdating() const;
 
 protected:
 	enum RuleOption : quint32
@@ -162,6 +172,7 @@ private:
 	QMultiHash<QString, QString> m_cosmeticFiltersDomainRules;
 	QMultiHash<QString, QString> m_cosmeticFiltersDomainExceptions;
 	ProfileCategory m_category;
+	ProfileError m_error;
 	ProfileFlags m_flags;
 	int m_updateInterval;
 	bool m_isUpdating;

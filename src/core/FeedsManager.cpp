@@ -1,0 +1,680 @@
+/**************************************************************************
+* Otter Browser: Web browser controlled by the user, not vice-versa.
+* Copyright (C) 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+*
+* This program is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* (at your option) any later version.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with this program. If not, see <http://www.gnu.org/licenses/>.
+*
+**************************************************************************/
+
+#include "FeedsManager.h"
+#include "Application.h"
+#include "BookmarksManager.h"
+#include "Console.h"
+#include "FeedParser.h"
+#include "Job.h"
+#include "LongTermTimer.h"
+#include "NotificationsManager.h"
+#include "SessionsManager.h"
+#include "Utils.h"
+
+#include <QtCore/QFile>
+#include <QtCore/QJsonArray>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonObject>
+#include <QtCore/QSaveFile>
+
+namespace Otter
+{
+
+Feed::Feed(const QString &title, const QUrl &url, const QIcon &icon, int updateInterval, QObject *parent) : QObject(parent),
+	m_updateTimer(nullptr),
+	m_title(title),
+	m_url(url),
+	m_icon(icon),
+	m_error(NoError),
+	m_updateInterval(0),
+	m_isUpdating(false)
+{
+	setUpdateInterval(updateInterval);
+}
+
+void Feed::addEntries(const QVector<Entry> &entries)
+{
+	QStringList existingRemovedEntries;
+	int amount(0);
+
+	for (int i = (entries.count() - 1); i >= 0; --i)
+	{
+		const Feed::Entry entry(entries.at(i));
+
+		if (m_removedEntries.contains(entry.identifier))
+		{
+			existingRemovedEntries.append(entry.identifier);
+		}
+		else
+		{
+			bool hasEntry(false);
+
+			for (int j = 0; j < m_entries.count(); ++j)
+			{
+				const Feed::Entry existingEntry(m_entries.at(j));
+
+				if (existingEntry.identifier == entry.identifier)
+				{
+					m_entries[j] = entry;
+
+					if (existingEntry.publicationTime != entry.publicationTime || existingEntry.updateTime != entry.updateTime)
+					{
+						++amount;
+					}
+
+					hasEntry = true;
+
+					break;
+				}
+			}
+
+			if (!hasEntry)
+			{
+				++amount;
+
+				m_entries.prepend(entries.at(i));
+			}
+		}
+	}
+
+	m_removedEntries = existingRemovedEntries;
+
+	if (amount > 0)
+	{
+		connect(NotificationsManager::createNotification(NotificationsManager::FeedUpdatedEvent, tr("Feed updated:\n%1").arg(getTitle()), Notification::InformationLevel, this), &Notification::clicked, [&]()
+		{
+			Application::getInstance()->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), QUrl(QLatin1String("view-feed:") + getUrl().toDisplayString())}});
+		});
+
+		emit feedModified(this);
+	}
+}
+
+void Feed::addRemovedEntry(const QString &identifier)
+{
+	if (!m_removedEntries.contains(identifier))
+	{
+		for (int i = 0; i < m_entries.count(); ++i)
+		{
+			if (m_entries.at(i).identifier == identifier)
+			{
+				m_entries.removeAt(i);
+
+				m_removedEntries.append(identifier);
+
+				emit feedModified(this);
+
+				break;
+			}
+		}
+	}
+}
+
+void Feed::setTitle(const QString &title)
+{
+	if (title != m_title)
+	{
+		m_title = title;
+
+		emit feedModified(this);
+	}
+}
+
+void Feed::setDescription(const QString &description)
+{
+	if (description != m_description)
+	{
+		m_description = description;
+
+		emit feedModified(this);
+	}
+}
+
+void Feed::setUrl(const QUrl &url)
+{
+	if (url != m_url)
+	{
+		m_url = url;
+
+		update();
+
+		emit feedModified(this);
+	}
+}
+
+void Feed::setIcon(const QUrl &url)
+{
+	const IconFetchJob *job(new IconFetchJob(url, this));
+
+	connect(job, &IconFetchJob::jobFinished, this, [=]()
+	{
+		setIcon(job->getIcon());
+	});
+}
+
+void Feed::setIcon(const QIcon &icon)
+{
+	m_icon = icon;
+
+	emit feedModified(this);
+}
+
+void Feed::setLastUpdateTime(const QDateTime &time)
+{
+	if (time != m_lastUpdateTime)
+	{
+		m_lastUpdateTime = time;
+
+		emit feedModified(this);
+	}
+}
+
+void Feed::setLastSynchronizationTime(const QDateTime &time)
+{
+	if (time != m_lastSynchronizationTime)
+	{
+		m_lastSynchronizationTime = time;
+
+		emit feedModified(this);
+	}
+}
+
+void Feed::setMimeType(const QMimeType &mimeType)
+{
+	m_mimeType = mimeType;
+}
+
+void Feed::setCategories(const QMap<QString, QString> &categories)
+{
+	if (categories != m_categories)
+	{
+		m_categories = categories;
+
+		emit feedModified(this);
+	}
+}
+
+void Feed::setRemovedEntries(const QStringList &removedEntries)
+{
+	m_removedEntries = removedEntries;
+}
+
+void Feed::setEntries(const QVector<Feed::Entry> &entries)
+{
+	m_entries = entries;
+}
+
+void Feed::setError(Feed::FeedError error)
+{
+	m_error = error;
+
+	emit feedModified(this);
+}
+
+void Feed::setUpdateInterval(int interval)
+{
+	if (interval != m_updateInterval)
+	{
+		m_updateInterval = interval;
+
+		if (interval <= 0 && m_updateTimer)
+		{
+			m_updateTimer->deleteLater();
+			m_updateTimer = nullptr;
+		}
+		else
+		{
+			if (!m_updateTimer)
+			{
+				m_updateTimer = new LongTermTimer(this);
+
+				connect(m_updateTimer, &LongTermTimer::timeout, this, &Feed::update);
+			}
+
+			m_updateTimer->start(static_cast<quint64>(interval) * 60000);
+		}
+
+		emit feedModified(this);
+	}
+}
+
+void Feed::update()
+{
+	m_error = NoError;
+	m_isUpdating = true;
+
+	emit feedModified(this);
+
+	DataFetchJob *job(new DataFetchJob(m_url, this));
+
+	connect(job, &DataFetchJob::jobFinished, this, [=](bool isSuccess)
+	{
+		if (isSuccess)
+		{
+			FeedParser *parser(FeedParser::createParser(this, job));
+
+			if (!parser || !parser->parse(job))
+			{
+				m_error = ParseError;
+
+				Console::addMessage(tr("Failed to parse feed: %1").arg(m_url.toDisplayString()), Console::NetworkCategory, Console::ErrorLevel);
+			}
+			else
+			{
+				emit entriesModified(this);
+			}
+		}
+		else
+		{
+			m_error = DownloadError;
+		}
+
+		m_isUpdating = false;
+
+		emit feedModified(this);
+	});
+}
+
+QString Feed::getTitle() const
+{
+	return m_title;
+}
+
+QString Feed::getDescription() const
+{
+	return m_description;
+}
+
+QUrl Feed::getUrl() const
+{
+	return m_url;
+}
+
+QIcon Feed::getIcon() const
+{
+	return m_icon;
+}
+
+QDateTime Feed::getLastUpdateTime() const
+{
+	return m_lastUpdateTime;
+}
+
+QDateTime Feed::getLastSynchronizationTime() const
+{
+	return m_lastSynchronizationTime;
+}
+
+QMimeType Feed::getMimeType() const
+{
+	return m_mimeType;
+}
+
+QMap<QString, QString> Feed::getCategories() const
+{
+	return m_categories;
+}
+
+QStringList Feed::getRemovedEntries() const
+{
+	return m_removedEntries;
+}
+
+QVector<Feed::Entry> Feed::getEntries(const QStringList &categories) const
+{
+	if (!categories.isEmpty())
+	{
+		QVector<Entry> entries;
+
+		for (int i = 0; i < m_entries.count(); ++i)
+		{
+			const Feed::Entry entry(m_entries.at(i));
+
+			if (!m_categories.isEmpty())
+			{
+				for (int j = 0; j < categories.count(); ++j)
+				{
+					if (entry.categories.contains(categories.at(j)))
+					{
+						entries.append(entry);
+
+						break;
+					}
+				}
+			}
+		}
+
+		return entries;
+	}
+
+	return m_entries;
+}
+
+Feed::FeedError Feed::getError() const
+{
+	return m_error;
+}
+
+int Feed::getUpdateInterval() const
+{
+	return m_updateInterval;
+}
+
+bool Feed::isUpdating() const
+{
+	return m_isUpdating;
+}
+
+FeedsManager* FeedsManager::m_instance(nullptr);
+FeedsModel* FeedsManager::m_model(nullptr);
+QVector<Feed*> FeedsManager::m_feeds;
+bool FeedsManager::m_isInitialized(false);
+
+FeedsManager::FeedsManager(QObject *parent) : QObject(parent),
+	m_saveTimer(0)
+{
+}
+
+void FeedsManager::timerEvent(QTimerEvent *event)
+{
+	if (event->timerId() == m_saveTimer)
+	{
+		killTimer(m_saveTimer);
+
+		m_saveTimer = 0;
+
+		if (m_model)
+		{
+			m_model->save(SessionsManager::getWritableDataPath(QLatin1String("feeds.opml")));
+		}
+
+		if (SessionsManager::isReadOnly())
+		{
+			return;
+		}
+
+		QSaveFile file(SessionsManager::getWritableDataPath(QLatin1String("feeds.json")));
+
+		if (!file.open(QIODevice::WriteOnly))
+		{
+			return;
+		}
+
+		QJsonArray feedsArray;
+
+		for (int i = 0; i < m_feeds.count(); ++i)
+		{
+			const Feed *feed(m_feeds.at(i));
+
+			if (!FeedsManager::getModel()->hasFeed(feed->getUrl()) && !BookmarksManager::getModel()->hasFeed(feed->getUrl()))
+			{
+				continue;
+			}
+
+			const QMap<QString, QString> categories(feed->getCategories());
+			QJsonObject feedObject({{QLatin1String("title"), feed->getTitle()}, {QLatin1String("url"), feed->getUrl().toString()}, {QLatin1String("updateInterval"), QString::number(feed->getUpdateInterval())}, {QLatin1String("lastSynchronizationTime"), feed->getLastUpdateTime().toString(Qt::ISODate)}, {QLatin1String("lastUpdateTime"), feed->getLastSynchronizationTime().toString(Qt::ISODate)}});
+
+			if (!feed->getDescription().isEmpty())
+			{
+				feedObject.insert(QLatin1String("description"), feed->getDescription());
+			}
+
+			if (!feed->getIcon().isNull())
+			{
+				feedObject.insert(QLatin1String("icon"), Utils::savePixmapAsDataUri(feed->getIcon().pixmap(feed->getIcon().availableSizes().value(0, QSize(16, 16)))));
+			}
+
+			if (!categories.isEmpty())
+			{
+				QMap<QString, QString>::const_iterator iterator;
+				QJsonObject categoriesObject;
+
+				for (iterator = categories.begin(); iterator != categories.end(); ++iterator)
+				{
+					categoriesObject.insert(iterator.key(), iterator.value());
+				}
+
+				feedObject.insert(QLatin1String("categories"), categoriesObject);
+			}
+
+			if (!feed->getRemovedEntries().isEmpty())
+			{
+				feedObject.insert(QLatin1String("removedEntries"), QJsonArray::fromStringList(feed->getRemovedEntries()));
+			}
+
+			const QVector<Feed::Entry> entries(feed->getEntries());
+			QJsonArray entriesArray;
+
+			for (int j = 0; j < entries.count(); ++j)
+			{
+				const Feed::Entry entry(entries.at(j));
+				QJsonObject entryObject({{QLatin1String("identifier"), entry.identifier}, {QLatin1String("title"), entry.title}});
+
+				if (!entry.summary.isEmpty())
+				{
+					entryObject.insert(QLatin1String("summary"), entry.summary);
+				}
+
+				if (!entry.content.isEmpty())
+				{
+					entryObject.insert(QLatin1String("content"), entry.content);
+				}
+
+				if (!entry.author.isEmpty())
+				{
+					entryObject.insert(QLatin1String("author"), entry.author);
+				}
+
+				if (!entry.email.isEmpty())
+				{
+					entryObject.insert(QLatin1String("email"), entry.email);
+				}
+
+				if (!entry.url.isEmpty())
+				{
+					entryObject.insert(QLatin1String("url"), entry.url.toString());
+				}
+
+				if (entry.publicationTime.isValid())
+				{
+					entryObject.insert(QLatin1String("publicationTime"), entry.publicationTime.toString(Qt::ISODate));
+				}
+
+				if (entry.updateTime.isValid())
+				{
+					entryObject.insert(QLatin1String("updateTime"), entry.updateTime.toString(Qt::ISODate));
+				}
+
+				if (!entry.categories.isEmpty())
+				{
+					entryObject.insert(QLatin1String("categories"), QJsonArray::fromStringList(entry.categories));
+				}
+
+				entriesArray.append(entryObject);
+			}
+
+			feedObject.insert(QLatin1String("entries"), entriesArray);
+
+			feedsArray.append(feedObject);
+		}
+
+		QJsonDocument document;
+		document.setArray(feedsArray);
+
+		file.write(document.toJson());
+		file.commit();
+	}
+}
+
+void FeedsManager::createInstance()
+{
+	if (!m_instance)
+	{
+		m_instance = new FeedsManager(QCoreApplication::instance());
+	}
+}
+
+void FeedsManager::ensureInitialized()
+{
+	if (m_isInitialized)
+	{
+		return;
+	}
+
+	m_isInitialized = true;
+
+	QFile file(SessionsManager::getWritableDataPath(QLatin1String("feeds.json")));
+
+	if (file.open(QIODevice::ReadOnly))
+	{
+		const QJsonArray feedsArray(QJsonDocument::fromJson(file.readAll()).array());
+
+		for (int i = 0; i < feedsArray.count(); ++i)
+		{
+			const QJsonObject feedObject(feedsArray.at(i).toObject());
+			Feed *feed(createFeed(QUrl(feedObject.value(QLatin1String("url")).toString()), feedObject.value(QLatin1String("title")).toString(), Utils::loadPixmapFromDataUri(feedObject.value(QLatin1String("icon")).toString()), feedObject.value(QLatin1String("updateInterval")).toInt()));
+			feed->setDescription(feedObject.value(QLatin1String("description")).toString());
+			feed->setLastUpdateTime(QDateTime::fromString(feedObject.value(QLatin1String("lastUpdateTime")).toString(), Qt::ISODate));
+			feed->setLastSynchronizationTime(QDateTime::fromString(feedObject.value(QLatin1String("lastSynchronizationTime")).toString(), Qt::ISODate));
+			feed->setRemovedEntries(feedObject.value(QLatin1String("removedEntries")).toVariant().toStringList());
+
+			if (feedObject.contains(QLatin1String("categories")))
+			{
+				QMap<QString, QString> categories;
+				const QVariantMap rawCategories(feedObject.value(QLatin1String("categories")).toVariant().toMap());
+				QVariantMap::const_iterator iterator;
+
+				for (iterator = rawCategories.begin(); iterator != rawCategories.end(); ++iterator)
+				{
+					categories[iterator.key()] = iterator.value().toString();
+				}
+
+				feed->setCategories(categories);
+			}
+
+			const QJsonArray entriesArray(feedObject.value(QLatin1String("entries")).toArray());
+			QVector<Feed::Entry> entries;
+			entries.reserve(entriesArray.count());
+
+			for (int j = 0; j < entriesArray.count(); ++j)
+			{
+				const QJsonObject entryObject(entriesArray.at(j).toObject());
+				Feed::Entry entry;
+				entry.identifier = entryObject.value(QLatin1String("identifier")).toString();
+				entry.title = entryObject.value(QLatin1String("title")).toString();
+				entry.summary = entryObject.value(QLatin1String("summary")).toString();
+				entry.content = entryObject.value(QLatin1String("content")).toString();
+				entry.author = entryObject.value(QLatin1String("author")).toString();
+				entry.email = entryObject.value(QLatin1String("email")).toString();
+				entry.url = entryObject.value(QLatin1String("url")).toString();
+				entry.publicationTime = QDateTime::fromString(entryObject.value(QLatin1String("publicationTime")).toString(), Qt::ISODate);
+				entry.updateTime = QDateTime::fromString(entryObject.value(QLatin1String("updateTime")).toString(), Qt::ISODate);
+				entry.categories = entryObject.value(QLatin1String("categories")).toVariant().toStringList();
+
+				entries.append(entry);
+			}
+
+			feed->setEntries(entries);
+		}
+	}
+
+	if (!m_model)
+	{
+		m_model = new FeedsModel(SessionsManager::getWritableDataPath(QLatin1String("feeds.opml")), m_instance);
+	}
+}
+
+void FeedsManager::scheduleSave()
+{
+	if (m_saveTimer == 0)
+	{
+		m_saveTimer = startTimer(1000);
+	}
+}
+
+void FeedsManager::handleFeedModified(Feed *feed)
+{
+	if (feed)
+	{
+		emit feedModified(feed->getUrl());
+	}
+
+	scheduleSave();
+}
+
+FeedsManager* FeedsManager::getInstance()
+{
+	return m_instance;
+}
+
+FeedsModel* FeedsManager::getModel()
+{
+	ensureInitialized();
+
+	return m_model;
+}
+
+Feed* FeedsManager::createFeed(const QUrl &url, const QString &title, const QIcon &icon, int updateInterval)
+{
+	ensureInitialized();
+
+	Feed *feed(getFeed(url));
+
+	if (feed)
+	{
+		return feed;
+	}
+
+	feed = new Feed(title, url, icon, updateInterval, m_instance);
+
+	m_feeds.append(feed);
+
+	connect(feed, &Feed::feedModified, m_instance, &FeedsManager::handleFeedModified);
+
+	return feed;
+}
+
+Feed* FeedsManager::getFeed(const QUrl &url)
+{
+	ensureInitialized();
+
+	const QUrl normalizedUrl(Utils::normalizeUrl(url));
+
+	for (int i = 0; i < m_feeds.count(); ++i)
+	{
+		Feed *feed(m_feeds.at(i));
+
+		if (m_feeds.at(i)->getUrl() == url || m_feeds.at(i)->getUrl() == normalizedUrl)
+		{
+			return feed;
+		}
+	}
+
+	return nullptr;
+}
+
+QVector<Feed*> FeedsManager::getFeeds()
+{
+	ensureInitialized();
+
+	return m_feeds;
+}
+
+}

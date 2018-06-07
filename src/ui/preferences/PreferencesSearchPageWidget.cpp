@@ -23,7 +23,6 @@
 #include "../LineEditWidget.h"
 #include "../SearchEnginePropertiesDialog.h"
 #include "../../core/ItemModel.h"
-#include "../../core/Job.h"
 #include "../../core/SessionsManager.h"
 #include "../../core/SettingsManager.h"
 #include "../../core/ThemesManager.h"
@@ -41,8 +40,6 @@
 
 namespace Otter
 {
-
-Animation* PreferencesSearchPageWidget::m_updateAnimation = nullptr;
 
 SearchEngineTitleDelegate::SearchEngineTitleDelegate(QObject *parent) : ItemDelegate(parent)
 {
@@ -90,6 +87,8 @@ QWidget* SearchEngineKeywordDelegate::createEditor(QWidget *parent, const QStyle
 	return widget;
 }
 
+Animation* PreferencesSearchPageWidget::m_updateAnimation = nullptr;
+
 PreferencesSearchPageWidget::PreferencesSearchPageWidget(QWidget *parent) : QWidget(parent),
 	m_ui(new Ui::PreferencesSearchPageWidget)
 {
@@ -97,6 +96,7 @@ PreferencesSearchPageWidget::PreferencesSearchPageWidget(QWidget *parent) : QWid
 
 	ItemModel *searchEnginesModel(new ItemModel(this));
 	searchEnginesModel->setHorizontalHeaderLabels({tr("Name"), tr("Keyword")});
+	searchEnginesModel->setHeaderData(0, Qt::Horizontal, 250, HeaderViewWidget::WidthRole);
 	searchEnginesModel->setExclusive(true);
 
 	const QString defaultSearchEngine(SettingsManager::getOption(SettingsManager::Search_DefaultSearchEngineOption).toString());
@@ -123,8 +123,9 @@ PreferencesSearchPageWidget::PreferencesSearchPageWidget(QWidget *parent) : QWid
 	m_ui->searchSuggestionsCheckBox->setChecked(SettingsManager::getOption(SettingsManager::Search_SearchEnginesSuggestionsOption).toBool());
 
 	QMenu *addSearchEngineMenu(new QMenu(m_ui->addSearchButton));
-	const QAction *createSearchEngineAction(addSearchEngineMenu->addAction(tr("New…")));
-	const QAction *importSearchEngineAction(addSearchEngineMenu->addAction(tr("File…")));
+
+	connect(addSearchEngineMenu->addAction(tr("New…")), &QAction::triggered, this, &PreferencesSearchPageWidget::createSearchEngine);
+	connect(addSearchEngineMenu->addAction(tr("File…")), &QAction::triggered, this, &PreferencesSearchPageWidget::importSearchEngine);
 
 	addSearchEngineMenu->addAction(tr("Readd"))->setMenu(new QMenu(m_ui->addSearchButton));
 
@@ -145,8 +146,6 @@ PreferencesSearchPageWidget::PreferencesSearchPageWidget(QWidget *parent) : QWid
 	connect(m_ui->removeSearchButton, &QPushButton::clicked, this, &PreferencesSearchPageWidget::removeSearchEngine);
 	connect(m_ui->moveDownSearchButton, &QToolButton::clicked, m_ui->searchViewWidget, &ItemViewWidget::moveDownRow);
 	connect(m_ui->moveUpSearchButton, &QToolButton::clicked, m_ui->searchViewWidget, &ItemViewWidget::moveUpRow);
-	connect(createSearchEngineAction, &QAction::triggered, this, &PreferencesSearchPageWidget::createSearchEngine);
-	connect(importSearchEngineAction, &QAction::triggered, this, &PreferencesSearchPageWidget::importSearchEngine);
 }
 
 PreferencesSearchPageWidget::~PreferencesSearchPageWidget()

@@ -19,21 +19,154 @@
 **************************************************************************/
 
 #include "ContentBlockingDialog.h"
-#include "ContentBlockingIntervalDelegate.h"
 #include "ContentBlockingProfileDialog.h"
+#include "../Animation.h"
 #include "../../core/Console.h"
 #include "../../core/ContentBlockingManager.h"
 #include "../../core/ContentBlockingProfile.h"
 #include "../../core/SessionsManager.h"
 #include "../../core/SettingsManager.h"
+#include "../../core/ThemesManager.h"
 #include "../../core/Utils.h"
 
 #include "ui_ContentBlockingDialog.h"
 
 #include <QtCore/QDir>
+#include <QtWidgets/QSpinBox>
+#include <QtWidgets/QToolTip>
 
 namespace Otter
 {
+
+ContentBlockingTitleDelegate::ContentBlockingTitleDelegate(QObject *parent) : ItemDelegate(parent)
+{
+}
+
+void ContentBlockingTitleDelegate::initStyleOption(QStyleOptionViewItem *option, const QModelIndex &index) const
+{
+	ItemDelegate::initStyleOption(option, index);
+
+	const ContentBlockingProfile *profile(ContentBlockingManager::getProfile(index.data(ContentBlockingManager::NameRole).toString()));
+
+	if (profile)
+	{
+		option->features |= QStyleOptionViewItem::HasDecoration;
+
+		if (profile->isUpdating())
+		{
+			const Animation *animation(ContentBlockingDialog::getUpdateAnimation());
+
+			if (animation)
+			{
+				option->icon = QIcon(animation->getCurrentPixmap());
+			}
+		}
+		else if (profile->getError() != ContentBlockingProfile::NoError)
+		{
+			option->icon = ThemesManager::createIcon(QLatin1String("dialog-error"));
+		}
+		else if (profile->getLastUpdate().isNull() || profile->getLastUpdate().daysTo(QDateTime::currentDateTimeUtc()) > 7)
+		{
+			option->icon = ThemesManager::createIcon(QLatin1String("dialog-warning"));
+		}
+	}
+}
+
+bool ContentBlockingTitleDelegate::helpEvent(QHelpEvent *event, QAbstractItemView *view, const QStyleOptionViewItem &option, const QModelIndex &index)
+{
+	if (event->type() == QEvent::ToolTip)
+	{
+		const ContentBlockingProfile *profile(ContentBlockingManager::getProfile(index.data(ContentBlockingManager::NameRole).toString()));
+
+		if (profile)
+		{
+			QString toolTip;
+
+			if (profile->getError() != ContentBlockingProfile::NoError)
+			{
+				switch (profile->getError())
+				{
+					case ContentBlockingProfile::ReadError:
+						toolTip = tr("Failed to read profile file");
+
+						break;
+					case ContentBlockingProfile::DownloadError:
+						toolTip = tr("Failed to download profile rules");
+
+						break;
+					case ContentBlockingProfile::ChecksumError:
+						toolTip = tr("Failed to verify profile rules using checksum");
+
+						break;
+					default:
+						break;
+				}
+			}
+			else if (profile->getLastUpdate().isNull())
+			{
+				toolTip = tr("Profile was never updated");
+			}
+			else if (profile->getLastUpdate().daysTo(QDateTime::currentDateTimeUtc()) > 7)
+			{
+				toolTip = tr("Profile was last updated more than one week ago");
+			}
+
+			if (!toolTip.isEmpty())
+			{
+				QToolTip::showText(event->globalPos(), displayText(index.data(Qt::DisplayRole), view->locale()) + QLatin1Char('\n') + toolTip, view);
+
+				return true;
+			}
+		}
+	}
+
+	return ItemDelegate::helpEvent(event, view, option, index);
+}
+
+ContentBlockingIntervalDelegate::ContentBlockingIntervalDelegate(QObject *parent) : ItemDelegate(parent)
+{
+}
+
+void ContentBlockingIntervalDelegate::setModelData(QWidget *editor, QAbstractItemModel *model, const QModelIndex &index) const
+{
+	const QSpinBox *widget(qobject_cast<QSpinBox*>(editor));
+
+	if (widget)
+	{
+		model->setData(index, widget->value(), Qt::DisplayRole);
+	}
+}
+
+QWidget* ContentBlockingIntervalDelegate::createEditor(QWidget *parent, const QStyleOptionViewItem &option, const QModelIndex &index) const
+{
+	Q_UNUSED(option)
+
+	QSpinBox *widget(new QSpinBox(parent));
+	widget->setSuffix(QCoreApplication::translate("Otter::ContentBlockingIntervalDelegate", " day(s)"));
+	widget->setSpecialValueText(QCoreApplication::translate("Otter::ContentBlockingIntervalDelegate", "Never"));
+	widget->setMinimum(0);
+	widget->setMaximum(365);
+	widget->setValue(index.data(Qt::DisplayRole).toInt());
+	widget->setFocus();
+
+	return widget;
+}
+
+QString ContentBlockingIntervalDelegate::displayText(const QVariant &value, const QLocale &locale) const
+{
+	Q_UNUSED(locale)
+
+	if (value.isNull())
+	{
+		return {};
+	}
+
+	const int updateInterval(value.toInt());
+
+	return ((updateInterval > 0) ? QCoreApplication::translate("Otter::ContentBlockingIntervalDelegate", "%n day(s)", "", updateInterval) : QCoreApplication::translate("Otter::ContentBlockingIntervalDelegate", "Never"));
+}
+
+Animation* ContentBlockingDialog::m_updateAnimation = nullptr;
 
 ContentBlockingDialog::ContentBlockingDialog(QWidget *parent) : Dialog(parent),
 	m_ui(new Ui::ContentBlockingDialog)
@@ -43,9 +176,9 @@ ContentBlockingDialog::ContentBlockingDialog(QWidget *parent) : Dialog(parent),
 	const QStringList globalProfiles(SettingsManager::getOption(SettingsManager::ContentBlocking_ProfilesOption).toStringList());
 
 	m_ui->profilesViewWidget->setModel(ContentBlockingManager::createModel(this, globalProfiles));
+	m_ui->profilesViewWidget->setItemDelegateForColumn(0, new ContentBlockingTitleDelegate(this));
 	m_ui->profilesViewWidget->setItemDelegateForColumn(1, new ContentBlockingIntervalDelegate(this));
 	m_ui->profilesViewWidget->setViewMode(ItemViewWidget::TreeViewMode);
-	m_ui->profilesViewWidget->header()->setSectionResizeMode(0, QHeaderView::Stretch);
 	m_ui->profilesViewWidget->expandAll();
 	m_ui->cosmeticFiltersComboBox->addItem(tr("All"), QLatin1String("all"));
 	m_ui->cosmeticFiltersComboBox->addItem(tr("Domain specific only"), QLatin1String("domainOnly"));
@@ -169,6 +302,24 @@ void ContentBlockingDialog::updateProfile()
 	const QModelIndex index(m_ui->profilesViewWidget->currentIndex().sibling(m_ui->profilesViewWidget->currentIndex().row(), 0));
 	ContentBlockingProfile *profile(ContentBlockingManager::getProfile(index.data(ContentBlockingManager::NameRole).toString()));
 
+	if (!m_updateAnimation)
+	{
+		const QString path(ThemesManager::getAnimationPath(QLatin1String("spinner")));
+
+		if (path.isEmpty())
+		{
+			m_updateAnimation = new SpinnerAnimation(this);
+		}
+		else
+		{
+			m_updateAnimation = new GenericAnimation(path, this);
+		}
+
+		m_updateAnimation->start();
+
+		connect(m_updateAnimation, &Animation::frameChanged, m_ui->profilesViewWidget->viewport(), static_cast<void(QWidget::*)()>(&QWidget::update));
+	}
+
 	if (profile)
 	{
 		profile->downloadRules();
@@ -179,6 +330,11 @@ void ContentBlockingDialog::updateProfilesActions()
 {
 	const QModelIndex index(m_ui->profilesViewWidget->currentIndex().sibling(m_ui->profilesViewWidget->currentIndex().row(), 0));
 	const bool isEditable(index.isValid() && index.flags().testFlag(Qt::ItemNeverHasChildren));
+
+	if (index.column() != 1)
+	{
+		m_ui->profilesViewWidget->setCurrentIndex(index.sibling(index.row(), 1));
+	}
 
 	m_ui->editProfileButton->setEnabled(isEditable);
 	m_ui->removeProfileButton->setEnabled(isEditable);
@@ -263,6 +419,8 @@ void ContentBlockingDialog::handleProfileModified(const QString &name)
 	{
 		return;
 	}
+
+	m_ui->profilesViewWidget->viewport()->update();
 
 	for (int i = 0; i < m_ui->profilesViewWidget->getRowCount(); ++i)
 	{
@@ -404,6 +562,11 @@ void ContentBlockingDialog::save()
 	SettingsManager::setOption(SettingsManager::ContentBlocking_CosmeticFiltersModeOption, m_ui->cosmeticFiltersComboBox->currentData().toString());
 
 	close();
+}
+
+Animation *ContentBlockingDialog::getUpdateAnimation()
+{
+	return m_updateAnimation;
 }
 
 }

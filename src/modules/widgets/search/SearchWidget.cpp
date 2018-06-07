@@ -19,7 +19,6 @@
 **************************************************************************/
 
 #include "SearchWidget.h"
-#include "../../../core/Job.h"
 #include "../../../core/SearchEnginesManager.h"
 #include "../../../core/SearchSuggester.h"
 #include "../../../core/SettingsManager.h"
@@ -740,8 +739,6 @@ void SearchWidget::setWindow(Window *window)
 
 	if (m_window && !m_window->isAboutToClose() && (!sender() || sender() != m_window))
 	{
-		m_window->detachSearchWidget(this);
-
 		disconnect(this, &SearchWidget::requestedSearch, m_window.data(), &Window::requestedSearch);
 		disconnect(m_window.data(), &Window::loadingStateChanged, this, &SearchWidget::handleLoadingStateChanged);
 		disconnect(m_window.data(), &Window::optionChanged, this, &SearchWidget::handleWindowOptionChanged);
@@ -755,8 +752,6 @@ void SearchWidget::setWindow(Window *window)
 		{
 			disconnect(this, &SearchWidget::requestedSearch, mainWindow, &MainWindow::search);
 		}
-
-		window->attachSearchWidget(this);
 
 		setSearchEngine(window->getOption(SettingsManager::Search_DefaultSearchEngineOption).toString());
 
@@ -816,29 +811,26 @@ bool SearchWidget::event(QEvent *event)
 	if (isEnabled() && event->type() == QEvent::ToolTip)
 	{
 		const QHelpEvent *helpEvent(static_cast<QHelpEvent*>(event));
+		QString toolTip;
 
-		if (helpEvent)
+		if (m_iconRectangle.contains(helpEvent->pos()) || m_dropdownArrowRectangle.contains(helpEvent->pos()))
 		{
-			if (m_iconRectangle.contains(helpEvent->pos()) || m_dropdownArrowRectangle.contains(helpEvent->pos()))
-			{
-				QToolTip::showText(helpEvent->globalPos(), tr("Select Search Engine"));
+			toolTip = tr("Select Search Engine");
+		}
+		else if (m_addButtonRectangle.contains(helpEvent->pos()))
+		{
+			toolTip = tr("Add Search Engine…");
+		}
+		else if (m_searchButtonRectangle.contains(helpEvent->pos()))
+		{
+			toolTip = tr("Search");
+		}
 
-				return true;
-			}
+		if (!toolTip.isEmpty())
+		{
+			QToolTip::showText(helpEvent->globalPos(), toolTip);
 
-			if (m_addButtonRectangle.contains(helpEvent->pos()))
-			{
-				QToolTip::showText(helpEvent->globalPos(), tr("Add Search Engine…"));
-
-				return true;
-			}
-
-			if (m_searchButtonRectangle.contains(helpEvent->pos()))
-			{
-				QToolTip::showText(helpEvent->globalPos(), tr("Search"));
-
-				return true;
-			}
+			return true;
 		}
 	}
 

@@ -33,9 +33,7 @@
 namespace Otter
 {
 
-class AddressWidget;
 class ContentsWidget;
-class SearchWidget;
 
 class WindowToolBarWidget final : public ToolBarWidget
 {
@@ -54,14 +52,11 @@ public:
 	explicit Window(const QVariantMap &parameters, ContentsWidget *widget, MainWindow *mainWindow);
 
 	void clear();
-	void attachAddressWidget(AddressWidget *widget);
-	void detachAddressWidget(AddressWidget *widget);
-	void attachSearchWidget(SearchWidget *widget);
-	void detachSearchWidget(SearchWidget *widget);
 	void setOption(int identifier, const QVariant &value);
 	void setSession(const SessionWindow &session, bool deferLoading = false);
 	Window* clone(bool cloneHistory, MainWindow *mainWindow) const;
 	MainWindow* getMainWindow() const;
+	WindowToolBarWidget* getAddressBar() const;
 	ContentsWidget* getContentsWidget();
 	WebWidget* getWebWidget();
 	QString getTitle() const;
@@ -88,7 +83,7 @@ public:
 	bool isPrivate() const;
 
 public slots:
-	void triggerAction(int identifier, const QVariantMap &parameters = {}) override;
+	void triggerAction(int identifier, const QVariantMap &parameters = {}, ActionsManager::TriggerType trigger = ActionsManager::UnknownTrigger) override;
 	void requestClose();
 	void search(const QString &query, const QString &searchEngine);
 	void markAsActive(bool updateLastActivity = true);
@@ -100,8 +95,8 @@ protected:
 	void timerEvent(QTimerEvent *event) override;
 	void hideEvent(QHideEvent *event) override;
 	void focusInEvent(QFocusEvent *event) override;
+	void updateFocus();
 	void setContentsWidget(ContentsWidget *widget);
-	AddressWidget* findAddressWidget() const;
 	bool event(QEvent *event) override;
 
 protected slots:
@@ -109,7 +104,6 @@ protected slots:
 	void handleSearchRequest(const QString &query, const QString &searchEngine, SessionsManager::OpenHints hints = SessionsManager::DefaultOpen);
 	void handleGeometryChangeRequest(const QRect &geometry);
 	void handleToolBarStateChanged(int identifier, const ToolBarState &state);
-	void updateNavigationBar();
 
 private:
 	MainWindow *m_mainWindow;
@@ -117,8 +111,6 @@ private:
 	QPointer<ContentsWidget> m_contentsWidget;
 	QDateTime m_lastActivity;
 	SessionWindow m_session;
-	QVector<QPointer<AddressWidget> > m_addressWidgets;
-	QVector<QPointer<SearchWidget> > m_searchWidgets;
 	QVariantMap m_parameters;
 	quint64 m_identifier;
 	int m_suspendTimer;

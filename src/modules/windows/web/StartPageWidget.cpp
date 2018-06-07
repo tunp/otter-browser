@@ -467,7 +467,7 @@ void StartPageWidget::dropEvent(QDropEvent *event)
 	}
 }
 
-void StartPageWidget::triggerAction(int identifier, const QVariantMap &parameters)
+void StartPageWidget::triggerAction(int identifier, const QVariantMap &parameters, ActionsManager::TriggerType trigger)
 {
 	Q_UNUSED(parameters)
 
@@ -526,7 +526,7 @@ void StartPageWidget::triggerAction(int identifier, const QVariantMap &parameter
 	{
 		m_urlOpenTime = QTime::currentTime();
 
-		Application::triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}, {QLatin1String("hints"), QVariant(hints)}}, parentWidget());
+		Application::triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}, {QLatin1String("hints"), QVariant(hints)}}, parentWidget(), trigger);
 	}
 }
 
@@ -908,21 +908,11 @@ bool StartPageWidget::eventFilter(QObject *object, QEvent *event)
 	{
 		if (event->type() == QEvent::Wheel)
 		{
-			const QWheelEvent *wheelEvent(static_cast<QWheelEvent*>(event));
-
-			if (wheelEvent)
-			{
-				m_currentIndex = m_listView->indexAt(m_listView->mapFromGlobal(wheelEvent->globalPos()));
-			}
+			m_currentIndex = m_listView->indexAt(m_listView->mapFromGlobal(static_cast<QWheelEvent*>(event)->globalPos()));
 		}
 		else
 		{
-			const QMouseEvent *mouseEvent(static_cast<QMouseEvent*>(event));
-
-			if (mouseEvent)
-			{
-				m_currentIndex = m_listView->indexAt(m_listView->mapFromGlobal(mouseEvent->globalPos()));
-			}
+			m_currentIndex = m_listView->indexAt(m_listView->mapFromGlobal(static_cast<QMouseEvent*>(event)->globalPos()));
 		}
 
 		QVector<GesturesManager::GesturesContext> contexts({GesturesManager::GenericContext});
@@ -942,88 +932,75 @@ bool StartPageWidget::eventFilter(QObject *object, QEvent *event)
 	{
 		const QKeyEvent *keyEvent(static_cast<QKeyEvent*>(event));
 
-		if (keyEvent)
+		if (m_isIgnoringEnter)
 		{
-			if (m_isIgnoringEnter)
-			{
-				m_isIgnoringEnter = false;
-
-				if (keyEvent->key() == Qt::Key_Enter || keyEvent->key() == Qt::Key_Return)
-				{
-					return true;
-				}
-			}
-
-			m_currentIndex = m_listView->currentIndex();
+			m_isIgnoringEnter = false;
 
 			if (keyEvent->key() == Qt::Key_Enter || keyEvent->key() == Qt::Key_Return)
 			{
-				switch (static_cast<BookmarksModel::BookmarkType>(m_currentIndex.data(BookmarksModel::TypeRole).toInt()))
-				{
-					case BookmarksModel::FolderBookmark:
-						{
-							const BookmarksModel::Bookmark *bookmark(BookmarksManager::getModel()->getBookmark(m_currentIndex));
-
-							if (bookmark && bookmark->rowCount() > 0)
-							{
-								m_isIgnoringEnter = true;
-
-								Menu menu(Menu::BookmarksMenuRole, this);
-								menu.setMenuOptions({{QLatin1String("bookmark"), bookmark->getIdentifier()}});
-								menu.exec(m_listView->mapToGlobal(m_listView->visualRect(m_currentIndex).center()));
-							}
-						}
-
-						break;
-					case BookmarksModel::UrlBookmark:
-						{
-							const QUrl url(m_currentIndex.data(BookmarksModel::UrlRole).toUrl());
-
-							if (keyEvent->modifiers() != Qt::NoModifier)
-							{
-								m_urlOpenTime = QTime::currentTime();
-
-								Application::triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}, {QLatin1String("hints"), QVariant(SessionsManager::calculateOpenHints((m_window->isPrivate() ? SessionsManager::PrivateOpen : SessionsManager::DefaultOpen), Qt::LeftButton, keyEvent->modifiers()))}}, parentWidget());
-							}
-							else
-							{
-								m_urlOpenTime = QTime::currentTime();
-
-								m_window->setUrl(url);
-							}
-						}
-
-						break;
-					default:
-						if (m_currentIndex.data(Qt::AccessibleDescriptionRole).toString() == QLatin1String("add"))
-						{
-							addTile();
-						}
-
-						break;
-				}
-
 				return true;
 			}
+		}
+
+		m_currentIndex = m_listView->currentIndex();
+
+		if (keyEvent->key() == Qt::Key_Enter || keyEvent->key() == Qt::Key_Return)
+		{
+			switch (static_cast<BookmarksModel::BookmarkType>(m_currentIndex.data(BookmarksModel::TypeRole).toInt()))
+			{
+				case BookmarksModel::FolderBookmark:
+					{
+						const BookmarksModel::Bookmark *bookmark(BookmarksManager::getModel()->getBookmark(m_currentIndex));
+
+						if (bookmark && bookmark->rowCount() > 0)
+						{
+							m_isIgnoringEnter = true;
+
+							Menu menu(Menu::BookmarksMenuRole, this);
+							menu.setMenuOptions({{QLatin1String("bookmark"), bookmark->getIdentifier()}});
+							menu.exec(m_listView->mapToGlobal(m_listView->visualRect(m_currentIndex).center()));
+						}
+					}
+
+					break;
+				case BookmarksModel::UrlBookmark:
+					{
+						const QUrl url(m_currentIndex.data(BookmarksModel::UrlRole).toUrl());
+
+						if (keyEvent->modifiers() != Qt::NoModifier)
+						{
+							m_urlOpenTime = QTime::currentTime();
+
+							Application::triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}, {QLatin1String("hints"), QVariant(SessionsManager::calculateOpenHints((m_window->isPrivate() ? SessionsManager::PrivateOpen : SessionsManager::DefaultOpen), Qt::LeftButton, keyEvent->modifiers()))}}, parentWidget());
+						}
+						else
+						{
+							m_urlOpenTime = QTime::currentTime();
+
+							m_window->setUrl(url);
+						}
+					}
+
+					break;
+				default:
+					if (m_currentIndex.data(Qt::AccessibleDescriptionRole).toString() == QLatin1String("add"))
+					{
+						addTile();
+					}
+
+					break;
+			}
+
+			return true;
 		}
 	}
 	else if (object == m_listView->viewport() && event->type() == QEvent::MouseButtonPress)
 	{
-		const QMouseEvent *mouseEvent(static_cast<QMouseEvent*>(event));
-
-		if (mouseEvent)
-		{
-			m_currentIndex = m_listView->indexAt(mouseEvent->pos());
-		}
+		m_currentIndex = m_listView->indexAt(static_cast<QMouseEvent*>(event)->pos());
 	}
-	else if (object == m_listView->viewport() && event->type() == QEvent::MouseMove)
+	else if (object == m_listView->viewport() && event->type() == QEvent::MouseMove && static_cast<QMouseEvent*>(event)->buttons().testFlag(Qt::LeftButton) && ((m_urlOpenTime.isValid() && m_urlOpenTime.msecsTo(QTime::currentTime()) < 1000) || m_window->getLoadingState() != WebWidget::FinishedLoadingState))
 	{
-		const QMouseEvent *mouseEvent(static_cast<QMouseEvent*>(event));
-
-		if (mouseEvent && mouseEvent->buttons().testFlag(Qt::LeftButton) && ((m_urlOpenTime.isValid() && m_urlOpenTime.msecsTo(QTime::currentTime()) < 1000) || m_window->getLoadingState() != WebWidget::FinishedLoadingState))
-		{
-			return true;
-		}
+		return true;
 	}
 	else if (object == m_listView->viewport() && event->type() == QEvent::MouseButtonRelease)
 	{
@@ -1034,7 +1011,7 @@ bool StartPageWidget::eventFilter(QObject *object, QEvent *event)
 			m_isIgnoringEnter = false;
 		}
 
-		if (mouseEvent && m_listView->indexAt(mouseEvent->pos()) == m_currentIndex)
+		if (m_listView->indexAt(mouseEvent->pos()) == m_currentIndex)
 		{
 			m_currentIndex = m_listView->indexAt(mouseEvent->pos());
 

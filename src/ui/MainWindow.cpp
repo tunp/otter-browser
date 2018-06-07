@@ -48,6 +48,8 @@
 #include "../core/TransfersManager.h"
 #include "../core/Utils.h"
 #include "../core/WebBackend.h"
+#include "../modules/widgets/address/AddressWidget.h"
+#include "../modules/widgets/search/SearchWidget.h"
 
 #include "ui_MainWindow.h"
 
@@ -80,7 +82,6 @@ MainWindow::MainWindow(const QVariantMap &parameters, const SessionMainWindow &s
 	m_ui->setupUi(this);
 
 	setUnifiedTitleAndToolBarOnMac(true);
-	updateShortcuts();
 
 	m_tabBar->hide();
 
@@ -209,6 +210,11 @@ MainWindow::MainWindow(const QVariantMap &parameters, const SessionMainWindow &s
 			updateWindowTitle();
 		});
 	}
+
+	QTimer::singleShot(100, [=]()
+	{
+		updateShortcuts();
+	});
 }
 
 MainWindow::~MainWindow()
@@ -417,7 +423,7 @@ void MainWindow::mouseReleaseEvent(QMouseEvent *event)
 	QMainWindow::mouseReleaseEvent(event);
 }
 
-void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
+void MainWindow::triggerAction(int identifier, const QVariantMap &parameters, ActionsManager::TriggerType trigger)
 {
 	if (m_editorExecutor.isValid() && m_editorExecutor.getObject() == Application::getFocusObject(true) && ActionsManager::getActionDefinition(identifier).scope == ActionsManager::ActionDefinition::EditorScope)
 	{
@@ -433,12 +439,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 				QVariantMap mutableParameters(parameters);
 				mutableParameters[QLatin1String("hints")] = SessionsManager::NewTabOpen;
 
-				if (SettingsManager::getOption(SettingsManager::StartPage_EnableStartPageOption).toBool())
-				{
-					mutableParameters[QLatin1String("url")] = QUrl(QLatin1String("about:start"));
-				}
-
-				triggerAction(ActionsManager::OpenUrlAction, mutableParameters);
+				triggerAction(ActionsManager::OpenUrlAction, mutableParameters, trigger);
 			}
 
 			return;
@@ -447,7 +448,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 				QVariantMap mutableParameters(parameters);
 				mutableParameters[QLatin1String("hints")] = QVariant(SessionsManager::NewTabOpen | SessionsManager::PrivateOpen);
 
-				triggerAction(ActionsManager::OpenUrlAction, mutableParameters);
+				triggerAction(ActionsManager::OpenUrlAction, mutableParameters, trigger);
 			}
 
 			return;
@@ -457,7 +458,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 
 				if (!path.isEmpty())
 				{
-					triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), QUrl::fromLocalFile(path)}});
+					triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), QUrl::fromLocalFile(path)}}, trigger);
 				}
 			}
 
@@ -472,13 +473,62 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 		case ActionsManager::RestoreAllAction:
 		case ActionsManager::CascadeAllAction:
 		case ActionsManager::TileAllAction:
-			m_workspace->triggerAction(identifier, parameters);
+			m_workspace->triggerAction(identifier, parameters, trigger);
 
 			return;
 		case ActionsManager::CloseWindowAction:
 			close();
 
 			return;
+		case ActionsManager::GoAction:
+		case ActionsManager::ActivateAddressFieldAction:
+		case ActionsManager::ActivateSearchFieldAction:
+			{
+				AddressWidget *addressWidget(findAddressField());
+				SearchWidget *searchWidget(findSearchField());
+
+				if (identifier == ActionsManager::ActivateSearchFieldAction && searchWidget)
+				{
+					searchWidget->activate(Qt::ShortcutFocusReason);
+				}
+				else if (addressWidget)
+				{
+					if (identifier == ActionsManager::ActivateAddressFieldAction)
+					{
+						addressWidget->activate(Qt::ShortcutFocusReason);
+
+						if (parameters.value(QLatin1String("showTypedHistoryDropdown")).toBool())
+						{
+							addressWidget->showCompletion(true);
+						}
+					}
+					else if (identifier == ActionsManager::ActivateSearchFieldAction)
+					{
+						addressWidget->setText(QLatin1String("? "));
+						addressWidget->activate(Qt::OtherFocusReason);
+					}
+					else if (identifier == ActionsManager::GoAction)
+					{
+						addressWidget->handleUserInput(addressWidget->text(), SessionsManager::CurrentTabOpen);
+					}
+				}
+				else if (identifier == ActionsManager::ActivateAddressFieldAction || identifier == ActionsManager::ActivateSearchFieldAction)
+				{
+					OpenAddressDialog dialog(ActionExecutor::Object(this, this), this);
+
+					if (identifier == ActionsManager::ActivateSearchFieldAction)
+					{
+						dialog.setText(QLatin1String("? "));
+					}
+
+					if (dialog.exec() == QDialog::Accepted && dialog.getResult().type == InputInterpreter::InterpreterResult::SearchType)
+					{
+						search(dialog.getResult().searchQuery, dialog.getResult().searchEngine, SessionsManager::calculateOpenHints(SessionsManager::CurrentTabOpen));
+					}
+				}
+			}
+
+			break;
 		case ActionsManager::GoToPageAction:
 			{
 				OpenAddressDialog dialog(ActionExecutor::Object(this, this), this);
@@ -498,7 +548,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 
 				if (!homePage.isEmpty())
 				{
-					triggerAction(ActionsManager::OpenUrlAction, mutableParameters);
+					triggerAction(ActionsManager::OpenUrlAction, mutableParameters, trigger);
 				}
 			}
 
@@ -509,7 +559,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 
 				if (!SessionsManager::hasUrl(url, true))
 				{
-					triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}});
+					triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}}, trigger);
 				}
 			}
 
@@ -562,7 +612,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 									mutableParameters.remove(QLatin1String("needsInterpretation"));
 									mutableParameters[QLatin1String("bookmark")] = result.bookmark->getIdentifier();
 
-									triggerAction(ActionsManager::OpenBookmarkAction, mutableParameters);
+									triggerAction(ActionsManager::OpenBookmarkAction, mutableParameters, trigger);
 								}
 
 								return;
@@ -571,7 +621,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 
 								break;
 							case InputInterpreter::InterpreterResult::SearchType:
-								search(result.searchQuery, result.searchEngine, SessionsManager::calculateOpenHints(parameters));
+								search(result.searchQuery, result.searchEngine, SessionsManager::calculateOpenHints(parameters, (trigger == ActionsManager::KeyboardTrigger || trigger == ActionsManager::MouseTrigger)));
 
 								return;
 							default:
@@ -591,7 +641,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 					return;
 				}
 
-				SessionsManager::OpenHints hints(SessionsManager::calculateOpenHints(parameters));
+				SessionsManager::OpenHints hints(SessionsManager::calculateOpenHints(parameters, (trigger == ActionsManager::KeyboardTrigger || trigger == ActionsManager::MouseTrigger)));
 				const int index(parameters.value(QLatin1String("index"), -1).toInt());
 
 				if (m_isPrivate)
@@ -632,7 +682,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 				Window *activeWindow(m_workspace->getActiveWindow());
 				const bool isUrlEmpty(activeWindow && activeWindow->getLoadingState() == WebWidget::FinishedLoadingState && Utils::isUrlEmpty(activeWindow->getUrl()));
 
-				if (hints == SessionsManager::NewTabOpen && isUrlEmpty && !url.isEmpty())
+				if (hints == SessionsManager::NewTabOpen && isUrlEmpty && !url.isEmpty() && url != QUrl(QLatin1String("about:start")))
 				{
 					hints = SessionsManager::CurrentTabOpen;
 				}
@@ -676,7 +726,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 				{
 					if (iterator.value()->getLoadingState() != WebWidget::DeferredLoadingState)
 					{
-						iterator.value()->triggerAction(ActionsManager::StopAction);
+						iterator.value()->triggerAction(ActionsManager::StopAction, {}, trigger);
 					}
 				}
 			}
@@ -690,7 +740,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 				{
 					if (iterator.value()->getLoadingState() != WebWidget::DeferredLoadingState)
 					{
-						iterator.value()->triggerAction(ActionsManager::ReloadAction);
+						iterator.value()->triggerAction(ActionsManager::ReloadAction, {}, trigger);
 					}
 				}
 			}
@@ -736,9 +786,22 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 
 			return;
 		case ActionsManager::OpenBookmarkAction:
-			if (parameters.contains(QLatin1String("bookmark")))
 			{
-				const BookmarksModel::Bookmark *bookmark(BookmarksManager::getBookmark(parameters[QLatin1String("bookmark")].toULongLong()));
+				BookmarksModel::Bookmark *bookmark(nullptr);
+
+				if (parameters.contains(QLatin1String("bookmark")))
+				{
+					bookmark = BookmarksManager::getBookmark(parameters[QLatin1String("bookmark")].toULongLong());
+				}
+				else if (parameters.contains(QLatin1String("startPageTile")))
+				{
+					const BookmarksModel::Bookmark *startPageBookmark(BookmarksManager::getModel()->getBookmarkByPath(SettingsManager::getOption(SettingsManager::StartPage_BookmarksFolderOption).toString()));
+
+					if (startPageBookmark)
+					{
+						bookmark = startPageBookmark->getChild(parameters.value(QLatin1String("startPageTile")).toInt() - 1);
+					}
+				}
 
 				if (!bookmark)
 				{
@@ -747,13 +810,14 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 
 				QVariantMap mutableParameters(parameters);
 				mutableParameters.remove(QLatin1String("bookmark"));
+				mutableParameters.remove(QLatin1String("startPageTile"));
 
 				switch (bookmark->getType())
 				{
 					case BookmarksModel::UrlBookmark:
 						mutableParameters[QLatin1String("url")] = bookmark->getUrl();
 
-						triggerAction(ActionsManager::OpenUrlAction, mutableParameters);
+						triggerAction(ActionsManager::OpenUrlAction, mutableParameters, trigger);
 
 						break;
 					case BookmarksModel::RootBookmark:
@@ -798,7 +862,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 							mutableParameters[QLatin1String("hints")] = QVariant(hints);
 							mutableParameters[QLatin1String("index")] = index;
 
-							triggerAction(ActionsManager::OpenUrlAction, mutableParameters);
+							triggerAction(ActionsManager::OpenUrlAction, mutableParameters, trigger);
 
 							mutableParameters[QLatin1String("hints")] = QVariant((hints == SessionsManager::DefaultOpen || hints.testFlag(SessionsManager::CurrentTabOpen)) ? SessionsManager::NewTabOpen : hints);
 
@@ -807,7 +871,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 								mutableParameters[QLatin1String("url")] = urls.at(i);
 								mutableParameters[QLatin1String("index")] = (index + i);
 
-								triggerAction(ActionsManager::OpenUrlAction, mutableParameters);
+								triggerAction(ActionsManager::OpenUrlAction, mutableParameters, trigger);
 							}
 						}
 
@@ -914,19 +978,19 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 
 			return;
 		case ActionsManager::ShowMenuBarAction:
-			triggerAction(ActionsManager::ShowToolBarAction, {{QLatin1String("toolBar"), ToolBarsManager::MenuBar}, {QLatin1String("isChecked"), parameters.value(QLatin1String("isChecked"), !getActionState(identifier).isChecked)}});
+			triggerAction(ActionsManager::ShowToolBarAction, {{QLatin1String("toolBar"), ToolBarsManager::MenuBar}, {QLatin1String("isChecked"), parameters.value(QLatin1String("isChecked"), !getActionState(identifier).isChecked)}}, trigger);
 
 			return;
 		case ActionsManager::ShowTabBarAction:
-			triggerAction(ActionsManager::ShowToolBarAction, {{QLatin1String("toolBar"), ToolBarsManager::TabBar}, {QLatin1String("isChecked"), parameters.value(QLatin1String("isChecked"), !getActionState(identifier).isChecked)}});
+			triggerAction(ActionsManager::ShowToolBarAction, {{QLatin1String("toolBar"), ToolBarsManager::TabBar}, {QLatin1String("isChecked"), parameters.value(QLatin1String("isChecked"), !getActionState(identifier).isChecked)}}, trigger);
 
 			return;
 		case ActionsManager::ShowSidebarAction:
-			triggerAction(ActionsManager::ShowToolBarAction, {{QLatin1String("toolBar"), ToolBarsManager::SideBar}, {QLatin1String("isChecked"), parameters.value(QLatin1String("isChecked"), !getActionState(identifier).isChecked)}});
+			triggerAction(ActionsManager::ShowToolBarAction, {{QLatin1String("toolBar"), ToolBarsManager::SideBar}, {QLatin1String("isChecked"), parameters.value(QLatin1String("isChecked"), !getActionState(identifier).isChecked)}}, trigger);
 
 			return;
 		case ActionsManager::ShowErrorConsoleAction:
-			triggerAction(ActionsManager::ShowToolBarAction, {{QLatin1String("toolBar"), ToolBarsManager::ErrorConsoleBar}, {QLatin1String("isChecked"), parameters.value(QLatin1String("isChecked"), !getActionState(identifier).isChecked)}});
+			triggerAction(ActionsManager::ShowToolBarAction, {{QLatin1String("toolBar"), ToolBarsManager::ErrorConsoleBar}, {QLatin1String("isChecked"), parameters.value(QLatin1String("isChecked"), !getActionState(identifier).isChecked)}}, trigger);
 
 			return;
 		case ActionsManager::ShowPanelAction:
@@ -941,7 +1005,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 					ToolBarsManager::setToolBar(definition);
 				}
 
-				triggerAction(ActionsManager::ShowToolBarAction, {{QLatin1String("toolBar"), toolBarIdentifier}, {QLatin1String("isChecked"), true}});
+				triggerAction(ActionsManager::ShowToolBarAction, {{QLatin1String("toolBar"), toolBarIdentifier}, {QLatin1String("isChecked"), true}}, trigger);
 			}
 
 			return;
@@ -951,7 +1015,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 
 				if (definition.isValid() && !definition.currentPanel.isEmpty())
 				{
-					triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), SidebarWidget::getPanelUrl(definition.currentPanel)}, {QLatin1String("hints"), SessionsManager::NewTabOpen}});
+					triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), SidebarWidget::getPanelUrl(definition.currentPanel)}, {QLatin1String("hints"), SessionsManager::NewTabOpen}}, trigger);
 				}
 			}
 
@@ -969,7 +1033,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 
 				if (!SessionsManager::hasUrl(url, true))
 				{
-					triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}});
+					triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}}, trigger);
 				}
 			}
 
@@ -987,7 +1051,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 
 				if (!SessionsManager::hasUrl(url, true))
 				{
-					triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}});
+					triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}}, trigger);
 				}
 			}
 
@@ -998,7 +1062,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 
 				if (!SessionsManager::hasUrl(url, true))
 				{
-					triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}});
+					triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}}, trigger);
 				}
 			}
 
@@ -1009,7 +1073,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 
 				if (!SessionsManager::hasUrl(url, true))
 				{
-					triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}});
+					triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}}, trigger);
 				}
 			}
 
@@ -1020,7 +1084,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 
 				if (!SessionsManager::hasUrl(url, true))
 				{
-					triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}});
+					triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}}, trigger);
 				}
 			}
 
@@ -1031,7 +1095,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 
 				if (!SessionsManager::hasUrl(url, true))
 				{
-					triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}});
+					triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), url}}, trigger);
 				}
 			}
 
@@ -1052,7 +1116,7 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 
 				for (iterator = m_windows.constBegin(); iterator != m_windows.constEnd(); ++iterator)
 				{
-					iterator.value()->triggerAction(identifier, parameters);
+					iterator.value()->triggerAction(identifier, parameters, trigger);
 				}
 			}
 
@@ -1117,11 +1181,11 @@ void MainWindow::triggerAction(int identifier, const QVariantMap &parameters)
 
 				addWindow(window, SessionsManager::NewTabOpen);
 
-				window->triggerAction(ActionsManager::PasteAndGoAction);
+				window->triggerAction(ActionsManager::PasteAndGoAction, {}, trigger);
 			}
 			else if (window)
 			{
-				window->triggerAction(identifier, parameters);
+				window->triggerAction(identifier, parameters, trigger);
 			}
 
 			break;
@@ -1953,6 +2017,85 @@ MainWindow* MainWindow::findMainWindow(QObject *parent)
 	return mainWindow;
 }
 
+QWidget* MainWindow::findVisibleWidget(const QVector<QPointer<QWidget> > &widgets) const
+{
+	for (int i = 0; i < widgets.count(); ++i)
+	{
+		if (widgets.at(i) && widgets.at(i)->isVisible())
+		{
+			return widgets.at(i);
+		}
+	}
+
+	return nullptr;
+}
+
+AddressWidget* MainWindow::findAddressField() const
+{
+	const Window *activeWindow(m_workspace->getActiveWindow());
+	const ToolBarWidget *addressToolBar(activeWindow ? activeWindow->getAddressBar() : nullptr);
+
+	if (addressToolBar && !addressToolBar->isCollapsed() && addressToolBar->isVisible())
+	{
+		AddressWidget *widget(qobject_cast<AddressWidget*>(findVisibleWidget(addressToolBar->getAddressFields())));
+
+		if (widget)
+		{
+			return widget;
+		}
+	}
+
+	QMap<int, ToolBarWidget*>::const_iterator iterator;
+
+	for (iterator = m_toolBars.constBegin(); iterator != m_toolBars.constEnd(); ++iterator)
+	{
+		if (!iterator.value()->isCollapsed() && iterator.value()->isVisible())
+		{
+			AddressWidget *widget(qobject_cast<AddressWidget*>(findVisibleWidget(iterator.value()->getAddressFields())));
+
+			if (widget)
+			{
+				return widget;
+			}
+		}
+	}
+
+	return nullptr;
+}
+
+SearchWidget* MainWindow::findSearchField() const
+{
+	const Window *activeWindow(m_workspace->getActiveWindow());
+	const ToolBarWidget *addressToolBar(activeWindow ? activeWindow->getAddressBar() : nullptr);
+
+	if (addressToolBar && !addressToolBar->isCollapsed() && addressToolBar->isVisible())
+	{
+		SearchWidget *widget(qobject_cast<SearchWidget*>(findVisibleWidget(activeWindow->getAddressBar()->getSearchFields())));
+
+		if (widget)
+		{
+			return widget;
+		}
+	}
+
+	QMap<int, ToolBarWidget*>::const_iterator iterator;
+
+	for (iterator = m_toolBars.constBegin(); iterator != m_toolBars.constEnd(); ++iterator)
+	{
+		if (!iterator.value()->isCollapsed() && iterator.value()->isVisible())
+		{
+			SearchWidget *widget(qobject_cast<SearchWidget*>(findVisibleWidget(iterator.value()->getSearchFields())));
+
+			if (widget)
+			{
+				return widget;
+			}
+		}
+	}
+
+	return nullptr;
+}
+
 TabBarWidget* MainWindow::getTabBar() const
 {
 	return m_tabBar;
@@ -2426,23 +2569,14 @@ bool MainWindow::event(QEvent *event)
 
 			break;
 		case QEvent::StatusTip:
-			{
-				QStatusTipEvent *statusTipEvent(static_cast<QStatusTipEvent*>(event));
-
-				if (statusTipEvent)
-				{
-					emit statusMessageChanged(statusTipEvent->tip());
-				}
-			}
+			emit statusMessageChanged(static_cast<QStatusTipEvent*>(event)->tip());
 
 			break;
 		case QEvent::WindowStateChange:
 			{
-				QWindowStateChangeEvent *stateChangeEvent(static_cast<QWindowStateChangeEvent*>(event));
-
 				SessionsManager::markSessionAsModified();
 
-				if (stateChangeEvent && windowState().testFlag(Qt::WindowFullScreen) != stateChangeEvent->oldState().testFlag(Qt::WindowFullScreen))
+				if (windowState().testFlag(Qt::WindowFullScreen) != static_cast<QWindowStateChangeEvent*>(event)->oldState().testFlag(Qt::WindowFullScreen))
 				{
 					const ToolBarsManager::ToolBarsMode mode(windowState().testFlag(Qt::WindowFullScreen) ? ToolBarsManager::FullScreenMode : ToolBarsManager::NormalMode);
 
@@ -2575,11 +2709,11 @@ void Shortcut::triggerAction()
 
 	if (definition.scope == ActionsManager::ActionDefinition::ApplicationScope)
 	{
-		Application::getInstance()->triggerAction(m_identifier, parameters);
+		Application::getInstance()->triggerAction(m_identifier, parameters, ActionsManager::KeyboardTrigger);
 	}
 	else
 	{
-		m_mainWindow->triggerAction(m_identifier, parameters);
+		m_mainWindow->triggerAction(m_identifier, parameters, ActionsManager::KeyboardTrigger);
 	}
 }
 

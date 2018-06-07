@@ -21,7 +21,7 @@
 
 #include "WebsitePreferencesDialog.h"
 #include "CookiePropertiesDialog.h"
-#include "preferences/ContentBlockingIntervalDelegate.h"
+#include "preferences/ContentBlockingDialog.h"
 #include "../core/ContentBlockingManager.h"
 #include "../core/ContentBlockingProfile.h"
 #include "../core/NetworkManagerFactory.h"
@@ -490,9 +490,9 @@ void WebsitePreferencesDialog::updateValues(bool isChecked)
 	const QStringList contentBlockingProfiles(SettingsManager::getOption(SettingsManager::ContentBlocking_ProfilesOption, host).toStringList());
 
 	m_ui->contentBlockingProfilesViewWidget->setModel(ContentBlockingManager::createModel(this, contentBlockingProfiles));
+	m_ui->contentBlockingProfilesViewWidget->setItemDelegateForColumn(0, new ContentBlockingTitleDelegate(this));
 	m_ui->contentBlockingProfilesViewWidget->setItemDelegateForColumn(1, new ContentBlockingIntervalDelegate(this));
 	m_ui->contentBlockingProfilesViewWidget->setViewMode(ItemViewWidget::TreeViewMode);
-	m_ui->contentBlockingProfilesViewWidget->header()->setSectionResizeMode(0, QHeaderView::Stretch);
 	m_ui->contentBlockingProfilesViewWidget->expandAll();
 
 	m_ui->enableCustomRulesCheckBox->setChecked(contentBlockingProfiles.contains("custom"));

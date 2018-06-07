@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -17,40 +17,40 @@
 *
 **************************************************************************/
 
-#ifndef OTTER_PROGRESSBARWIDGET_H
-#define OTTER_PROGRESSBARWIDGET_H
+#ifndef OTTER_FEEDPROPERTIESDIALOG_H
+#define OTTER_FEEDPROPERTIESDIALOG_H
 
-#include "../../../ui/WebWidget.h"
-
-#include <QtWidgets/QFrame>
+#include "Dialog.h"
 
 namespace Otter
 {
 
-class WebWidget;
-class Window;
+namespace Ui
+{
+	class FeedPropertiesDialog;
+}
 
-class ProgressBarWidget final : public QFrame
+class Feed;
+
+class FeedPropertiesDialog final : public Dialog
 {
 	Q_OBJECT
 
 public:
-	explicit ProgressBarWidget(Window *window, WebWidget *parent);
+	explicit FeedPropertiesDialog(Feed *feed, QWidget *parent = nullptr);
+	~FeedPropertiesDialog();
 
-public slots:
-	void scheduleGeometryUpdate();
+	Feed* getFeed() const;
 
 protected:
-	void timerEvent(QTimerEvent *event) override;
+	void changeEvent(QEvent *event) override;
 
 protected slots:
-	void handleActionsStateChanged(const QVector<int> &identifiers);
-	void updateLoadingState(WebWidget::LoadingState state);
+	void saveFeed();
 
 private:
-	WebWidget *m_webWidget;
-	Window *m_window;
-	int m_geometryUpdateTimer;
+	Feed *m_feed;
+	Ui::FeedPropertiesDialog *m_ui;
 };
 
 }

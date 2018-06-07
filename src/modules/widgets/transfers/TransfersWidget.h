@@ -23,12 +23,12 @@
 #include "../../../ui/ToolButtonWidget.h"
 
 #include <QtWidgets/QLabel>
-#include <QtWidgets/QProgressBar>
 #include <QtWidgets/QToolButton>
 
 namespace Otter
 {
 
+class ProgressBarWidget;
 class Transfer;
 class Window;
 
@@ -60,6 +60,7 @@ public:
 	explicit TransferActionWidget(Transfer *transfer, QWidget *parent = nullptr);
 
 	Transfer* getTransfer() const;
+	bool event(QEvent *event) override;
 
 protected:
 	void mousePressEvent(QMouseEvent *event) override;
@@ -70,9 +71,10 @@ protected slots:
 
 private:
 	Transfer *m_transfer;
+	QLabel *m_detailsLabel;
 	QLabel *m_fileNameLabel;
 	QLabel *m_iconLabel;
-	QProgressBar *m_progressBar;
+	ProgressBarWidget *m_progressBar;
 	QToolButton *m_toolButton;
 	QWidget *m_centralWidget;
 };

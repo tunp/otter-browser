@@ -236,9 +236,8 @@ SessionInformation SessionsManager::getSession(const QString &path)
 			const QJsonObject windowObject(windowsArray.at(j).toObject());
 			const QJsonArray windowHistoryArray(windowObject.value(QLatin1String("history")).toArray());
 			const QString state(windowObject.value(QLatin1String("state")).toString());
-			const QStringList geometry(windowObject.value(QLatin1String("geometry")).toString().split(QLatin1Char(',')));
 			WindowState windowState;
-			windowState.geometry = ((geometry.count() == 4) ? QRect(geometry.at(0).simplified().toInt(), geometry.at(1).simplified().toInt(), geometry.at(2).simplified().toInt(), geometry.at(3).simplified().toInt()) : QRect());
+			windowState.geometry = JsonSettings::readRectangle(windowObject.value(QLatin1String("geometry")).toVariant());
 			windowState.state = ((state == QLatin1String("maximized")) ? Qt::WindowMaximized : ((state == QLatin1String("minimized")) ? Qt::WindowMinimized : Qt::WindowNoState));
 
 			SessionWindow sessionWindow;
@@ -435,11 +434,11 @@ SessionsManager::OpenHints SessionsManager::calculateOpenHints(OpenHints hints, 
 	return calculateOpenHints(hints, button, QGuiApplication::keyboardModifiers());
 }
 
-SessionsManager::OpenHints SessionsManager::calculateOpenHints(const QVariantMap &parameters)
+SessionsManager::OpenHints SessionsManager::calculateOpenHints(const QVariantMap &parameters, bool ignoreModifiers)
 {
 	if (!parameters.contains(QLatin1String("hints")))
 	{
-		return calculateOpenHints();
+		return calculateOpenHints(DefaultOpen, Qt::LeftButton, (ignoreModifiers ? Qt::NoModifier : QGuiApplication::keyboardModifiers()));
 	}
 
 	const QVariant::Type type(parameters[QLatin1String("hints")].type());

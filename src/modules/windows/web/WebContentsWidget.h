@@ -34,7 +34,7 @@ namespace Otter
 class PasswordBarWidget;
 class PermissionBarWidget;
 class PopupsBarWidget;
-class ProgressBarWidget;
+class ProgressToolBarWidget;
 class SearchBarWidget;
 class StartPageWidget;
 class WebsiteInformationDialog;
@@ -89,7 +89,7 @@ public:
 	bool eventFilter(QObject *object, QEvent *event) override;
 
 public slots:
-	void triggerAction(int identifier, const QVariantMap &parameters = {}) override;
+	void triggerAction(int identifier, const QVariantMap &parameters = {}, ActionsManager::TriggerType trigger = ActionsManager::UnknownTrigger) override;
 	void setOption(int identifier, const QVariant &value) override;
 	void setHistory(const WindowHistoryInformation &history) override;
 	void setZoom(int zoom) override;
@@ -134,7 +134,7 @@ private:
 	Window *m_window;
 	StartPageWidget *m_startPageWidget;
 	SearchBarWidget *m_searchBarWidget;
-	ProgressBarWidget *m_progressBarWidget;
+	ProgressToolBarWidget *m_progressBarWidget;
 	PasswordBarWidget *m_passwordBarWidget;
 	PopupsBarWidget *m_popupsBarWidget;
 	QString m_quickFindQuery;

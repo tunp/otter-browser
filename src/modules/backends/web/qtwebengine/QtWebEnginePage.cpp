@@ -158,7 +158,7 @@ void QtWebEnginePage::handleLoadFinished()
 	{
 		entry.icon = icon();
 
-		if (entry.identifier > 0)
+		if (entry.identifier > 0 && !profile()->isOffTheRecord())
 		{
 			HistoryManager::updateEntry(entry.identifier, url(), (m_widget ? m_widget->getTitle() : title()), icon());
 		}
@@ -423,7 +423,7 @@ WindowHistoryInformation QtWebEnginePage::getHistory() const
 		entry.url = url;
 		entry.title = m_widget->getTitle();
 		entry.icon = icon();
-		entry.time = QDateTime::currentDateTime();
+		entry.time = QDateTime::currentDateTimeUtc();
 		entry.position = scrollPosition().toPoint();
 		entry.zoom = static_cast<int>(zoomFactor() * 100);
 
@@ -519,11 +519,15 @@ bool QtWebEnginePage::acceptNavigationRequest(const QUrl &url, NavigationType ty
 
 			HistoryEntryInformation entry;
 			entry.icon = icon();
-			entry.timeVisited = QDateTime::currentDateTime();
+			entry.timeVisited = QDateTime::currentDateTimeUtc();
 			entry.position = scrollPosition().toPoint();
-			entry.identifier = HistoryManager::addEntry(url, {}, {});
 			entry.zoom = static_cast<int>(zoomFactor() * 100);
 			entry.isValid = true;
+
+			if (!profile()->isOffTheRecord())
+			{
+				entry.identifier = HistoryManager::addEntry(url, {}, {});
+			}
 
 			m_history.append(entry);
 		}
