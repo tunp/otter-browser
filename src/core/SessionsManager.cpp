@@ -19,7 +19,6 @@
 **************************************************************************/
 
 #include "SessionsManager.h"
-#include "ActionsManager.h"
 #include "Application.h"
 #include "JsonSettings.h"
 #include "SessionModel.h"
@@ -288,6 +287,26 @@ SessionInformation SessionsManager::getSession(const QString &path)
 			sessionMainWindow.index = (sessionMainWindow.windows.count() - 1);
 		}
 
+		if (mainWindowObject.contains(QLatin1String("splitters")))
+		{
+			const QJsonArray splittersArray(mainWindowObject.value(QLatin1String("splitters")).toArray());
+
+			for (int j = 0; j < splittersArray.count(); ++j)
+			{
+				const QJsonObject splitterObject(splittersArray.at(j).toObject());
+				const QVariantList rawSizes(splitterObject.value(QLatin1String("sizes")).toVariant().toList());
+				QVector<int> sizes;
+				sizes.reserve(rawSizes.count());
+
+				for (int k = 0; k < rawSizes.count(); ++k)
+				{
+					sizes.append(rawSizes.at(k).toInt());
+				}
+
+				sessionMainWindow.splitters[splitterObject.value(QLatin1String("identifier")).toString()] = sizes;
+			}
+		}
+
 		if (mainWindowObject.contains(QLatin1String("toolBars")))
 		{
 			const QJsonArray toolBarsArray(mainWindowObject.value(QLatin1String("toolBars")).toArray());
@@ -448,6 +467,11 @@ SessionsManager::OpenHints SessionsManager::calculateOpenHints(const QVariantMap
 		return static_cast<OpenHints>(parameters[QLatin1String("hints")].toInt());
 	}
 
+	if (type != QVariant::List && type != QVariant::StringList)
+	{
+		return DefaultOpen;
+	}
+
 	const QStringList rawHints(parameters[QLatin1String("hints")].toStringList());
 	OpenHints hints(DefaultOpen);
 
@@ -596,7 +620,7 @@ bool SessionsManager::saveSession(const SessionInformation &session)
 
 		if (QFile::exists(path))
 		{
-			int i(1);
+			int i(2);
 
 			do
 			{
@@ -757,6 +781,27 @@ bool SessionsManager::saveSession(const SessionInformation &session)
 			}
 
 			mainWindowObject.insert(QLatin1String("toolBars"), toolBarsArray);
+		}
+
+		if (!sessionEntry.splitters.isEmpty())
+		{
+			QJsonArray splittersArray;
+			QMap<QString, QVector<int> >::const_iterator iterator;
+
+			for (iterator = sessionEntry.splitters.begin(); iterator != sessionEntry.splitters.end(); ++iterator)
+			{
+				QJsonArray sizesArray;
+				const QVector<int> sizes(iterator.value());
+
+				for (int j = 0; j < sizes.count(); ++j)
+				{
+					sizesArray.append(sizes.at(j));
+				}
+
+				splittersArray.append(QJsonObject({{QLatin1String("identifier"), iterator.key()}, {QLatin1String("sizes"), sizesArray}}));
+			}
+
+			mainWindowObject.insert(QLatin1String("splitters"), splittersArray);
 		}
 
 		mainWindowsArray.append(mainWindowObject);

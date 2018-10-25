@@ -28,6 +28,20 @@
 				]
 			},
 			{
+				"action": "Rewind",
+				"steps": [
+					"pressRight+shift",
+					"pressLeft"
+				]
+			},
+			{
+				"action": "FastForward",
+				"steps": [
+					"pressLeft+shift",
+					"pressRight"
+				]
+			},
+			{
 				"action": "StartMoveScroll",
 				"steps": [
 					"pressMiddle"

@@ -44,9 +44,6 @@ public:
 
 	explicit HeaderViewWidget(Qt::Orientation orientation, QWidget *parent = nullptr);
 
-public slots:
-	void setSort(int column, Qt::SortOrder order);
-
 protected:
 	enum SortOrder
 	{
@@ -63,6 +60,7 @@ protected slots:
 	void toggleColumnVisibility(QAction *action);
 	void toggleSort(QAction *action);
 	void handleSectionClicked(int column);
+	void setSort(int column, Qt::SortOrder order);
 
 signals:
 	void sortChanged(int column, Qt::SortOrder order);
@@ -76,8 +74,8 @@ class ItemViewWidget : public QTreeView
 public:
 	enum ViewMode
 	{
-		ListViewMode = 0,
-		TreeViewMode
+		ListView = 0,
+		TreeView
 	};
 
 	explicit ItemViewWidget(QWidget *parent = nullptr);
@@ -87,11 +85,11 @@ public:
 	void setModel(QAbstractItemModel *model, bool useSortProxy);
 	void setSortRoleMapping(const QMap<int, int> &mapping);
 	void setViewMode(ViewMode mode);
+	void setModified(bool isModified);
 	QStandardItemModel* getSourceModel() const;
 	QSortFilterProxyModel* getProxyModel() const;
 	QStandardItem* getItem(const QModelIndex &index) const;
 	QStandardItem* getItem(int row, int column = 0, const QModelIndex &parent = {}) const;
-	QString normalizeViewName(QString name);
 	QModelIndex getCheckedIndex(const QModelIndex &parent = {}) const;
 	QModelIndex getCurrentIndex(int column = 0) const;
 	QModelIndex getIndex(int row, int column = 0, const QModelIndex &parent = {}) const;
@@ -102,8 +100,8 @@ public:
 	int getCurrentRow() const;
 	int getRowCount(const QModelIndex &parent = {}) const;
 	int getColumnCount(const QModelIndex &parent = {}) const;
-	bool canMoveUp() const;
-	bool canMoveDown() const;
+	bool canMoveRowUp() const;
+	bool canMoveRowDown() const;
 	bool isExclusive() const;
 	bool isModified() const;
 
@@ -118,7 +116,6 @@ public slots:
 	void setExclusive(bool isExclusive);
 	void setFilterString(const QString &filter);
 	void setFilterRoles(const QSet<int> &roles);
-	void setModified(bool isModified);
 
 protected:
 	void showEvent(QShowEvent *event) override;
@@ -127,9 +124,9 @@ protected:
 	void dropEvent(QDropEvent *event) override;
 	void startDrag(Qt::DropActions supportedActions) override;
 	void ensureInitialized();
-	void moveRow(bool up);
+	void moveRow(bool moveUp);
 	void selectRow(const QModelIndex &index);
-	bool applyFilter(const QModelIndex &index);
+	bool applyFilter(const QModelIndex &index, bool parentHasMatch = false);
 
 protected slots:
 	void currentChanged(const QModelIndex &current, const QModelIndex &previous) override;
@@ -157,8 +154,8 @@ private:
 	bool m_isInitialized;
 
 signals:
-	void canMoveUpChanged(bool isAllowed);
-	void canMoveDownChanged(bool isAllowed);
+	void canMoveRowUpChanged(bool isAllowed);
+	void canMoveRowDownChanged(bool isAllowed);
 	void needsActionsUpdate();
 	void modified();
 	void sortChanged(int column, Qt::SortOrder order);

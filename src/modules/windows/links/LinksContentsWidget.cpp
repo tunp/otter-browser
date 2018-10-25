@@ -42,7 +42,7 @@ LinksContentsWidget::LinksContentsWidget(const QVariantMap &parameters, QWidget 
 {
 	m_ui->setupUi(this);
 	m_ui->filterLineEditWidget->setClearOnEscape(true);
-	m_ui->linksViewWidget->setViewMode(ItemViewWidget::TreeViewMode);
+	m_ui->linksViewWidget->setViewMode(ItemViewWidget::TreeView);
 	m_ui->linksViewWidget->setModel(new QStandardItemModel(this));
 	m_ui->linksViewWidget->setFilterRoles({Qt::DisplayRole, Qt::StatusTipRole});
 	m_ui->linksViewWidget->viewport()->installEventFilter(this);
@@ -63,6 +63,13 @@ LinksContentsWidget::LinksContentsWidget(const QVariantMap &parameters, QWidget 
 				if (m_window)
 				{
 					disconnect(m_window, &Window::loadingStateChanged, this, &LinksContentsWidget::updateLinks);
+
+					if (m_window->getWebWidget())
+					{
+						m_window->getWebWidget()->stopWatchingChanges(this, WebWidget::LinksWatcher);
+
+						disconnect(m_window->getWebWidget(), &WebWidget::watchedDataChanged, this, &LinksContentsWidget::handleWatchedDataChanged);
+					}
 				}
 
 				m_window = window;
@@ -70,6 +77,13 @@ LinksContentsWidget::LinksContentsWidget(const QVariantMap &parameters, QWidget 
 				if (window)
 				{
 					connect(window, &Window::loadingStateChanged, this, &LinksContentsWidget::updateLinks);
+
+					if (window->getWebWidget())
+					{
+						window->getWebWidget()->startWatchingChanges(this, WebWidget::LinksWatcher);
+
+						connect(window->getWebWidget(), &WebWidget::watchedDataChanged, this, &LinksContentsWidget::handleWatchedDataChanged);
+					}
 				}
 			}
 
@@ -183,6 +197,14 @@ void LinksContentsWidget::openLink()
 	}
 }
 
+void LinksContentsWidget::handleWatchedDataChanged(WebWidget::ChangeWatcher watcher)
+{
+	if (watcher == WebWidget::LinksWatcher)
+	{
+		updateLinks();
+	}
+}
+
 void LinksContentsWidget::updateLinks()
 {
 	if (m_isLocked)
@@ -219,31 +241,16 @@ void LinksContentsWidget::showContextMenu(const QPoint &position)
 
 	if (!m_ui->linksViewWidget->selectionModel()->selectedIndexes().isEmpty())
 	{
-		connect(menu.addAction(ThemesManager::createIcon(QLatin1String("document-open")), QCoreApplication::translate("actions", "Open")), &QAction::triggered, this, &LinksContentsWidget::openLink);
-
-		QAction *openInNewTabAction(menu.addAction(QCoreApplication::translate("actions", "Open in New Tab")));
-		openInNewTabAction->setData(SessionsManager::NewTabOpen);
-
-		QAction *openInNewBackgroundTabAction(menu.addAction(QCoreApplication::translate("actions", "Open in New Background Tab")));
-		openInNewBackgroundTabAction->setData(static_cast<int>(SessionsManager::NewTabOpen | SessionsManager::BackgroundOpen));
-
+		menu.addAction(ThemesManager::createIcon(QLatin1String("document-open")), QCoreApplication::translate("actions", "Open"), this, &LinksContentsWidget::openLink);
+		menu.addAction(QCoreApplication::translate("actions", "Open in New Tab"), this, &LinksContentsWidget::openLink)->setData(SessionsManager::NewTabOpen);
+		menu.addAction(QCoreApplication::translate("actions", "Open in New Background Tab"), this, &LinksContentsWidget::openLink)->setData(static_cast<int>(SessionsManager::NewTabOpen | SessionsManager::BackgroundOpen));
 		menu.addSeparator();
-
-		QAction *openInNewWindowAction(menu.addAction(QCoreApplication::translate("actions", "Open in New Window")));
-		openInNewWindowAction->setData(SessionsManager::NewWindowOpen);
-
-		QAction *openInNewBackgroundWindowAction(menu.addAction(QCoreApplication::translate("actions", "Open in New Background Window")));
-		openInNewBackgroundWindowAction->setData(static_cast<int>(SessionsManager::NewWindowOpen | SessionsManager::BackgroundOpen));
-
+		menu.addAction(QCoreApplication::translate("actions", "Open in New Window"), this, &LinksContentsWidget::openLink)->setData(SessionsManager::NewWindowOpen);
+		menu.addAction(QCoreApplication::translate("actions", "Open in New Background Window"), this, &LinksContentsWidget::openLink)->setData(static_cast<int>(SessionsManager::NewWindowOpen | SessionsManager::BackgroundOpen));
 		menu.addSeparator();
 		menu.addAction(new Action(ActionsManager::BookmarkLinkAction, {}, executor, &menu));
 		menu.addAction(new Action(ActionsManager::CopyLinkToClipboardAction, {}, executor, &menu));
 		menu.addSeparator();
-
-		connect(openInNewTabAction, &QAction::triggered, this, &LinksContentsWidget::openLink);
-		connect(openInNewBackgroundTabAction, &QAction::triggered, this, &LinksContentsWidget::openLink);
-		connect(openInNewWindowAction, &QAction::triggered, this, &LinksContentsWidget::openLink);
-		connect(openInNewBackgroundWindowAction, &QAction::triggered, this, &LinksContentsWidget::openLink);
 	}
 
 	menu.addAction(new Action(ActionsManager::ReloadAction, {}, executor, &menu));

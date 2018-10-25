@@ -82,8 +82,8 @@ QtWebEngineWebWidget::QtWebEngineWebWidget(const QVariantMap &parameters, WebBac
 
 		emit pageInformationChanged(DocumentLoadingProgressInformation, progress);
 	});
-	connect(m_page, &QtWebEnginePage::loadStarted, this, &QtWebEngineWebWidget::pageLoadStarted);
-	connect(m_page, &QtWebEnginePage::loadFinished, this, &QtWebEngineWebWidget::pageLoadFinished);
+	connect(m_page, &QtWebEnginePage::loadStarted, this, &QtWebEngineWebWidget::handleLoadStarted);
+	connect(m_page, &QtWebEnginePage::loadFinished, this, &QtWebEngineWebWidget::handleLoadFinished);
 	connect(m_page, &QtWebEnginePage::linkHovered, this, &QtWebEngineWebWidget::setStatusMessageOverride);
 	connect(m_page, &QtWebEnginePage::iconChanged, this, &QtWebEngineWebWidget::notifyIconChanged);
 	connect(m_page, &QtWebEnginePage::requestedPopupWindow, this, &QtWebEngineWebWidget::requestedPopupWindow);
@@ -219,39 +219,6 @@ void QtWebEngineWebWidget::print(QPrinter *printer)
 	eventLoop.exec();
 }
 
-void QtWebEngineWebWidget::pageLoadStarted()
-{
-	m_lastUrlClickTime = QDateTime();
-	m_loadingState = OngoingLoadingState;
-	m_documentLoadingProgress = 0;
-
-	setStatusMessage({});
-	setStatusMessageOverride({});
-
-	emit geometryChanged();
-	emit loadingStateChanged(OngoingLoadingState);
-	emit pageInformationChanged(DocumentLoadingProgressInformation, 0);
-}
-
-void QtWebEngineWebWidget::pageLoadFinished()
-{
-	m_loadingState = FinishedLoadingState;
-	m_canGoForwardValue = UnknownValue;
-
-	notifyNavigationActionsChanged();
-	startReloadTimer();
-
-	m_page->runJavaScript(getFastForwardScript(false), [&](const QVariant &result)
-	{
-		m_canGoForwardValue = (result.toBool() ? TrueValue : FalseValue);
-
-		emit arbitraryActionsStateChanged({ActionsManager::FastForwardAction});
-	});
-
-	emit contentStateChanged(getContentState());
-	emit loadingStateChanged(FinishedLoadingState);
-}
-
 void QtWebEngineWebWidget::clearOptions()
 {
 	WebWidget::clearOptions();
@@ -321,7 +288,7 @@ void QtWebEngineWebWidget::triggerAction(int identifier, const QVariantMap &para
 			{
 				const SessionsManager::OpenHints hints(SessionsManager::calculateOpenHints(parameters));
 
-				if (hints == SessionsManager::DefaultOpen)
+				if (hints == SessionsManager::DefaultOpen && !getCurrentHitTestResult().flags.testFlag(HitTestResult::IsLinkFromSelectionTest))
 				{
 					m_page->runJavaScript(parsePosition(QStringLiteral("var element = ((%1 >= 0) ? document.elementFromPoint((%1 + window.scrollX), (%2 + window.scrollX)) : document.activeElement); if (element) { element.click(); }"), getClickPosition()));
 
@@ -470,7 +437,7 @@ void QtWebEngineWebWidget::triggerAction(int identifier, const QVariantMap &para
 				request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::PreferCache);
 				request.setHeader(QNetworkRequest::UserAgentHeader, m_page->profile()->httpUserAgent());
 
-				QNetworkReply *reply(NetworkManagerFactory::getNetworkManager()->get(request));
+				QNetworkReply *reply(NetworkManagerFactory::getNetworkManager(isPrivate())->get(request));
 				SourceViewerWebWidget *sourceViewer(new SourceViewerWebWidget(isPrivate()));
 				sourceViewer->setRequestedUrl(QUrl(QLatin1String("view-source:") + m_hitResult.frameUrl.toString()), false);
 
@@ -837,7 +804,6 @@ void QtWebEngineWebWidget::triggerAction(int identifier, const QVariantMap &para
 					const QIcon icon(getIcon());
 					const QUrl url(result.toMap().value(QLatin1String("url")).toString());
 					SearchEnginesManager::SearchEngineDefinition searchEngine;
-					searchEngine.identifier = Utils::createIdentifier(getUrl().host(), SearchEnginesManager::getSearchEngines());
 					searchEngine.title = getTitle();
 					searchEngine.formUrl = getUrl();
 					searchEngine.icon = (icon.isNull() ? ThemesManager::createIcon(QLatin1String("edit-find")) : icon);
@@ -902,7 +868,7 @@ void QtWebEngineWebWidget::triggerAction(int identifier, const QVariantMap &para
 				request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::PreferCache);
 				request.setHeader(QNetworkRequest::UserAgentHeader, m_page->profile()->httpUserAgent());
 
-				QNetworkReply *reply(NetworkManagerFactory::getNetworkManager()->get(request));
+				QNetworkReply *reply(NetworkManagerFactory::getNetworkManager(isPrivate())->get(request));
 				SourceViewerWebWidget *sourceViewer(new SourceViewerWebWidget(isPrivate()));
 				sourceViewer->setRequestedUrl(QUrl(QLatin1String("view-source:") + getUrl().toString()), false);
 
@@ -981,6 +947,55 @@ void QtWebEngineWebWidget::triggerAction(int identifier, const QVariantMap &para
 		default:
 			break;
 	}
+}
+
+void QtWebEngineWebWidget::handleLoadStarted()
+{
+	m_lastUrlClickTime = {};
+	m_metaData.clear();
+	m_styleSheets.clear();
+	m_feeds.clear();
+	m_links.clear();
+	m_searchEngines.clear();
+	m_watchedChanges.clear();
+	m_loadingState = OngoingLoadingState;
+	m_documentLoadingProgress = 0;
+
+	setStatusMessage({});
+	setStatusMessageOverride({});
+
+	emit geometryChanged();
+	emit loadingStateChanged(OngoingLoadingState);
+	emit pageInformationChanged(DocumentLoadingProgressInformation, 0);
+}
+
+void QtWebEngineWebWidget::handleLoadFinished()
+{
+	m_loadingState = FinishedLoadingState;
+	m_canGoForwardValue = UnknownValue;
+
+	notifyNavigationActionsChanged();
+	startReloadTimer();
+
+	m_page->runJavaScript(getFastForwardScript(false), [&](const QVariant &result)
+	{
+		m_canGoForwardValue = (result.toBool() ? TrueValue : FalseValue);
+
+		emit arbitraryActionsStateChanged({ActionsManager::FastForwardAction});
+	});
+
+	const QVector<ChangeWatcher> watchers({FeedsWatcher, LinksWatcher, MetaDataWatcher, SearchEnginesWatcher, StylesheetsWatcher});
+
+	for (int i = 0; i < watchers.count(); ++i)
+	{
+		if (isWatchingChanges(watchers.at(i)))
+		{
+			updateWatchedData(watchers.at(i));
+		}
+	}
+
+	emit contentStateChanged(getContentState());
+	emit loadingStateChanged(FinishedLoadingState);
 }
 
 void QtWebEngineWebWidget::handleViewSourceReplyFinished()
@@ -1165,6 +1180,18 @@ void QtWebEngineWebWidget::notifyNavigationActionsChanged()
 	}
 }
 
+void QtWebEngineWebWidget::notifyWatchedDataChanged(ChangeWatcher watcher)
+{
+	if (watcher >= m_watchedChanges.count())
+	{
+		m_watchedChanges.resize(watcher + 1);
+	}
+
+	m_watchedChanges[watcher] = true;
+
+	emit watchedDataChanged(watcher);
+}
+
 void QtWebEngineWebWidget::updateOptions(const QUrl &url)
 {
 	const QString encoding(getOption(SettingsManager::Content_DefaultCharacterEncodingOption, url).toString());
@@ -1188,6 +1215,70 @@ void QtWebEngineWebWidget::updateOptions(const QUrl &url)
 	if (getOption(SettingsManager::Permissions_ScriptsCanChangeWindowGeometryOption, url).toBool())
 	{
 		connect(m_page, &QtWebEnginePage::geometryChangeRequested, this, &QtWebEngineWebWidget::requestedGeometryChange);
+	}
+}
+
+void QtWebEngineWebWidget::updateWatchedData(ChangeWatcher watcher)
+{
+	switch (watcher)
+	{
+		case FeedsWatcher:
+			m_page->runJavaScript(m_page->createScriptSource(QLatin1String("getLinks"), {QLatin1String("a[type=\\'application/atom+xml\\'], a[type=\\'application/rss+xml\\'], link[type=\\'application/atom+xml\\'], link[type=\\'application/rss+xml\\']")}), [&](const QVariant &result)
+			{
+				m_feeds = processLinks(result.toList());
+
+				notifyWatchedDataChanged(FeedsWatcher);
+			});
+
+			break;
+		case LinksWatcher:
+			m_page->runJavaScript(m_page->createScriptSource(QLatin1String("getLinks"), {QLatin1String("a[href]")}), [&](const QVariant &result)
+			{
+				m_links = processLinks(result.toList());
+
+				notifyWatchedDataChanged(LinksWatcher);
+			});
+
+			break;
+		case MetaDataWatcher:
+			m_page->runJavaScript(QLatin1String("var elements = document.querySelectorAll('meta'); var metaData = []; for (var i = 0; i < elements.length; ++i) { if (elements[i].name !== '') { metaData.push({key: elements[i].name, value: elements[i].content}); } } metaData;"), [&](const QVariant &result)
+			{
+				QMultiMap<QString, QString> metaData;
+				const QVariantList rawMetaData(result.toList());
+
+				for (int i = 0; i < rawMetaData.count(); ++i)
+				{
+					const QVariantHash entry(rawMetaData.at(i).toHash());
+
+					metaData.insertMulti(entry.value(QLatin1String("key")).toString(), entry.value(QLatin1String("value")).toString());
+				}
+
+				m_metaData = metaData;
+
+				notifyWatchedDataChanged(MetaDataWatcher);
+			});
+
+			break;
+		case SearchEnginesWatcher:
+			m_page->runJavaScript(m_page->createScriptSource(QLatin1String("getLinks"), {QLatin1String("link[type=\\'application/opensearchdescription+xml\\']")}), [&](const QVariant &result)
+			{
+				m_searchEngines = processLinks(result.toList());
+
+				notifyWatchedDataChanged(SearchEnginesWatcher);
+			});
+
+			break;
+		case StylesheetsWatcher:
+			m_page->runJavaScript(m_page->createScriptSource(QLatin1String("getStyleSheets")), [&](const QVariant &result)
+			{
+				m_styleSheets = result.toStringList();
+
+				notifyWatchedDataChanged(StylesheetsWatcher);
+			});
+
+			break;
+		default:
+			break;
 	}
 }
 
@@ -1549,68 +1640,57 @@ WebWidget::HitTestResult QtWebEngineWebWidget::getHitTestResult(const QPoint &po
 {
 	m_hitResult = QtWebEngineHitTestResult(m_page->runScriptFile(QLatin1String("hitTest"), {QString::number(position.x() / m_page->zoomFactor()), QString::number(position.y() / m_page->zoomFactor())}));
 
+	if (m_hitResult.flags.testFlag(HitTestResult::IsSelectedTest) && !m_hitResult.linkUrl.isValid() && Utils::isUrl(m_page->selectedText()))
+	{
+		m_hitResult.flags |= HitTestResult::IsLinkFromSelectionTest;
+		m_hitResult.linkUrl = QUrl::fromUserInput(m_page->selectedText());
+	}
+
 	return m_hitResult;
 }
 
 QStringList QtWebEngineWebWidget::getStyleSheets() const
 {
-	return m_page->runScriptFile(QLatin1String("getStyleSheets")).toStringList();
+	return m_styleSheets;
 }
 
-QVector<WebWidget::LinkUrl> QtWebEngineWebWidget::getFeeds() const
+QVector<WebWidget::LinkUrl> QtWebEngineWebWidget::processLinks(const QVariantList &rawLinks) const
 {
-	return getLinks(QLatin1String("a[type=\\'application/atom+xml\\'], a[type=\\'application/rss+xml\\'], link[type=\\'application/atom+xml\\'], link[type=\\'application/rss+xml\\']"));
-}
-
-QVector<WebWidget::LinkUrl> QtWebEngineWebWidget::getLinks(const QString &query) const
-{
-	const QVariant result(m_page->runScriptFile(QLatin1String("getLinks"), {query}));
 	QVector<LinkUrl> links;
+	links.reserve(rawLinks.count());
 
-	if (result.isValid())
+	for (int i = 0; i < rawLinks.count(); ++i)
 	{
-		const QVariantList rawLinks(result.toList());
+		const QVariantHash rawLink(rawLinks.at(i).toHash());
+		LinkUrl link;
+		link.title = rawLink.value(QLatin1String("title")).toString();
+		link.mimeType = rawLink.value(QLatin1String("mimeType")).toString();
+		link.url = QUrl(rawLink.value(QLatin1String("url")).toString());
 
-		links.reserve(rawLinks.count());
-
-		for (int i = 0; i < rawLinks.count(); ++i)
-		{
-			const QVariantHash rawLink(rawLinks.at(i).toHash());
-			LinkUrl link;
-			link.title = rawLink.value(QLatin1String("title")).toString();
-			link.mimeType = rawLink.value(QLatin1String("mimeType")).toString();
-			link.url = QUrl(rawLink.value(QLatin1String("url")).toString());
-
-			links.append(link);
-		}
+		links.append(link);
 	}
 
 	return links;
 }
 
+QVector<WebWidget::LinkUrl> QtWebEngineWebWidget::getFeeds() const
+{
+	return m_feeds;
+}
+
 QVector<WebWidget::LinkUrl> QtWebEngineWebWidget::getLinks() const
 {
-	return getLinks(QLatin1String("a[href]"));
+	return m_links;
 }
 
 QVector<WebWidget::LinkUrl> QtWebEngineWebWidget::getSearchEngines() const
 {
-	return getLinks(QLatin1String("link[type=\\'application/opensearchdescription+xml\\']"));
+	return m_searchEngines;
 }
 
 QMultiMap<QString, QString> QtWebEngineWebWidget::getMetaData() const
 {
-	QMultiMap<QString, QString> metaData;
-	const QVariantList rawMetaData(m_page->runScriptSource(QLatin1String("var elements = document.querySelectorAll('meta'); var metaData = []; for (var i = 0; i < elements.length; ++i) { if (elements[i].name !== '') { metaData.push({key: elements[i].name, value: elements[i].content}); } } metaData;")).toList());
-
-	for (int i = 0; i < rawMetaData.count(); ++i)
-	{
-		const QVariantHash metaDataEntry(rawMetaData.at(i).toHash());
-
-		metaData.insertMulti(metaDataEntry.value(QLatin1String("key")).toString(), metaDataEntry.value(QLatin1String("value")).toString());
-	}
-
-	return metaData;
+	return m_metaData;
 }
 
 WebWidget::LoadingState QtWebEngineWebWidget::getLoadingState() const
@@ -1711,6 +1791,11 @@ bool QtWebEngineWebWidget::hasSelection() const
 	return (m_page->hasSelection() && !m_page->selectedText().isEmpty());
 }
 
+bool QtWebEngineWebWidget::hasWatchedChanges(WebWidget::ChangeWatcher watcher) const
+{
+	return m_watchedChanges.value(watcher, false);
+}
+
 bool QtWebEngineWebWidget::isAudible() const
 {
 	return m_page->recentlyAudible();
@@ -1755,7 +1840,6 @@ bool QtWebEngineWebWidget::eventFilter(QObject *object, QEvent *event)
 	switch (event->type())
 	{
 		case QEvent::ChildAdded:
-
 			if (object == m_webView)
 			{
 				const QChildEvent *childEvent(static_cast<QChildEvent*>(event));

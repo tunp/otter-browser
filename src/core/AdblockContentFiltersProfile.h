@@ -19,69 +19,42 @@
 *
 **************************************************************************/
 
-#ifndef OTTER_CONTENTBLOCKINGPROFILE_H
-#define OTTER_CONTENTBLOCKINGPROFILE_H
+#ifndef OTTER_ADBLOCKCONTENTFILTERSPROFILE_H
+#define OTTER_ADBLOCKCONTENTFILTERSPROFILE_H
 
-#include "ContentBlockingManager.h"
+#include "ContentFiltersManager.h"
 
 #include <QtCore/QRegularExpression>
 
 namespace Otter
 {
 
-class ContentBlockingProfile final : public QObject
+class AdblockContentFiltersProfile final : public ContentFiltersProfile
 {
 	Q_OBJECT
 
 public:
-	enum ProfileError
-	{
-		NoError = 0,
-		ReadError,
-		DownloadError,
-		ChecksumError
-	};
+	explicit AdblockContentFiltersProfile(const QString &name, const QString &title, const QUrl &updateUrl, const QDateTime &lastUpdate, const QStringList &languages, int updateInterval, const ProfileCategory &category, const ProfileFlags &flags, QObject *parent = nullptr);
 
-	enum ProfileFlag
-	{
-		NoFlags = 0,
-		HasCustomTitleFlag = 1,
-		HasCustomUpdateUrlFlag = 2
-	};
-
-	Q_DECLARE_FLAGS(ProfileFlags, ProfileFlag)
-
-	enum ProfileCategory
-	{
-		OtherCategory = 0,
-		AdvertisementsCategory = 1,
-		AnnoyanceCategory = 2,
-		PrivacyCategory = 4,
-		SocialCategory = 8,
-		RegionalCategory = 16
-	};
-
-	explicit ContentBlockingProfile(const QString &name, const QString &title, const QUrl &updateUrl, const QDateTime &lastUpdate, const QStringList &languages, int updateInterval, const ProfileCategory &category, const ProfileFlags &flags, QObject *parent = nullptr);
-
-	void clear();
-	void setCategory(const ProfileCategory &category);
-	void setTitle(const QString &title);
-	void setUpdateInterval(int interval);
-	void setUpdateUrl(const QUrl &url);
-	QString getName() const;
-	QString getTitle() const;
-	QUrl getUpdateUrl() const;
-	QDateTime getLastUpdate() const;
-	ContentBlockingManager::CheckResult checkUrl(const QUrl &baseUrl, const QUrl &requestUrl, NetworkManager::ResourceType resourceType);
-	ContentBlockingManager::CosmeticFiltersResult getCosmeticFilters(const QStringList &domains, bool isDomainOnly);
-	QVector<QLocale::Language> getLanguages() const;
-	ProfileCategory getCategory() const;
-	ProfileError getError() const;
-	ProfileFlags getFlags() const;
-	int getUpdateInterval() const;
-	bool downloadRules();
-	bool remove();
-	bool isUpdating() const;
+	void clear() override;
+	void setCategory(ProfileCategory category) override;
+	void setTitle(const QString &title) override;
+	void setUpdateInterval(int interval) override;
+	void setUpdateUrl(const QUrl &url) override;
+	QString getName() const override;
+	QString getTitle() const override;
+	QUrl getUpdateUrl() const override;
+	QDateTime getLastUpdate() const override;
+	ContentFiltersManager::CheckResult checkUrl(const QUrl &baseUrl, const QUrl &requestUrl, NetworkManager::ResourceType resourceType) override;
+	ContentFiltersManager::CosmeticFiltersResult getCosmeticFilters(const QStringList &domains, bool isDomainOnly) override;
+	QVector<QLocale::Language> getLanguages() const override;
+	ProfileCategory getCategory() const override;
+	ProfileError getError() const override;
+	ProfileFlags getFlags() const override;
+	int getUpdateInterval() const override;
+	bool update() override;
+	bool remove() override;
+	bool isUpdating() const override;
 
 protected:
 	enum RuleOption : quint32
@@ -142,14 +115,14 @@ protected:
 	};
 
 	QString getPath() const;
-	void loadHeader(const QString &path);
+	void loadHeader();
 	void parseRuleLine(const QString &rule);
 	void parseStyleSheetRule(const QStringList &line, QMultiHash<QString, QString> &list) const;
 	void addRule(ContentBlockingRule *rule, const QString &ruleString) const;
 	void deleteNode(Node *node) const;
-	ContentBlockingManager::CheckResult checkUrlSubstring(const Node *node, const QString &subString, QString currentRule, NetworkManager::ResourceType resourceType);
-	ContentBlockingManager::CheckResult checkRuleMatch(const ContentBlockingRule *rule, const QString &currentRule, NetworkManager::ResourceType resourceType) const;
-	ContentBlockingManager::CheckResult evaluateRulesInNode(const Node *node, const QString &currentRule, NetworkManager::ResourceType resourceType) const;
+	ContentFiltersManager::CheckResult checkUrlSubstring(const Node *node, const QString &subString, QString currentRule, NetworkManager::ResourceType resourceType);
+	ContentFiltersManager::CheckResult checkRuleMatch(const ContentBlockingRule *rule, const QString &currentRule, NetworkManager::ResourceType resourceType) const;
+	ContentFiltersManager::CheckResult evaluateRulesInNode(const Node *node, const QString &currentRule, NetworkManager::ResourceType resourceType) const;
 	bool loadRules();
 	bool resolveDomainExceptions(const QString &url, const QStringList &ruleList) const;
 
@@ -188,7 +161,5 @@ signals:
 };
 
 }
-
-Q_DECLARE_OPERATORS_FOR_FLAGS(Otter::ContentBlockingProfile::ProfileFlags)
 
 #endif

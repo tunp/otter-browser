@@ -330,7 +330,7 @@ AddressWidget::AddressWidget(Window *window, QWidget *parent) : LineEditWidget(p
 	setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 	setMinimumWidth(100);
 	setWindow(window);
-	updateCompletion(false);
+	updateCompletion(true);
 	handleOptionChanged(SettingsManager::AddressField_CompletionModeOption, SettingsManager::getOption(SettingsManager::AddressField_CompletionModeOption));
 	handleOptionChanged(SettingsManager::AddressField_DropActionOption, SettingsManager::getOption(SettingsManager::AddressField_DropActionOption));
 	handleOptionChanged(SettingsManager::AddressField_LayoutOption, SettingsManager::getOption(SettingsManager::AddressField_LayoutOption));
@@ -537,10 +537,7 @@ void AddressWidget::contextMenuEvent(QContextMenuEvent *event)
 			menu.addSeparator();
 		}
 
-		QAction *removeEntryAction(menu.addAction(tr("Remove this Icon")));
-		removeEntryAction->setData(entry);
-
-		connect(removeEntryAction, &QAction::triggered, this, &AddressWidget::removeEntry);
+		menu.addAction(tr("Remove this Icon"), this, &AddressWidget::removeEntry)->setData(entry);
 	}
 
 	const ToolBarWidget *toolBar(qobject_cast<ToolBarWidget*>(parentWidget()));
@@ -659,19 +656,18 @@ void AddressWidget::mouseReleaseEvent(QMouseEvent *event)
 						else
 						{
 							QMenu menu;
-							QAction *addBookmarkAction(menu.addAction(tr("Add to Bookmarks")));
-							addBookmarkAction->setShortcut(ActionsManager::getActionShortcut(ActionsManager::BookmarkPageAction));
-							addBookmarkAction->setShortcutContext(Qt::WidgetShortcut);
-
-							connect(addBookmarkAction, &QAction::triggered, [&]()
+							QAction *addBookmarkAction(menu.addAction(tr("Add to Bookmarks"), [&]()
 							{
 								if (m_window)
 								{
 									BookmarkPropertiesDialog dialog(getUrl().adjusted(QUrl::RemovePassword), m_window->getTitle(), (m_window->getContentsWidget() ? m_window->getContentsWidget()->getDescription() : QString()), nullptr, -1, true, this);
 									dialog.exec();
 								}
-							});
-							connect(menu.addAction(tr("Add to Start Page")), &QAction::triggered, [&]()
+							}));
+							addBookmarkAction->setShortcut(ActionsManager::getActionShortcut(ActionsManager::BookmarkPageAction));
+							addBookmarkAction->setShortcutContext(Qt::WidgetShortcut);
+
+							menu.addAction(tr("Add to Start Page"), [&]()
 							{
 								if (m_window)
 								{
@@ -916,6 +912,16 @@ void AddressWidget::handleActionsStateChanged(const QVector<int> &identifiers)
 	}
 }
 
+void AddressWidget::handleWatchedDataChanged(WebWidget::ChangeWatcher watcher)
+{
+	if (watcher == WebWidget::FeedsWatcher)
+	{
+		m_hasFeeds = (m_window && m_window->getWebWidget() && !m_window->getWebWidget()->getFeeds().isEmpty());
+
+		updateGeometries();
+	}
+}
+
 void AddressWidget::handleLoadingStateChanged()
 {
 	m_hasFeeds = (m_window && m_window->getWebWidget() && !m_window->getWebWidget()->getFeeds().isEmpty());
@@ -982,7 +988,7 @@ void AddressWidget::updateGeometries()
 	int availableWidth(width() - margins.left() - margins.right());
 	const bool hasValidWindow(m_window && !m_window->isAboutToClose() && m_window->getLoadingState() == WebWidget::FinishedLoadingState);
 	bool isLeading(true);
-	bool isRightToLeft(layoutDirection() == Qt::RightToLeft);
+	const bool isRightToLeft(layoutDirection() == Qt::RightToLeft);
 
 	if (m_layout.contains(WebsiteInformationEntry))
 	{
@@ -1299,6 +1305,13 @@ void AddressWidget::setWindow(Window *window)
 		disconnect(m_window.data(), &Window::arbitraryActionsStateChanged, this, &AddressWidget::handleActionsStateChanged);
 		disconnect(m_window.data(), &Window::contentStateChanged, this, &AddressWidget::updateGeometries);
 		disconnect(m_window.data(), &Window::loadingStateChanged, this, &AddressWidget::handleLoadingStateChanged);
+
+		if (m_window->getWebWidget())
+		{
+			m_window->getWebWidget()->stopWatchingChanges(this, WebWidget::FeedsWatcher);
+
+			disconnect(m_window->getWebWidget(), &WebWidget::watchedDataChanged, this, &AddressWidget::handleWatchedDataChanged);
+		}
 	}
 
 	m_window = window;
@@ -1333,6 +1346,13 @@ void AddressWidget::setWindow(Window *window)
 				setWindow(nullptr);
 			}
 		});
+
+		if (window->getWebWidget())
+		{
+			window->getWebWidget()->startWatchingChanges(this, WebWidget::FeedsWatcher);
+
+			connect(window->getWebWidget(), &WebWidget::watchedDataChanged, this, &AddressWidget::handleWatchedDataChanged);
+		}
 
 		const ToolBarWidget *toolBar(qobject_cast<ToolBarWidget*>(parentWidget()));
 

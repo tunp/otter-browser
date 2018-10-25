@@ -200,7 +200,11 @@
 						"Search",
 						"SearchMenu",
 						"separator",
-						"OpenSelectionAsLink"
+						{
+							"type": "action",
+							"identifier": "OpenSelectionAsLink",
+							"excludeFrom": "link"
+						}
 					]
 				},
 				"separator",
@@ -215,11 +219,22 @@
 				},
 				{
 					"type": "include",
-					"excludeFrom": "source",
+					"excludeFrom":
+					[
+						"link",
+						"source"
+					],
 					"actions":
 					[
 						"InspectElement",
-						"separator",
+						"separator"
+					]
+				},
+				{
+					"type": "include",
+					"excludeFrom": "source",
+					"actions":
+					[
 						"CheckSpelling",
 						"DictionariesMenu",
 						"separator"
@@ -239,8 +254,15 @@
 				"Copy",
 				"CopyToNote",
 				"separator",
-				"OpenSelectionAsLink",
-				"separator"
+				{
+					"type": "include",
+					"excludeFrom": "link",
+					"actions":
+					[
+						"OpenSelectionAsLink",
+						"separator"
+					]
+				}
 			]
 		},
 		{

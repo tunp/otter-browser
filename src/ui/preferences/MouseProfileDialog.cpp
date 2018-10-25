@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2015 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2015 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2017 Piotr Wójcik <chocimier@tlen.pl>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -21,6 +21,7 @@
 #include "MouseProfileDialog.h"
 #include "../ActionComboBoxWidget.h"
 #include "../../core/ActionsManager.h"
+#include "../../core/ThemesManager.h"
 
 #include "ui_MouseProfileDialog.h"
 
@@ -141,12 +142,14 @@ MouseProfileDialog::MouseProfileDialog(const QString &profile, const QHash<QStri
 	QStandardItemModel *stepsModel(new QStandardItemModel(this));
 	stepsModel->setHorizontalHeaderLabels({tr("Step")});
 
-	m_ui->gesturesViewWidget->setViewMode(ItemViewWidget::TreeViewMode);
+	m_ui->gesturesViewWidget->setViewMode(ItemViewWidget::TreeView);
 	m_ui->gesturesViewWidget->setModel(gesturesModel);
 	m_ui->gesturesViewWidget->setItemDelegateForColumn(0, new GestureActionDelegate(this));
 	m_ui->gesturesViewWidget->setFilterRoles({Qt::DisplayRole, NameRole});
 	m_ui->gesturesViewWidget->setModified(m_profile.isModified());
 	m_ui->stepsViewWidget->setModel(stepsModel);
+	m_ui->moveDownStepsButton->setIcon(ThemesManager::createIcon(QLatin1String("arrow-down")));
+	m_ui->moveUpStepsButton->setIcon(ThemesManager::createIcon(QLatin1String("arrow-up")));
 	m_ui->titleLineEditWidget->setText(m_profile.getTitle());
 	m_ui->descriptionLineEditWidget->setText(m_profile.getDescription());
 	m_ui->versionLineEditWidget->setText(m_profile.getVersion());
@@ -161,8 +164,12 @@ MouseProfileDialog::MouseProfileDialog(const QString &profile, const QHash<QStri
 	connect(m_ui->addGestureButton, &QPushButton::clicked, this, &MouseProfileDialog::addGesture);
 	connect(m_ui->removeGestureButton, &QPushButton::clicked, this, &MouseProfileDialog::removeGesture);
 	connect(m_ui->stepsViewWidget, &ItemViewWidget::needsActionsUpdate, this, &MouseProfileDialog::updateStepsActions);
+	connect(m_ui->stepsViewWidget, &ItemViewWidget::canMoveRowDownChanged, m_ui->moveDownStepsButton, &QToolButton::setEnabled);
+	connect(m_ui->stepsViewWidget, &ItemViewWidget::canMoveRowUpChanged, m_ui->moveUpStepsButton, &QToolButton::setEnabled);
 	connect(m_ui->addStepButton, &QPushButton::clicked, this, &MouseProfileDialog::addStep);
 	connect(m_ui->removeStepButton, &QPushButton::clicked, this, &MouseProfileDialog::removeStep);
+	connect(m_ui->moveDownStepsButton, &QToolButton::clicked, m_ui->stepsViewWidget, &ItemViewWidget::moveDownRow);
+	connect(m_ui->moveUpStepsButton, &QToolButton::clicked, m_ui->stepsViewWidget, &ItemViewWidget::moveUpRow);
 }
 
 MouseProfileDialog::~MouseProfileDialog()
@@ -214,25 +221,6 @@ void MouseProfileDialog::removeGesture()
 	}
 }
 
-void MouseProfileDialog::saveGesture()
-{
-	QStringList steps;
-
-	for (int i = 0; i < m_ui->stepsViewWidget->getRowCount(); ++i)
-	{
-		const QString step(m_ui->stepsViewWidget->getIndex(i, 0).data().toString());
-
-		if (!step.isEmpty())
-		{
-			steps.append(step);
-		}
-	}
-
-	const QModelIndex index(m_ui->gesturesViewWidget->currentIndex());
-
-	m_ui->gesturesViewWidget->setData(index.sibling(index.row(), 2), steps.join(QLatin1String(", ")), Qt::DisplayRole);
-}
-
 void MouseProfileDialog::addStep()
 {
 	m_ui->stepsViewWidget->insertRow();
@@ -241,14 +229,10 @@ void MouseProfileDialog::addStep()
 void MouseProfileDialog::removeStep()
 {
 	m_ui->stepsViewWidget->removeRow();
-
-	saveGesture();
 }
 
 void MouseProfileDialog::updateGesturesActions()
 {
-	disconnect(m_ui->stepsViewWidget->getSourceModel(), &QStandardItemModel::dataChanged, this, &MouseProfileDialog::saveGesture);
-
 	const QModelIndex index(m_ui->gesturesViewWidget->currentIndex().sibling(m_ui->gesturesViewWidget->currentIndex().row(), 0));
 	const bool isGesture(index.flags().testFlag(Qt::ItemNeverHasChildren));
 
@@ -271,8 +255,6 @@ void MouseProfileDialog::updateGesturesActions()
 	}
 
 	updateStepsActions();
-
-	connect(m_ui->stepsViewWidget->getSourceModel(), &QStandardItemModel::dataChanged, this, &MouseProfileDialog::saveGesture);
 }
 
 void MouseProfileDialog::updateStepsActions()
@@ -284,6 +266,23 @@ void MouseProfileDialog::updateStepsActions()
 
 	m_ui->addStepButton->setEnabled(isGesture);
 	m_ui->removeStepButton->setEnabled(isGesture && item);
+
+	if (isGesture && item)
+	{
+		QStringList steps;
+
+		for (int i = 0; i < m_ui->stepsViewWidget->getRowCount(); ++i)
+		{
+			const QString step(m_ui->stepsViewWidget->getIndex(i, 0).data().toString());
+
+			if (!step.isEmpty())
+			{
+				steps.append(step);
+			}
+		}
+
+		m_ui->gesturesViewWidget->setData(item->index().sibling(item->index().row(), 2), steps.join(QLatin1String(", ")), Qt::DisplayRole);
+	}
 }
 
 MouseProfile MouseProfileDialog::getProfile() const

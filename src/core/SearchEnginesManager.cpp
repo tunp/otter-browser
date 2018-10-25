@@ -22,7 +22,6 @@
 #include "SessionsManager.h"
 #include "SettingsManager.h"
 #include "ThemesManager.h"
-#include "Utils.h"
 
 #include <QtCore/QDir>
 #include <QtCore/QFile>
@@ -109,28 +108,6 @@ void SearchEnginesManager::loadSearchEngines()
 	updateSearchEnginesOptions();
 }
 
-void SearchEnginesManager::addSearchEngine(const SearchEngineDefinition &searchEngine)
-{
-	if (!saveSearchEngine(searchEngine))
-	{
-		return;
-	}
-
-	if (m_searchEnginesOrder.contains(searchEngine.identifier))
-	{
-		emit m_instance->searchEnginesModified();
-
-		updateSearchEnginesModel();
-		updateSearchEnginesOptions();
-	}
-	else
-	{
-		m_searchEnginesOrder.append(searchEngine.identifier);
-
-		SettingsManager::setOption(SettingsManager::Search_SearchEnginesOrderOption, m_searchEnginesOrder);
-	}
-}
-
 void SearchEnginesManager::handleOptionChanged(int identifier)
 {
 	if (identifier == SettingsManager::Search_SearchEnginesOrderOption)
@@ -210,7 +187,7 @@ void SearchEnginesManager::setupQuery(const QString &query, const SearchUrl &sea
 	}
 
 	QString urlString(searchUrl.url);
-	const QHash<QString, QString> values({{QLatin1String("searchTerms"), query}, {QLatin1String("count"), QString()}, {QLatin1String("startIndex"), QString()}, {QLatin1String("startPage"), QString()}, {QLatin1String("language"), QLocale::system().name()}, {QLatin1String("inputEncoding"), QLatin1String("UTF-8")}, {QLatin1String("outputEncoding"), QLatin1String("UTF-8")}});
+	const QHash<QString, QString> values({{QLatin1String("searchTerms"), query}, {QLatin1String("count"), QString()}, {QLatin1String("startIndex"), QString()}, {QLatin1String("startPage"), QString()}, {QLatin1String("language"), QLocale::system().name().replace(QLatin1Char('_'), QLatin1Char('-'))}, {QLatin1String("inputEncoding"), QLatin1String("UTF-8")}, {QLatin1String("outputEncoding"), QLatin1String("UTF-8")}});
 	QHash<QString, QString>::const_iterator iterator;
 
 	for (iterator = values.constBegin(); iterator != values.constEnd(); ++iterator)
@@ -310,19 +287,24 @@ SearchEnginesManager::SearchEngineDefinition SearchEnginesManager::loadSearchEng
 
 			if (reader.isStartElement())
 			{
+				const QXmlStreamAttributes attributes(reader.attributes());
+
 				if (reader.name() == QLatin1String("Url"))
 				{
-					if (reader.attributes().value(QLatin1String("rel")) == QLatin1String("self") || reader.attributes().value(QLatin1String("type")) == QLatin1String("application/opensearchdescription+xml"))
+					const QString rel(attributes.value(QLatin1String("rel")).toString());
+					const QString type(attributes.value(QLatin1String("type")).toString());
+
+					if (rel == QLatin1String("self") || type == QLatin1String("application/opensearchdescription+xml"))
 					{
-						searchEngine.selfUrl = QUrl(reader.attributes().value(QLatin1String("template")).toString());
+						searchEngine.selfUrl = QUrl(attributes.value(QLatin1String("template")).toString());
 
 						currentUrl = nullptr;
 					}
-					else if (reader.attributes().value(QLatin1String("rel")) == QLatin1String("suggestions") || reader.attributes().value(QLatin1String("type")) == QLatin1String("application/x-suggestions+json"))
+					else if ((rel == QLatin1String("suggestions") && type != QLatin1String("x-suggestions+xm")) || type == QLatin1String("application/x-suggestions+json"))
 					{
 						currentUrl = &searchEngine.suggestionsUrl;
 					}
-					else if (!reader.attributes().hasAttribute(QLatin1String("rel")) || reader.attributes().value(QLatin1String("rel")) == QLatin1String("results"))
+					else if ((rel.isEmpty() || rel == QLatin1String("results")) && !type.contains(QLatin1String("suggestions")))
 					{
 						currentUrl = &searchEngine.resultsUrl;
 					}
@@ -333,14 +315,14 @@ SearchEnginesManager::SearchEngineDefinition SearchEnginesManager::loadSearchEng
 
 					if (currentUrl)
 					{
-						currentUrl->url = reader.attributes().value(QLatin1String("template")).toString();
-						currentUrl->enctype = reader.attributes().value(QLatin1String("enctype")).toString().toLower();
-						currentUrl->method = reader.attributes().value(QLatin1String("method")).toString().toLower();
+						currentUrl->url = attributes.value(QLatin1String("template")).toString();
+						currentUrl->enctype = attributes.value(QLatin1String("enctype")).toString().toLower();
+						currentUrl->method = attributes.value(QLatin1String("method")).toString().toLower();
 					}
 				}
 				else if (currentUrl && (reader.name() == QLatin1String("Param") || reader.name() == QLatin1String("Parameter")))
 				{
-					currentUrl->parameters.addQueryItem(reader.attributes().value(QLatin1String("name")).toString(), reader.attributes().value(QLatin1String("value")).toString());
+					currentUrl->parameters.addQueryItem(attributes.value(QLatin1String("name")).toString(), attributes.value(QLatin1String("value")).toString());
 				}
 				else if (reader.name() == QLatin1String("Shortcut"))
 				{
@@ -502,16 +484,47 @@ bool SearchEnginesManager::hasSearchEngine(const QUrl &url)
 	return false;
 }
 
-bool SearchEnginesManager::saveSearchEngine(const SearchEngineDefinition &searchEngine)
+bool SearchEnginesManager::addSearchEngine(const SearchEngineDefinition &searchEngine)
 {
-	if (SessionsManager::isReadOnly() || !searchEngine.isValid())
+	if (!saveSearchEngine(searchEngine))
 	{
 		return false;
 	}
 
+	if (m_searchEnginesOrder.contains(searchEngine.identifier))
+	{
+		emit m_instance->searchEnginesModified();
+
+		updateSearchEnginesModel();
+		updateSearchEnginesOptions();
+	}
+	else
+	{
+		m_searchEnginesOrder.append(searchEngine.identifier);
+
+		SettingsManager::setOption(SettingsManager::Search_SearchEnginesOrderOption, m_searchEnginesOrder);
+	}
+
+	return true;
+}
+
+bool SearchEnginesManager::saveSearchEngine(const SearchEngineDefinition &searchEngine)
+{
+	if (SessionsManager::isReadOnly())
+	{
+		return false;
+	}
+
+	QString identifier(searchEngine.identifier);
+
+	if (identifier.isEmpty())
+	{
+		identifier = searchEngine.createIdentifier();
+	}
+
 	QDir().mkpath(SessionsManager::getWritableDataPath(QLatin1String("searchEngines")));
 
-	QFile file(SessionsManager::getWritableDataPath(QLatin1String("searchEngines/") + searchEngine.identifier + QLatin1String(".xml")));
+	QFile file(SessionsManager::getWritableDataPath(QLatin1String("searchEngines/") + identifier + QLatin1String(".xml")));
 
 	if (!file.open(QIODevice::WriteOnly))
 	{
@@ -652,14 +665,9 @@ void SearchEngineFetchJob::handleSuccessfulReply(QNetworkReply *reply)
 		m_searchEngine.selfUrl = reply->request().url();
 	}
 
-	if (m_needsToSaveSearchEngine)
-	{
-		SearchEnginesManager::addSearchEngine(m_searchEngine);
-	}
-
 	if (m_searchEngine.iconUrl.isValid())
 	{
-		const IconFetchJob *job(new IconFetchJob(m_searchEngine.iconUrl, this));
+		IconFetchJob *job(new IconFetchJob(m_searchEngine.iconUrl, this));
 
 		connect(job, &IconFetchJob::jobFinished, this, [=]()
 		{
@@ -670,14 +678,25 @@ void SearchEngineFetchJob::handleSuccessfulReply(QNetworkReply *reply)
 				SearchEnginesManager::addSearchEngine(m_searchEngine);
 			}
 
+			markAsFinished();
 			deleteLater();
 
 			emit jobFinished(true);
 		});
+
+		job->start();
 	}
 	else
 	{
+		if (m_needsToSaveSearchEngine)
+		{
+			SearchEnginesManager::addSearchEngine(m_searchEngine);
+		}
+
 		markAsFinished();
+		deleteLater();
+
+		emit jobFinished(true);
 	}
 }
 

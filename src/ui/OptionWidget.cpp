@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 * Copyright (C) 2016 - 2017 Piotr Wójcik <chocimier@tlen.pl>
 *
 * This program is free software: you can redistribute it and/or modify
@@ -24,6 +24,7 @@
 #include "LineEditWidget.h"
 #include "FilePathWidget.h"
 #include "../core/ThemesManager.h"
+#include "../core/Utils.h"
 
 #include <QtWidgets/QHBoxLayout>
 
@@ -136,11 +137,26 @@ OptionWidget::OptionWidget(const QVariant &value, SettingsManager::OptionType ty
 	layout->setMargin(0);
 	layout->addWidget(m_widget);
 
+	if (type == SettingsManager::IconType)
+	{
+		layout->addStretch();
+	}
+
 	setLayout(layout);
 
 	m_widget->setAutoFillBackground(false);
 	m_widget->setFocusPolicy(Qt::StrongFocus);
 	m_widget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+}
+
+void OptionWidget::changeEvent(QEvent *event)
+{
+	QWidget::changeEvent(event);
+
+	if (event->type() == QEvent::LanguageChange && m_resetButton)
+	{
+		m_resetButton->setText(tr("Defaults"));
+	}
 }
 
 void OptionWidget::focusInEvent(QFocusEvent *event)
@@ -157,7 +173,7 @@ void OptionWidget::markAsModified()
 {
 	if (m_resetButton)
 	{
-		m_resetButton->setEnabled(m_defaultValue != getValue());
+		m_resetButton->setEnabled(!isDefault());
 	}
 
 	emit commitData(this);
@@ -181,11 +197,13 @@ void OptionWidget::setDefaultValue(const QVariant &value)
 	{
 		if (value.type() == QVariant::Icon)
 		{
-			m_iconWidget->setDefaultIcon(value.value<QIcon>());
+			const QIcon icon(value.value<QIcon>());
+
+			m_iconWidget->setDefaultIcon(Utils::savePixmapAsDataUri(icon.pixmap(icon.availableSizes().value(0, QSize(16, 16)))));
 		}
 		else
 		{
-			m_iconWidget->setDefaultIcon(ThemesManager::createIcon(value.toString()));
+			m_iconWidget->setDefaultIcon(value.toString());
 		}
 	}
 
@@ -232,6 +250,7 @@ void OptionWidget::setValue(const QVariant &value)
 	else if (m_lineEditWidget)
 	{
 		m_lineEditWidget->setText((value.type() == QVariant::StringList) ? value.toStringList().join(QLatin1String(", ")) : value.toString());
+		m_lineEditWidget->setCursorPosition(0);
 	}
 	else if (m_spinBox)
 	{
@@ -314,13 +333,6 @@ void OptionWidget::setSizePolicy(QSizePolicy::Policy horizontal, QSizePolicy::Po
 	m_widget->setSizePolicy(horizontal, vertical);
 }
 
-void OptionWidget::setSizePolicy(QSizePolicy policy)
-{
-	QWidget::setSizePolicy(policy);
-
-	m_widget->setSizePolicy(policy);
-}
-
 QVariant OptionWidget::getDefaultValue() const
 {
 	return m_defaultValue;
@@ -350,7 +362,7 @@ QVariant OptionWidget::getValue() const
 
 	if (m_iconWidget)
 	{
-		return m_iconWidget->icon();
+		return m_iconWidget->getIcon();
 	}
 
 	if (m_lineEditWidget)
@@ -374,6 +386,11 @@ QVariant OptionWidget::getValue() const
 	}
 
 	return {};
+}
+
+bool OptionWidget::isDefault() const
+{
+	return (m_defaultValue == getValue());
 }
 
 }

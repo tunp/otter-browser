@@ -2,26 +2,26 @@ cmake_minimum_required(VERSION 3.1.0)
 
 if (POLICY CMP0020)
 	cmake_policy(SET CMP0020 NEW)
-endif (POLICY CMP0020)
+endif ()
 
 if (POLICY CMP0043)
 	cmake_policy(SET CMP0043 NEW)
-endif (POLICY CMP0043)
+endif ()
 
 project(otter-browser)
 
-set(MAJOR_VERSION "0")
-set(MINOR_VERSION "9")
-set(PATCH_VERSION "99")
+set(MAJOR_VERSION "1")
+set(MINOR_VERSION "0")
+set(PATCH_VERSION "81")
 set(WEEKLY_VERSION "" CACHE STRING "")
 
 add_definitions(-DOTTER_VERSION_MAIN="${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION}" -DOTTER_INSTALL_PREFIX="${CMAKE_INSTALL_PREFIX}")
 
 if ("${WEEKLY_VERSION}" STREQUAL "")
 	add_definitions(-DOTTER_VERSION_CONTEXT="-dev" -DOTTER_VERSION_WEEKLY=" ")
-else ("${WEEKLY_VERSION}" STREQUAL "")
+else ()
 	add_definitions(-DOTTER_VERSION_CONTEXT=" weekly ${WEEKLY_VERSION}" -DOTTER_VERSION_WEEKLY="${WEEKLY_VERSION}")
-endif ("${WEEKLY_VERSION}" STREQUAL "")
+endif ()
 
 if (EXISTS "${CMAKE_ROOT}/Modules/CPack.cmake")
 	include(InstallRequiredSystemLibraries)
@@ -38,7 +38,7 @@ if (EXISTS "${CMAKE_ROOT}/Modules/CPack.cmake")
 	set(CPACK_PACKAGE_NAME "otter-browser")
 	set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}_${MAJOR_VERSION}.${MINOR_VERSION}.${CPACK_PACKAGE_VERSION_PATCH}")
 	set(CPACK_SOURCE_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}_${MAJOR_VERSION}.${MINOR_VERSION}.${CPACK_PACKAGE_VERSION_PATCH}")
-	set(CPACK_DEBIAN_PACKAGE_DEPENDS "libhunspell-1.3-0 (>= 1.3.3), libqt5multimedia5 (>=5.4.0), libqt5qml5 (>=5.4.0), libqt5svg5 (>=5.4.0), libqt5webkit5 (>=5.4.0), libqt5xmlpatterns5 (>=5.4.0)")
+	set(CPACK_DEBIAN_PACKAGE_DEPENDS "libhunspell-1.5-0 (>= 1.5.1), libqt5multimedia5 (>=5.6.0), libqt5qml5 (>=5.6.0), libqt5svg5 (>=5.6.0), libqt5webkit5 (>=5.212.0), libqt5xmlpatterns5 (>=5.6.0)")
 	set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "gstreamer1.0-plugins-base, gstreamer1.0-plugins-good")
 	set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 	set(CPACK_DEBIAN_PACKAGE_SECTION "web")
@@ -64,7 +64,7 @@ if (EXISTS "${CMAKE_ROOT}/Modules/CPack.cmake")
 	)
 
 	include(CPack)
-endif (EXISTS "${CMAKE_ROOT}/Modules/CPack.cmake")
+endif ()
 
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -75,13 +75,15 @@ include(FeatureSummary)
 include(GNUInstallDirs)
 
 option(ENABLE_QTWEBENGINE "Enable QtWebEngine backend (requires Qt 5.9)" ON)
-option(ENABLE_QTWEBKIT "Enable QtWebKit backend (requires Qt 5.4)" ON)
+option(ENABLE_QTWEBKIT "Enable QtWebKit backend (requires QtWebKit 5.212)" ON)
 option(ENABLE_CRASHREPORTS "Enable built-in crash reporting (only for official builds)" OFF)
+option(ENABLE_DBUS "Enable D-Bus based integration for notifications (only freedesktop.org compatible platforms)" ON)
+option(ENABLE_SPELLCHECK "Enable Hunspell based spell checking" ON)
 
-find_package(Qt5 5.4.0 REQUIRED COMPONENTS Core DBus Gui Multimedia Network PrintSupport Qml Svg Widgets XmlPatterns)
+find_package(Qt5 5.6.0 REQUIRED COMPONENTS Core Gui Multimedia Network PrintSupport Qml Svg Widgets XmlPatterns)
 find_package(Qt5WebEngineWidgets 5.9.0 QUIET)
-find_package(Qt5WebKitWidgets 5.4.0 QUIET)
-find_package(Hunspell 1.3.0 QUIET)
+find_package(Qt5WebKitWidgets 5.212.0 QUIET)
+find_package(Hunspell 1.5.0 QUIET)
 
 set_package_properties(Qt5WebEngineCore PROPERTIES URL "https://www.qt.io/" DESCRIPTION "QtWebEngine based backend (core)" TYPE OPTIONAL)
 set_package_properties(Qt5WebEngineWidgets PROPERTIES URL "https://www.qt.io/" DESCRIPTION "QtWebEngine based backend (widgets)" TYPE OPTIONAL)
@@ -93,14 +95,14 @@ set(otter_src
 	src/main.cpp
 	src/core/ActionExecutor.cpp
 	src/core/ActionsManager.cpp
+	src/core/AdblockContentFiltersProfile.cpp
 	src/core/AddonsManager.cpp
 	src/core/AddressCompletionModel.cpp
 	src/core/Application.cpp
 	src/core/BookmarksImporter.cpp
 	src/core/BookmarksManager.cpp
 	src/core/BookmarksModel.cpp
-	src/core/ContentBlockingManager.cpp
-	src/core/ContentBlockingProfile.cpp
+	src/core/ContentFiltersManager.cpp
 	src/core/Console.cpp
 	src/core/CookieJar.cpp
 	src/core/FeedParser.cpp
@@ -161,6 +163,7 @@ set(otter_src
 	src/ui/CookiePropertiesDialog.cpp
 	src/ui/Dialog.cpp
 	src/ui/FeedPropertiesDialog.cpp
+	src/ui/FeedsComboBoxWidget.cpp
 	src/ui/FilePathWidget.cpp
 	src/ui/IconWidget.cpp
 	src/ui/ImagePropertiesDialog.cpp
@@ -190,11 +193,13 @@ set(otter_src
 	src/ui/SidebarWidget.cpp
 	src/ui/SourceViewerWebWidget.cpp
 	src/ui/SourceViewerWidget.cpp
+	src/ui/SplitterWidget.cpp
 	src/ui/StartupDialog.cpp
 	src/ui/StatusBarWidget.cpp
 	src/ui/Style.cpp
 	src/ui/TabBarWidget.cpp
 	src/ui/TabSwitcherWidget.cpp
+	src/ui/TextBrowserWidget.cpp
 	src/ui/TextEditWidget.cpp
 	src/ui/TextLabelWidget.cpp
 	src/ui/ToolBarDialog.cpp
@@ -230,6 +235,8 @@ set(otter_src
 	src/modules/importers/opera/OperaNotesImporter.cpp
 	src/modules/importers/opera/OperaSearchEnginesImporter.cpp
 	src/modules/importers/opera/OperaSessionImporter.cpp
+	src/modules/importers/opml/OpmlImporter.cpp
+	src/modules/importers/opml/OpmlImporterWidget.cpp
 	src/modules/widgets/action/ActionWidget.cpp
 	src/modules/widgets/address/AddressWidget.cpp
 	src/modules/widgets/bookmark/BookmarkWidget.cpp
@@ -255,6 +262,7 @@ set(otter_src
 	src/modules/windows/notes/NotesContentsWidget.cpp
 	src/modules/windows/pageInformation/PageInformationContentsWidget.cpp
 	src/modules/windows/passwords/PasswordsContentsWidget.cpp
+	src/modules/windows/preferences/PreferencesContentsWidget.cpp
 	src/modules/windows/tabHistory/TabHistoryContentsWidget.cpp
 	src/modules/windows/transfers/TransfersContentsWidget.cpp
 	src/modules/windows/web/PasswordBarWidget.cpp
@@ -319,6 +327,7 @@ qt5_wrap_ui(otter_ui
 	src/ui/preferences/PreferencesSearchPageWidget.ui
 	src/ui/preferences/ProxyPropertiesDialog.ui
 	src/ui/preferences/UserAgentPropertiesDialog.ui
+	src/modules/importers/opml/OpmlImporterWidget.ui
 	src/modules/widgets/errorConsole/ErrorConsoleWidget.ui
 	src/modules/windows/addons/AddonsContentsWidget.ui
 	src/modules/windows/bookmarks/BookmarksContentsWidget.ui
@@ -331,6 +340,7 @@ qt5_wrap_ui(otter_ui
 	src/modules/windows/notes/NotesContentsWidget.ui
 	src/modules/windows/pageInformation/PageInformationContentsWidget.ui
 	src/modules/windows/passwords/PasswordsContentsWidget.ui
+	src/modules/windows/preferences/PreferencesContentsWidget.ui
 	src/modules/windows/tabHistory/TabHistoryContentsWidget.ui
 	src/modules/windows/transfers/TransfersContentsWidget.ui
 	src/modules/windows/web/PasswordBarWidget.ui
@@ -359,20 +369,12 @@ if (Qt5WebEngineWidgets_FOUND AND ENABLE_QTWEBENGINE)
 	qt5_add_resources(otter_res
 		src/modules/backends/web/qtwebengine/QtWebEngineResources.qrc
 	)
-endif (Qt5WebEngineWidgets_FOUND AND ENABLE_QTWEBENGINE)
+endif ()
 
 if (Qt5WebKitWidgets_FOUND AND ENABLE_QTWEBKIT)
 	add_definitions(-DOTTER_ENABLE_QTWEBKIT)
 
-	if (${Qt5WebKitWidgets_VERSION_MINOR} GREATER 200)
-		list(APPEND OTTER_BACKENDS_WEB "QtWebKit")
-	else (${Qt5WebKitWidgets_VERSION_MINOR} GREATER 200)
-		add_definitions(-DOTTER_ENABLE_QTWEBKIT_LEGACY)
-
-		list(APPEND OTTER_BACKENDS_WEB "QtWebKit (legacy)")
-
-		message(WARNING "Detected QtWebKit version is outdated and insecure, please update to version 5.212 or newer.")
-	endif (${Qt5WebKitWidgets_VERSION_MINOR} GREATER 200)
+	list(APPEND OTTER_BACKENDS_WEB "QtWebKit")
 
 	set(otter_src
 		${otter_src}
@@ -390,19 +392,19 @@ if (Qt5WebKitWidgets_FOUND AND ENABLE_QTWEBKIT)
 		src/modules/backends/web/qtwebkit/3rdparty/qtftp/qurlinfo.cpp
 	)
 
-	if (HUNSPELL_FOUND)
+	if (HUNSPELL_FOUND AND ENABLE_SPELLCHECK)
 		set(otter_src
 			${otter_src}
 			src/modules/backends/web/qtwebkit/qwebkitplatformplugin.h
 			src/modules/backends/web/qtwebkit/QtWebKitPlugin.cpp
 			src/modules/backends/web/qtwebkit/QtWebKitSpellChecker.cpp
 		)
-	endif (HUNSPELL_FOUND)
+	endif ()
 
 	qt5_add_resources(otter_res
 		src/modules/backends/web/qtwebkit/QtWebKitResources.qrc
 	)
-endif (Qt5WebKitWidgets_FOUND AND ENABLE_QTWEBKIT)
+endif ()
 
 if (ENABLE_CRASHREPORTS)
 	add_definitions(-DOTTER_ENABLE_CRASHREPORTS)
@@ -441,10 +443,10 @@ if (ENABLE_CRASHREPORTS)
 			3rdparty/breakpad/src/common/linux/memory_mapped_file.cc
 			3rdparty/breakpad/src/common/linux/safe_readlink.cc
 		)
-	endif (WIN32)
-endif (ENABLE_CRASHREPORTS)
+	endif ()
+endif ()
 
-if (HUNSPELL_FOUND)
+if (HUNSPELL_FOUND AND ENABLE_SPELLCHECK)
 	add_definitions(-DOTTER_ENABLE_SPELLCHECK -DQT_STATICPLUGIN)
 	include_directories(${HUNSPELL_INCLUDE_DIR})
 
@@ -462,12 +464,12 @@ if (HUNSPELL_FOUND)
 		3rdparty/sonnet/src/plugins/hunspell/hunspelldebug.cpp
 		3rdparty/sonnet/src/plugins/hunspell/hunspelldict.cpp
 	)
-endif (HUNSPELL_FOUND)
+endif ()
 
 if (WIN32)
 	add_definitions(-DUNICODE -D_UNICODE)
 
-	find_package(Qt5WinExtras 5.4.0 QUIET)
+	find_package(Qt5WinExtras 5.6.0 QUIET)
 
 	if (MSVC)
 		set(CMAKE_PREFIX_PATH $ENV{QTDIR})
@@ -477,10 +479,10 @@ if (WIN32)
 
 		if (CMAKE_CL_64)
 			set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS /ENTRY:\"mainCRTStartup\"")
-		else (CMAKE_CL_64)
+		else ()
 			set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS,5.01 /ENTRY:\"mainCRTStartup\"")
-		endif (CMAKE_CL_64)
-	endif (MSVC)
+		endif ()
+	endif ()
 
 	set(otter_src
 		${otter_src}
@@ -489,7 +491,7 @@ if (WIN32)
 		src/modules/platforms/windows/WindowsPlatformStyle.cpp
 	)
 elseif (APPLE)
-	find_package(Qt5MacExtras 5.4.0 QUIET)
+	find_package(Qt5MacExtras 5.6.0 QUIET)
 
 	set(CMAKE_OSX_DEPLOYMENT_TARGET 10.10)
 	set(MACOSX_BUNDLE_BUNDLE_NAME "Otter Browser")
@@ -508,6 +510,12 @@ elseif (APPLE)
 
 	set_source_files_properties(resources/icons/otter-browser.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
 elseif (UNIX)
+	find_package(Qt5DBus 5.6.0 QUIET)
+
+	if (Qt5DBus_FOUND AND ENABLE_DBUS)
+		add_definitions(-DOTTER_ENABLE_DBUS)
+	endif ()
+
 	set(otter_src
 		${otter_src}
 		src/modules/platforms/freedesktoporg/FreeDesktopOrgPlatformIntegration.cpp
@@ -517,7 +525,7 @@ elseif (UNIX)
 		3rdparty/libmimeapps/Index.cpp
 		3rdparty/libmimeapps/Tools.cpp
 	)
-endif (WIN32)
+endif ()
 
 add_executable(otter-browser WIN32 MACOSX_BUNDLE
 	${otter_ui}
@@ -527,15 +535,15 @@ add_executable(otter-browser WIN32 MACOSX_BUNDLE
 
 if (Qt5WebEngineWidgets_FOUND AND ENABLE_QTWEBENGINE)
 	target_link_libraries(otter-browser Qt5::WebEngineCore Qt5::WebEngineWidgets)
-endif (Qt5WebEngineWidgets_FOUND AND ENABLE_QTWEBENGINE)
+endif ()
 
 if (Qt5WebKitWidgets_FOUND AND ENABLE_QTWEBKIT)
 	target_link_libraries(otter-browser Qt5::WebKit Qt5::WebKitWidgets)
-endif (Qt5WebKitWidgets_FOUND AND ENABLE_QTWEBKIT)
+endif ()
 
-if (HUNSPELL_FOUND)
+if (HUNSPELL_FOUND AND ENABLE_SPELLCHECK)
 	target_link_libraries(otter-browser ${HUNSPELL_LIBRARIES})
-endif (HUNSPELL_FOUND)
+endif ()
 
 if (WIN32)
 	target_link_libraries(otter-browser Qt5::WinExtras ole32 shell32 advapi32 user32)
@@ -547,12 +555,14 @@ elseif (APPLE)
 
 	target_link_libraries(otter-browser Qt5::MacExtras ${FRAMEWORK_Cocoa} ${FRAMEWORK_Foundation})
 elseif (UNIX)
-	target_link_libraries(otter-browser Qt5::DBus)
+	if (Qt5DBus_FOUND AND ENABLE_DBUS)
+		target_link_libraries(otter-browser Qt5::DBus)
+	endif ()
 
 	if (ENABLE_CRASHREPORTS)
 		target_link_libraries(otter-browser -lpthread)
-	endif (ENABLE_CRASHREPORTS)
-endif (WIN32)
+	endif ()
+endif ()
 
 target_link_libraries(otter-browser Qt5::Core Qt5::Gui Qt5::Multimedia Qt5::Network Qt5::PrintSupport Qt5::Qml Qt5::Svg Qt5::Widgets Qt5::XmlPatterns)
 
@@ -565,8 +575,8 @@ foreach(_current_QM_FILE ${_qm_files})
 
 	if (APPLE)
 		file(COPY ${_current_QM_FILE} DESTINATION "Otter Browser.app/Contents/Resources/locale/")
-	endif(APPLE)
-endforeach(_current_QM_FILE)
+	endif()
+endforeach()
 
 install(FILES resources/icons/otter-browser-16.png DESTINATION ${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/16x16/apps/ RENAME otter-browser.png)
 install(FILES resources/icons/otter-browser-32.png DESTINATION ${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/32x32/apps/ RENAME otter-browser.png)
@@ -584,7 +594,7 @@ list(LENGTH OTTER_BACKENDS_WEB OTTER_BACKENDS_WEB_LENGTH)
 
 if (${OTTER_BACKENDS_WEB_LENGTH} EQUAL 0)
 	message(SEND_ERROR "No web backends available!")
-else (${OTTER_BACKENDS_WEB_LENGTH} EQUAL 0)
+else ()
 	set(OTTER_BACKENDS_WEB_SUMMARY "The following web backends will be built:\n\n")
 
 	foreach(_backend ${OTTER_BACKENDS_WEB})
@@ -592,4 +602,4 @@ else (${OTTER_BACKENDS_WEB_LENGTH} EQUAL 0)
 	endforeach(_backend)
 
 	message(STATUS ${OTTER_BACKENDS_WEB_SUMMARY})
-endif (${OTTER_BACKENDS_WEB_LENGTH} EQUAL 0)
+endif ()

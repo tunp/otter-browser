@@ -22,8 +22,7 @@
 #include "WebsitePreferencesDialog.h"
 #include "CookiePropertiesDialog.h"
 #include "preferences/ContentBlockingDialog.h"
-#include "../core/ContentBlockingManager.h"
-#include "../core/ContentBlockingProfile.h"
+#include "../core/ContentFiltersManager.h"
 #include "../core/NetworkManagerFactory.h"
 #include "../core/SettingsManager.h"
 #include "../core/Utils.h"
@@ -175,7 +174,7 @@ WebsitePreferencesDialog::WebsitePreferencesDialog(const QString &host, const QV
 		connect(comboBoxes.at(i), static_cast<void(QComboBox::*)(int)>(&QComboBox::currentIndexChanged), this, &WebsitePreferencesDialog::handleValueChanged);
 	}
 
-	connect(ContentBlockingManager::getInstance(), &ContentBlockingManager::profileModified, this, &WebsitePreferencesDialog::updateContentBlockingProfile);
+	connect(ContentFiltersManager::getInstance(), &ContentFiltersManager::profileModified, this, &WebsitePreferencesDialog::updateContentBlockingProfile);
 	connect(m_ui->userStyleSheetFilePathWidget, &FilePathWidget::pathChanged, this, &WebsitePreferencesDialog::handleValueChanged);
 	connect(m_ui->cookiesViewWidget, &ItemViewWidget::needsActionsUpdate, this, &WebsitePreferencesDialog::updateCookiesActions);
 	connect(m_ui->cookiesAddButton, &QPushButton::clicked, this, &WebsitePreferencesDialog::addNewCookie);
@@ -400,7 +399,7 @@ void WebsitePreferencesDialog::updateCookiesActions()
 
 void WebsitePreferencesDialog::updateContentBlockingProfile(const QString &name)
 {
-	const ContentBlockingProfile *profile(ContentBlockingManager::getProfile(name));
+	const ContentFiltersProfile *profile(ContentFiltersManager::getProfile(name));
 
 	if (!profile)
 	{
@@ -489,10 +488,10 @@ void WebsitePreferencesDialog::updateValues(bool isChecked)
 
 	const QStringList contentBlockingProfiles(SettingsManager::getOption(SettingsManager::ContentBlocking_ProfilesOption, host).toStringList());
 
-	m_ui->contentBlockingProfilesViewWidget->setModel(ContentBlockingManager::createModel(this, contentBlockingProfiles));
+	m_ui->contentBlockingProfilesViewWidget->setModel(ContentFiltersManager::createModel(this, contentBlockingProfiles));
 	m_ui->contentBlockingProfilesViewWidget->setItemDelegateForColumn(0, new ContentBlockingTitleDelegate(this));
 	m_ui->contentBlockingProfilesViewWidget->setItemDelegateForColumn(1, new ContentBlockingIntervalDelegate(this));
-	m_ui->contentBlockingProfilesViewWidget->setViewMode(ItemViewWidget::TreeViewMode);
+	m_ui->contentBlockingProfilesViewWidget->setViewMode(ItemViewWidget::TreeView);
 	m_ui->contentBlockingProfilesViewWidget->expandAll();
 
 	m_ui->enableCustomRulesCheckBox->setChecked(contentBlockingProfiles.contains("custom"));

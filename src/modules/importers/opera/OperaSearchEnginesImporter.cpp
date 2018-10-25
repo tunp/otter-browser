@@ -1,7 +1,7 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
 * Copyright (C) 2014, 2016 Piotr Wójcik <chocimier@tlen.pl>
-* Copyright (C) 2014 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2014 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -134,27 +134,16 @@ bool OperaSearchEnginesImporter::import(const QString &path)
 	settings.beginGroup(QLatin1String("Options"));
 
 	const QVariant defaultEngine(settings.getValue(QLatin1String("Default Search")));
-	const QList<QFileInfo> allSearchEngines(QDir(SessionsManager::getReadableDataPath(QLatin1String("searchEngines"))).entryInfoList());
-	QStringList identifiers;
-	identifiers.reserve(allSearchEngines.count());
-
-	for (int i = 0; i < allSearchEngines.count(); ++i)
-	{
-		identifiers.append(allSearchEngines.at(i).baseName());
-	}
-
 	int totalAmount(0);
 
 	for (int i = 0; i < groups.count(); ++i)
 	{
-		if (groups.at(i).startsWith(QLatin1String("Search Engine ")))
-		{
-			settings.beginGroup(groups.at(i));
-		}
-		else
+		if (!groups.at(i).startsWith(QLatin1String("Search Engine ")))
 		{
 			continue;
 		}
+
+		settings.beginGroup(groups.at(i));
 
 		if (settings.getValue(QLatin1String("Deleted")).toInt())
 		{
@@ -162,11 +151,11 @@ bool OperaSearchEnginesImporter::import(const QString &path)
 		}
 
 		SearchEnginesManager::SearchEngineDefinition searchEngine;
-		searchEngine.identifier = Utils::createIdentifier(settings.getValue(QLatin1String("UNIQUEID")).toString(), identifiers);
 		searchEngine.title = settings.getValue(QLatin1String("Name")).toString();
 		searchEngine.keyword = Utils::createIdentifier(settings.getValue(QLatin1String("Key")).toString(), keywords);
 		searchEngine.encoding = settings.getValue(QLatin1String("Encoding")).toString();
 		searchEngine.resultsUrl.url = settings.getValue(QLatin1String("URL")).toString().replace(QLatin1String("%s"), QLatin1String("{searchTerms}"));
+		searchEngine.identifier = searchEngine.createIdentifier();
 
 		if (settings.getValue(QLatin1String("Is post")).toInt())
 		{
@@ -185,17 +174,17 @@ bool OperaSearchEnginesImporter::import(const QString &path)
 			searchEngine.suggestionsUrl.method = QLatin1String("get");
 		}
 
-		SearchEnginesManager::addSearchEngine(searchEngine);
-
-		if (settings.getValue(QLatin1String("UNIQUEID")) == defaultEngine)
+		if (SearchEnginesManager::addSearchEngine(searchEngine))
 		{
-			SettingsManager::setOption(SettingsManager::Search_DefaultSearchEngineOption, defaultEngine);
+			if (settings.getValue(QLatin1String("UNIQUEID")) == defaultEngine)
+			{
+				SettingsManager::setOption(SettingsManager::Search_DefaultSearchEngineOption, searchEngine.identifier);
+			}
+
+			keywords.append(searchEngine.keyword);
+
+			++totalAmount;
 		}
-
-		identifiers.append(searchEngine.identifier);
-		keywords.append(searchEngine.keyword);
-
-		++totalAmount;
 	}
 
 	emit importFinished(SearchEnginesImport, SuccessfullImport, totalAmount);

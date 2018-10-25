@@ -63,7 +63,7 @@ void IconWidget::resizeEvent(QResizeEvent *event)
 
 void IconWidget::clear()
 {
-	setIcon({});
+	setIcon(QString());
 }
 
 void IconWidget::reset()
@@ -87,50 +87,57 @@ void IconWidget::selectFromTheme()
 
 	if (!name.isEmpty())
 	{
-		setIcon(ThemesManager::createIcon(name));
+		setIcon(name);
 	}
 }
 
 void IconWidget::populateMenu()
 {
 	menu()->clear();
+	menu()->addAction(tr("Select From File…"), this, &IconWidget::selectFromFile);
+	menu()->addAction(tr("Select From Theme…"), this, &IconWidget::selectFromTheme);
 
-	connect(menu()->addAction(tr("Select From File…")), &QAction::triggered, this, &IconWidget::selectFromFile);
-	connect(menu()->addAction(tr("Select From Theme…")), &QAction::triggered, this, &IconWidget::selectFromTheme);
-
-	if (!m_defaultIcon.isNull())
+	if (!m_defaultIcon.isEmpty())
 	{
 		menu()->addSeparator();
-
-		QAction *resetAction(menu()->addAction(tr("Reset")));
-		resetAction->setEnabled(Utils::savePixmapAsDataUri(icon().pixmap(16, 16)) != Utils::savePixmapAsDataUri(m_defaultIcon.pixmap(16, 16)));
-
-		connect(resetAction, &QAction::triggered, this, &IconWidget::reset);
+		menu()->addAction(tr("Reset"), this, &IconWidget::reset)->setEnabled(Utils::savePixmapAsDataUri(icon().pixmap(16, 16)) != m_defaultIcon);
 	}
 
 	menu()->addSeparator();
+	menu()->addAction(ThemesManager::createIcon(QLatin1String("edit-clear")), tr("Clear"), this, &IconWidget::clear)->setEnabled(!icon().isNull());
+}
 
-	QAction *clearAction(menu()->addAction(ThemesManager::createIcon(QLatin1String("edit-clear")), tr("Clear")));
-	clearAction->setEnabled(!icon().isNull());
+void IconWidget::setIcon(const QString &icon)
+{
+	m_icon = icon;
 
-	connect(clearAction, &QAction::triggered, this, &IconWidget::clear);
+	QToolButton::setIcon(ThemesManager::createIcon(icon));
+
+	emit iconChanged(m_icon);
 }
 
 void IconWidget::setIcon(const QIcon &icon)
 {
+	m_icon = Utils::savePixmapAsDataUri(icon.pixmap(icon.availableSizes().value(0, QSize(16, 16))));
+
 	QToolButton::setIcon(icon);
 
-	emit iconChanged(icon);
+	emit iconChanged(m_icon);
 }
 
-void IconWidget::setDefaultIcon(const QIcon &icon)
+void IconWidget::setDefaultIcon(const QString &icon)
 {
 	m_defaultIcon = icon;
 
-	if (icon.isNull())
+	if (icon.isEmpty())
 	{
-		setIcon(icon);
+		setIcon(ThemesManager::createIcon(icon));
 	}
+}
+
+QString IconWidget::getIcon() const
+{
+	return m_icon;
 }
 
 int IconWidget::heightForWidth(int width) const

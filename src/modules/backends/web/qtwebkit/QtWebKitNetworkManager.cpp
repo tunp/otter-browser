@@ -25,8 +25,8 @@
 #include "QtWebKitPage.h"
 #include "../../../../core/AddonsManager.h"
 #include "../../../../core/Console.h"
-#include "../../../../core/ContentBlockingProfile.h"
 #include "../../../../core/CookieJar.h"
+#include "../../../../core/ContentFiltersManager.h"
 #include "../../../../core/LocalListingNetworkReply.h"
 #include "../../../../core/NetworkCache.h"
 #include "../../../../core/NetworkManagerFactory.h"
@@ -65,9 +65,6 @@ QtWebKitNetworkManager::QtWebKitNetworkManager(bool isPrivate, QtWebKitCookieJar
 	m_loadingSpeedTimer(0),
 	m_areImagesEnabled(true),
 	m_canSendReferrer(true)
-#ifdef OTTER_ENABLE_QTWEBKIT_LEGACY
-	, m_isMixedContentAllowed(false)
-#endif
 {
 	NetworkManagerFactory::initialize();
 
@@ -448,7 +445,7 @@ void QtWebKitNetworkManager::updateOptions(const QUrl &url)
 
 	if (getOption(SettingsManager::ContentBlocking_EnableContentBlockingOption, url).toBool())
 	{
-		m_contentBlockingProfiles = ContentBlockingManager::getProfileList(getOption(SettingsManager::ContentBlocking_ProfilesOption, url).toStringList());
+		m_contentBlockingProfiles = ContentFiltersManager::getProfileIdentifiers(getOption(SettingsManager::ContentBlocking_ProfilesOption, url).toStringList());
 	}
 	else
 	{
@@ -479,9 +476,6 @@ void QtWebKitNetworkManager::updateOptions(const QUrl &url)
 
 	m_areImagesEnabled = (getOption(SettingsManager::Permissions_EnableImagesOption, url).toString() != QLatin1String("disabled"));
 	m_canSendReferrer = getOption(SettingsManager::Network_EnableReferrerOption, url).toBool();
-#ifdef OTTER_ENABLE_QTWEBKIT_LEGACY
-	m_isMixedContentAllowed = (getOption(SettingsManager::Security_AllowMixedContentOption, url).toBool());
-#endif
 
 	const QString generalCookiesPolicyValue(getOption(SettingsManager::Network_CookiesPolicyOption, url).toString());
 	CookieJar::CookiesPolicy generalCookiesPolicy(CookieJar::AcceptAllCookies);
@@ -590,12 +584,12 @@ QNetworkReply* QtWebKitNetworkManager::createRequest(QNetworkAccessManager::Oper
 		return QNetworkAccessManager::createRequest(QNetworkAccessManager::GetOperation, QNetworkRequest());
 	}
 
-	if (m_widget && request.url().path() == QLatin1String("/otter-message") && request.hasRawHeader(QByteArray("X-Otter-Token")) && request.hasRawHeader(QByteArray("X-Otter-Data")))
+	if (m_widget && request.url().path() == QLatin1String("/otter-message") && request.hasRawHeader(QByteArrayLiteral("X-Otter-Token")) && request.hasRawHeader(QByteArrayLiteral("X-Otter-Data")))
 	{
-		if (QString(request.rawHeader(QByteArray("X-Otter-Token"))) == m_widget->getMessageToken())
+		if (QString(request.rawHeader(QByteArrayLiteral("X-Otter-Token"))) == m_widget->getMessageToken())
 		{
-			const QString type(request.rawHeader(QByteArray("X-Otter-Type")));
-			const QJsonObject payloadObject(QJsonDocument::fromJson(QByteArray::fromBase64(request.rawHeader(QByteArray("X-Otter-Data")))).object());
+			const QString type(request.rawHeader(QByteArrayLiteral("X-Otter-Type")));
+			const QJsonObject payloadObject(QJsonDocument::fromJson(QByteArray::fromBase64(request.rawHeader(QByteArrayLiteral("X-Otter-Data")))).object());
 
 			if (type == QLatin1String("add-ssl-error-exception"))
 			{
@@ -660,75 +654,28 @@ QNetworkReply* QtWebKitNetworkManager::createRequest(QNetworkAccessManager::Oper
 		return QNetworkAccessManager::createRequest(QNetworkAccessManager::GetOperation, QNetworkRequest(QUrl()));
 	}
 
-#ifdef OTTER_ENABLE_QTWEBKIT_LEGACY
-	if (!m_isMixedContentAllowed && m_isSecureValue == TrueValue && request.url().scheme() == QLatin1String("http"))
-	{
-		Console::addMessage(QStringLiteral("[blocked] The page at %1 was not allowed to display insecure content from %2").arg(m_widget ? m_widget->getUrl().toString() : QLatin1String("unknown")).arg(request.url().toString()), Console::SecurityCategory, Console::WarningLevel, request.url().toString(), -1, (m_widget ? m_widget->getWindowIdentifier() : 0));
-
-		return QNetworkAccessManager::createRequest(QNetworkAccessManager::GetOperation, QNetworkRequest(QUrl()));
-	}
-#endif
-
 	if (m_widget && (m_contentBlockingExceptions.isEmpty() || !m_contentBlockingExceptions.contains(request.url())))
 	{
-		if (!m_areImagesEnabled && request.url() != m_mainRequestUrl && (request.rawHeader(QByteArray("Accept")).contains(QByteArray("image/")) || request.url().path().endsWith(QLatin1String(".png")) || request.url().path().endsWith(QLatin1String(".jpg")) || request.url().path().endsWith(QLatin1String(".gif"))))
+		const QUrl baseUrl(m_widget->isNavigating() ? request.url() : m_widget->getUrl());
+		const bool needsContentBlockingCheck(!m_contentBlockingProfiles.isEmpty() && (m_unblockedHosts.isEmpty() || !m_unblockedHosts.contains(Utils::extractHost(baseUrl))));
+		const NetworkManager::ResourceType resourceType((needsContentBlockingCheck || !m_areImagesEnabled) ? NetworkManager::getResourceType(request, m_mainRequestUrl) : NetworkManager::OtherType);
+
+		if (!m_areImagesEnabled && request.url() != m_mainRequestUrl && resourceType == NetworkManager::ImageType)
 		{
 			return QNetworkAccessManager::createRequest(QNetworkAccessManager::GetOperation, QNetworkRequest(QUrl()));
 		}
 
-		const QUrl baseUrl(m_widget->isNavigating() ? request.url() : m_widget->getUrl());
-
-		if (!m_contentBlockingProfiles.isEmpty() && (m_unblockedHosts.isEmpty() || !m_unblockedHosts.contains(Utils::extractHost(baseUrl))))
+		if (needsContentBlockingCheck)
 		{
-			const QByteArray acceptHeader(request.rawHeader(QByteArray("Accept")));
-			const QString path(request.url().path());
-			NetworkManager::ResourceType resourceType(NetworkManager::OtherType);
-			bool storeBlockedUrl(true);
-
-			if (request.url() == m_mainRequestUrl)
-			{
-				resourceType = NetworkManager::MainFrameType;
-			}
-			else if (acceptHeader.contains(QByteArray("text/html")) || acceptHeader.contains(QByteArray("application/xhtml+xml")) || acceptHeader.contains(QByteArray("application/xml")) || path.endsWith(QLatin1String(".htm")) || path.endsWith(QLatin1String(".html")))
-			{
-				resourceType = NetworkManager::SubFrameType;
-			}
-			else if (acceptHeader.contains(QByteArray("image/")) || path.endsWith(QLatin1String(".png")) || path.endsWith(QLatin1String(".jpg")) || path.endsWith(QLatin1String(".gif")))
-			{
-				resourceType = NetworkManager::ImageType;
-			}
-			else if (acceptHeader.contains(QByteArray("script/")) || path.endsWith(QLatin1String(".js")))
-			{
-				resourceType = NetworkManager::ScriptType;
-				storeBlockedUrl = false;
-			}
-			else if (acceptHeader.contains(QByteArray("text/css")) || path.endsWith(QLatin1String(".css")))
-			{
-				resourceType = NetworkManager::StyleSheetType;
-				storeBlockedUrl = false;
-			}
-			else if (acceptHeader.contains(QByteArray("object")))
-			{
-				resourceType = NetworkManager::ObjectType;
-			}
-			else if (request.rawHeader(QByteArray("X-Requested-With")) == QByteArray("XMLHttpRequest"))
-			{
-				resourceType = NetworkManager::XmlHttpRequestType;
-			}
-			else if (request.hasRawHeader(QByteArray("Sec-WebSocket-Protocol")))
-			{
-				resourceType = NetworkManager::WebSocketType;
-			}
-
-			const ContentBlockingManager::CheckResult result(ContentBlockingManager::checkUrl(m_contentBlockingProfiles, baseUrl, request.url(), resourceType));
+			const ContentFiltersManager::CheckResult result(ContentFiltersManager::checkUrl(m_contentBlockingProfiles, baseUrl, request.url(), resourceType));
 
 			if (result.isBlocked)
 			{
-				const ContentBlockingProfile *profile(ContentBlockingManager::getProfile(result.profile));
+				const ContentFiltersProfile *profile(ContentFiltersManager::getProfile(result.profile));
 
 				Console::addMessage(QCoreApplication::translate("main", "Request blocked by rule from profile %1:\n%2").arg(profile ? profile->getTitle() : QCoreApplication::translate("main", "(Unknown)")).arg(result.rule), Console::NetworkCategory, Console::LogLevel, request.url().toString(), -1, (m_widget ? m_widget->getWindowIdentifier() : 0));
 
-				if (storeBlockedUrl)
+				if (resourceType != NetworkManager::ScriptType && resourceType != NetworkManager::StyleSheetType)
 				{
 					m_blockedElements.append(request.url().url());
 				}

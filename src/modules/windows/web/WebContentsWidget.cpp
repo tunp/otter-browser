@@ -61,7 +61,7 @@ QMap<WebContentsWidget::ScrollDirections, QPixmap> WebContentsWidget::m_scrollCu
 WebContentsWidget::WebContentsWidget(const QVariantMap &parameters, const QHash<int, QVariant> &options, WebWidget *widget, Window *window, QWidget *parent) : ContentsWidget(parameters, window, parent),
 	m_websiteInformationDialog(nullptr),
 	m_layout(new QVBoxLayout(this)),
-	m_splitter(new QSplitter(Qt::Vertical, this)),
+	m_splitter(new SplitterWidget(Qt::Vertical, this)),
 	m_webWidget(nullptr),
 	m_window(window),
 	m_startPageWidget(nullptr),
@@ -77,6 +77,7 @@ WebContentsWidget::WebContentsWidget(const QVariantMap &parameters, const QHash<
 	m_isStartPageEnabled(!isSidebarPanel() && SettingsManager::getOption(SettingsManager::StartPage_EnableStartPageOption).toBool()),
 	m_isIgnoringMouseRelease(false)
 {
+	m_splitter->setObjectName(QLatin1String("web"));
 	m_splitter->hide();
 
 	m_layout->setContentsMargins(0, 0, 0, 0);
@@ -497,7 +498,11 @@ void WebContentsWidget::triggerAction(int identifier, const QVariantMap &paramet
 					m_quickFindTimer = startTimer(2000);
 				}
 
-				if (SettingsManager::getOption(SettingsManager::Search_ReuseLastQuickFindQueryOption).toBool())
+				if (identifier == ActionsManager::FindAction && m_webWidget->hasSelection())
+				{
+					m_searchBarWidget->setQuery(m_webWidget->getSelectedText());
+				}
+				else if (SettingsManager::getOption(SettingsManager::Search_ReuseLastQuickFindQueryOption).toBool())
 				{
 					m_searchBarWidget->setQuery(m_sharedQuickFindQuery);
 				}
@@ -604,7 +609,7 @@ void WebContentsWidget::triggerAction(int identifier, const QVariantMap &paramet
 			{
 				m_isTabPreferencesMenuVisible = true;
 
-				Menu menu(Menu::NoMenuRole, this);
+				Menu menu(Menu::UnknownMenu, this);
 				menu.load(QLatin1String("menu/quickPreferences.json"), {}, ActionExecutor::Object(this, this));
 				menu.exec(QCursor::pos());
 
@@ -945,35 +950,39 @@ void WebContentsWidget::handlePermissionRequest(WebWidget::FeaturePermission fea
 
 void WebContentsWidget::handleInspectorVisibilityChangeRequest(bool isVisible)
 {
-	if (m_webWidget)
+	if (!m_webWidget)
 	{
-		QWidget *inspector(m_webWidget->getInspector());
+		return;
+	}
 
-		if (inspector)
+	QWidget *inspector(m_webWidget->getInspector());
+
+	if (!inspector)
+	{
+		return;
+	}
+
+	if (isVisible)
+	{
+		if (m_splitter->indexOf(inspector) < 0)
 		{
-			if (isVisible)
+			m_splitter->addWidget(inspector);
+
+			if (height() > 500)
 			{
-				if (m_splitter->indexOf(inspector) < 0)
-				{
-					m_splitter->addWidget(inspector);
-
-					if (height() > 500)
-					{
-						m_splitter->setSizes({(height() - 300), 300});
-					}
-					else
-					{
-						m_splitter->setSizes({(height() / 2), (height() / 2)});
-					}
-				}
-
-				inspector->show();
+				m_splitter->setSizes({(height() - 300), 300});
 			}
 			else
 			{
-				inspector->hide();
+				m_splitter->setSizes({(height() / 2), (height() / 2)});
 			}
 		}
+
+		inspector->show();
+	}
+	else
+	{
+		inspector->hide();
 	}
 }
 
@@ -1107,7 +1116,7 @@ void WebContentsWidget::setScrollMode(ScrollMode mode)
 		m_beginCursorPosition = {};
 		m_lastCursorPosition = {};
 
-		if (m_scrollTimer > 0)
+		if (m_scrollTimer != 0)
 		{
 			killTimer(m_scrollTimer);
 
@@ -1164,7 +1173,7 @@ void WebContentsWidget::setWidget(WebWidget *widget, const QVariantMap &paramete
 			m_createStartPageTimer = startTimer(50);
 		}
 
-		connect(m_splitter, &QSplitter::splitterMoved, widget, &WebWidget::geometryChanged);
+		connect(m_splitter, &SplitterWidget::splitterMoved, widget, &WebWidget::geometryChanged);
 	}
 
 	const bool isHidden(m_isStartPageEnabled && Utils::isUrlEmpty(widget->getUrl()) && (!m_webWidget || (m_startPageWidget && m_startPageWidget->isVisibleTo(this))));

@@ -21,6 +21,7 @@
 #define OTTER_SEARCHENGINESMANAGER_H
 
 #include "Job.h"
+#include "Utils.h"
 
 #include <QtCore/QUrlQuery>
 #include <QtGui/QIcon>
@@ -64,6 +65,11 @@ public:
 		SearchUrl suggestionsUrl;
 		QIcon icon;
 
+		QString createIdentifier() const
+		{
+			return Utils::createIdentifier(QUrl(resultsUrl.url).host(), SearchEnginesManager::getSearchEngines());
+		}
+
 		bool isValid() const
 		{
 			return !identifier.isEmpty();
@@ -72,7 +78,6 @@ public:
 
 	static void createInstance();
 	static void loadSearchEngines();
-	static void addSearchEngine(const SearchEngineDefinition &searchEngine);
 	static void setupQuery(const QString &query, const SearchUrl &searchUrl, QNetworkRequest *request, QNetworkAccessManager::Operation *method, QByteArray *body);
 	static SearchEngineDefinition loadSearchEngine(QIODevice *device, const QString &identifier, bool checkKeyword = true);
 	static SearchEnginesManager* getInstance();
@@ -81,6 +86,7 @@ public:
 	static QStringList getSearchEngines();
 	static QStringList getSearchKeywords();
 	static bool hasSearchEngine(const QUrl &url);
+	static bool addSearchEngine(const SearchEngineDefinition &searchEngine);
 	static bool saveSearchEngine(const SearchEngineDefinition &searchEngine);
 	static bool setupSearchQuery(const QString &query, const QString &identifier, QNetworkRequest *request, QNetworkAccessManager::Operation *method, QByteArray *body);
 

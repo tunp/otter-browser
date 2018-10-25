@@ -112,12 +112,14 @@ MainWindow::MainWindow(const QVariantMap &parameters, const SessionMainWindow &s
 	{
 		for (int i = 0; i < session.toolBars.count(); ++i)
 		{
-			if (!toolBarStates.contains(session.toolBars.at(i).location))
+			const ToolBarState state(session.toolBars.at(i));
+
+			if (!toolBarStates.contains(state.location))
 			{
-				toolBarStates[session.toolBars.at(i).location] = {};
+				toolBarStates[state.location] = {};
 			}
 
-			toolBarStates[session.toolBars.at(i).location].append(session.toolBars.at(i));
+			toolBarStates[state.location].append(state);
 		}
 	}
 
@@ -135,6 +137,7 @@ MainWindow::MainWindow(const QVariantMap &parameters, const SessionMainWindow &s
 	{
 		const Qt::ToolBarArea area(areas.at(i));
 		QVector<ToolBarState> states(toolBarStates.value(area));
+		int row(0);
 
 		std::sort(states.begin(), states.end(), [&](const ToolBarState &first, const ToolBarState &second)
 		{
@@ -143,20 +146,29 @@ MainWindow::MainWindow(const QVariantMap &parameters, const SessionMainWindow &s
 
 		for (int j = 0; j < states.count(); ++j)
 		{
+			if (states.at(j).identifier < 0)
+			{
+				continue;
+			}
+
 			ToolBarWidget *toolBar(WidgetFactory::createToolBar(states.at(j).identifier, nullptr, this));
 			toolBar->setArea(area);
 			toolBar->setState(states.at(j));
 
-			if (j > 0)
+			if (row > 0)
 			{
 				addToolBarBreak(area);
 			}
+
+			++row;
 
 			addToolBar(area, toolBar);
 
 			m_toolBars[states.at(j).identifier] = toolBar;
 		}
 	}
+
+	m_splitters = session.splitters;
 
 	if (getActionState(ActionsManager::ShowToolBarAction, {{QLatin1String("toolBar"), ToolBarsManager::MenuBar}}).isChecked)
 	{
@@ -204,14 +216,14 @@ MainWindow::MainWindow(const QVariantMap &parameters, const SessionMainWindow &s
 	}
 	else
 	{
-		QTimer::singleShot(0, [=]()
+		QTimer::singleShot(0, this, [=]()
 		{
 			restoreSession(session);
 			updateWindowTitle();
 		});
 	}
 
-	QTimer::singleShot(100, [=]()
+	QTimer::singleShot(100, this, [=]()
 	{
 		updateShortcuts();
 	});
@@ -253,10 +265,12 @@ void MainWindow::timerEvent(QTimerEvent *event)
 
 			for (int j = 0; j < toolBars.count(); ++j)
 			{
-				if (toolBars.at(j)->getDefinition().fullScreenVisibility == ToolBarsManager::OnHoverVisibleToolBar)
+				ToolBarWidget *toolBar(toolBars.at(j));
+
+				if (toolBar->getDefinition().fullScreenVisibility == ToolBarsManager::OnHoverVisibleToolBar)
 				{
-					toolBars.at(j)->show();
-					toolBars.at(j)->installEventFilter(this);
+					toolBar->show();
+					toolBar->installEventFilter(this);
 				}
 			}
 		}
@@ -409,7 +423,7 @@ void MainWindow::contextMenuEvent(QContextMenuEvent *event)
 		return;
 	}
 
-	Menu menu(Menu::ToolBarsMenuRole, this);
+	Menu menu(Menu::ToolBarsMenu, this);
 	menu.exec(event->globalPos());
 }
 
@@ -1271,6 +1285,8 @@ void MainWindow::restoreSession(const SessionMainWindow &session)
 
 			addWindow(window, SessionsManager::DefaultOpen, -1, session.windows.at(i).state, session.windows.at(i).isAlwaysOnTop);
 		}
+
+		emit arbitraryActionsStateChanged({ActionsManager::MaximizeAllAction, ActionsManager::MinimizeAllAction, ActionsManager::RestoreAllAction, ActionsManager::CascadeAllAction, ActionsManager::TileAllAction});
 	}
 
 	m_isSessionRestored = true;
@@ -1507,6 +1523,16 @@ void MainWindow::setActiveEditorExecutor(ActionExecutor::Object executor)
 	emit categorizedActionsStateChanged({ActionsManager::ActionDefinition::EditingCategory});
 }
 
+void MainWindow::setSplitterSizes(const QString &identifier, const QVector<int> &sizes)
+{
+	if (sizes != m_splitters.value(identifier))
+	{
+		m_splitters[identifier] = sizes;
+
+		SessionsManager::markSessionAsModified();
+	}
+}
+
 void MainWindow::storeWindowState()
 {
 	m_previousState = windowState();
@@ -1553,12 +1579,13 @@ void MainWindow::beginToolBarDragging(bool isSidebar)
 
 	for (int i = 0; i < toolBars.count(); ++i)
 	{
-		const Qt::ToolBarArea area(toolBarArea(toolBars.at(i)));
+		ToolBarWidget *toolBar(toolBars.at(i));
+		const Qt::ToolBarArea area(toolBarArea(toolBar));
 
-		if (toolBars.at(i)->isVisible() && (!isSidebar || area == Qt::LeftToolBarArea || area == Qt::RightToolBarArea))
+		if (toolBar->isVisible() && (!isSidebar || area == Qt::LeftToolBarArea || area == Qt::RightToolBarArea))
 		{
-			insertToolBar(toolBars.at(i), new ToolBarDropZoneWidget(this));
-			insertToolBarBreak(toolBars.at(i));
+			insertToolBar(toolBar, new ToolBarDropZoneWidget(this));
+			insertToolBarBreak(toolBar);
 		}
 	}
 
@@ -1938,6 +1965,11 @@ void MainWindow::setActiveWindowByIndex(int index, bool updateLastActivity)
 
 void MainWindow::setActiveWindowByIdentifier(quint64 identifier, bool updateLastActivity)
 {
+	if (identifier == 0)
+	{
+		return;
+	}
+
 	for (int i = 0; i < m_windows.count(); ++i)
 	{
 		const Window *window(getWindowByIndex(i));
@@ -2366,6 +2398,7 @@ SessionMainWindow MainWindow::getSession() const
 	SessionMainWindow session;
 	session.geometry = saveGeometry();
 	session.index = getCurrentWindowIndex();
+	session.splitters = m_splitters;
 	session.hasToolBarsState = true;
 	session.toolBars.reserve(m_toolBarStates.count() + m_toolBars.count());
 	session.toolBars = m_toolBarStates.values().toVector();
@@ -2462,6 +2495,11 @@ QVector<ToolBarWidget*> MainWindow::getToolBars(Qt::ToolBarArea area) const
 QVector<ClosedWindow> MainWindow::getClosedWindows() const
 {
 	return m_closedWindows;
+}
+
+QVector<int> MainWindow::getSplitterSizes(const QString &identifier) const
+{
+	return m_splitters.value(identifier);
 }
 
 QVector<quint64> MainWindow::createOrderedWindowList(bool includeMinimized) const
@@ -2605,14 +2643,16 @@ bool MainWindow::event(QEvent *event)
 
 					for (int i = 0; i < toolBars.count(); ++i)
 					{
-						if (toolBars.at(i)->shouldBeVisible(mode))
+						ToolBarWidget *toolBar(toolBars.at(i));
+
+						if (toolBar->shouldBeVisible(mode))
 						{
-							toolBars.at(i)->removeEventFilter(this);
-							toolBars.at(i)->show();
+							toolBar->removeEventFilter(this);
+							toolBar->show();
 						}
 						else
 						{
-							toolBars.at(i)->hide();
+							toolBar->hide();
 						}
 					}
 

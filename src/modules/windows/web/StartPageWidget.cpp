@@ -42,8 +42,10 @@
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPainter>
 #include <QtGui/QPixmapCache>
+#include <QtWidgets/QDesktopWidget>
 #include <QtWidgets/QGridLayout>
 #include <QtWidgets/QScrollBar>
+#include <QtWidgets/QToolTip>
 
 namespace Otter
 {
@@ -838,31 +840,23 @@ void StartPageWidget::showContextMenu(const QPoint &position)
 
 	if (index.isValid() && index.data(Qt::AccessibleDescriptionRole).toString() != QLatin1String("add"))
 	{
-		connect(menu.addAction(ThemesManager::createIcon(QLatin1String("document-open")), QCoreApplication::translate("actions", "Open")), &QAction::triggered, this, &StartPageWidget::openTile);
-
+		menu.addAction(ThemesManager::createIcon(QLatin1String("document-open")), QCoreApplication::translate("actions", "Open"), this, &StartPageWidget::openTile);
 		menu.addSeparator();
-
-		connect(menu.addAction(tr("Edit…")), &QAction::triggered, this, &StartPageWidget::editTile);
+		menu.addAction(tr("Edit…"), this, &StartPageWidget::editTile);
 
 		if (SettingsManager::getOption(SettingsManager::StartPage_TileBackgroundModeOption) == QLatin1String("thumbnail"))
 		{
-			QAction *reloadAction(menu.addAction(tr("Reload")));
-			reloadAction->setEnabled(static_cast<BookmarksModel::BookmarkType>(index.data(BookmarksModel::TypeRole).toInt()) == BookmarksModel::UrlBookmark);
-
-			connect(reloadAction, &QAction::triggered, this, &StartPageWidget::reloadTile);
+			menu.addAction(tr("Reload"), this, &StartPageWidget::reloadTile)->setEnabled(static_cast<BookmarksModel::BookmarkType>(index.data(BookmarksModel::TypeRole).toInt()) == BookmarksModel::UrlBookmark);
 		}
 
 		menu.addSeparator();
-
-		connect(menu.addAction(ThemesManager::createIcon(QLatin1String("edit-delete")), tr("Delete")), &QAction::triggered, this, &StartPageWidget::removeTile);
+		menu.addAction(ThemesManager::createIcon(QLatin1String("edit-delete")), tr("Delete"), this, &StartPageWidget::removeTile);
 	}
 	else
 	{
-		connect(menu.addAction(tr("Configure…")), &QAction::triggered, this, &StartPageWidget::configure);
-
+		menu.addAction(tr("Configure…"), this, &StartPageWidget::configure);
 		menu.addSeparator();
-
-		connect(menu.addAction(ThemesManager::createIcon(QLatin1String("list-add")), tr("Add Tile…")), &QAction::triggered, this, &StartPageWidget::addTile);
+		menu.addAction(ThemesManager::createIcon(QLatin1String("list-add")), tr("Add Tile…"), this, &StartPageWidget::addTile);
 	}
 
 	menu.exec(hitPosition);
@@ -956,7 +950,7 @@ bool StartPageWidget::eventFilter(QObject *object, QEvent *event)
 						{
 							m_isIgnoringEnter = true;
 
-							Menu menu(Menu::BookmarksMenuRole, this);
+							Menu menu(Menu::BookmarksMenu, this);
 							menu.setMenuOptions({{QLatin1String("bookmark"), bookmark->getIdentifier()}});
 							menu.exec(m_listView->mapToGlobal(m_listView->visualRect(m_currentIndex).center()));
 						}
@@ -1027,7 +1021,7 @@ bool StartPageWidget::eventFilter(QObject *object, QEvent *event)
 					{
 						m_isIgnoringEnter = true;
 
-						Menu menu(Menu::BookmarksMenuRole, this);
+						Menu menu(Menu::BookmarksMenu, this);
 						menu.setMenuOptions({{QLatin1String("bookmark"), bookmark->getIdentifier()}});
 						menu.exec(mouseEvent->globalPos());
 					}
@@ -1081,6 +1075,21 @@ bool StartPageWidget::eventFilter(QObject *object, QEvent *event)
 
 			return true;
 		}
+	}
+	else if (object == m_listView->viewport() && event->type() == QEvent::ToolTip)
+	{
+		const QHelpEvent *helpEvent(static_cast<QHelpEvent*>(event));
+		const QModelIndex index(m_listView->indexAt(helpEvent->pos()));
+		const BookmarksModel::Bookmark *bookmark(BookmarksManager::getModel()->getBookmark(index.data(BookmarksModel::IdentifierRole).toULongLong()));
+
+		if (bookmark)
+		{
+			const QKeySequence shortcut(ActionsManager::getActionShortcut(ActionsManager::OpenBookmarkAction, {{QLatin1String("startPageTile"), (index.row() + 1)}}));
+
+			QToolTip::showText(helpEvent->globalPos(), QFontMetrics(QToolTip::font()).elidedText(bookmark->getTitle() + (shortcut.isEmpty() ? QString() : QLatin1String(" (") + shortcut.toString(QKeySequence::NativeText) + QLatin1Char(')')), Qt::ElideRight, (QApplication::desktop()->screenGeometry(m_listView).width() / 2)), m_listView, m_listView->visualRect(index));
+		}
+
+		return true;
 	}
 
 	return QObject::eventFilter(object, event);

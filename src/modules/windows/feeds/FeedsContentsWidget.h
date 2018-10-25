@@ -35,6 +35,14 @@ namespace Ui
 class Animation;
 class Window;
 
+class EntryDelegate final : public ItemDelegate
+{
+public:
+	explicit EntryDelegate(QObject *parent);
+
+	void initStyleOption(QStyleOptionViewItem *option, const QModelIndex &index) const override;
+};
+
 class FeedDelegate final : public ItemDelegate
 {
 public:
@@ -57,6 +65,7 @@ public:
 		ContentRole,
 		AuthorRole,
 		EmailRole,
+		LastReadTimeRole,
 		PublicationTimeRole,
 		UpdateTimeRole,
 		CategoriesRole
@@ -70,9 +79,11 @@ public:
 	QLatin1String getType() const override;
 	QUrl getUrl() const override;
 	QIcon getIcon() const override;
-	bool eventFilter(QObject *object, QEvent *event);
+	ActionsManager::ActionDefinition::State getActionState(int identifier, const QVariantMap &parameters = {}) const override;
+	bool eventFilter(QObject *object, QEvent *event) override;
 
 public slots:
+	void triggerAction(int identifier, const QVariantMap &parameters = {}, ActionsManager::TriggerType trigger = ActionsManager::UnknownTrigger) override;
 	void setUrl(const QUrl &url, bool isTyped = true) override;
 
 protected:
@@ -83,13 +94,14 @@ protected:
 protected slots:
 	void addFeed();
 	void addFolder();
+	void openFeed();
 	void updateFeed();
 	void removeFeed();
-	void openFeed();
 	void subscribeFeed();
 	void feedProperties();
+	void openEntry();
+	void removeEntry();
 	void selectCategory();
-	void toggleCategory(QAction *action);
 	void handleFeedModified(const QUrl &url);
 	void showEntriesContextMenu(const QPoint &position);
 	void showFeedsContextMenu(const QPoint &position);

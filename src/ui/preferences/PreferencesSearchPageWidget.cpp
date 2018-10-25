@@ -123,10 +123,8 @@ PreferencesSearchPageWidget::PreferencesSearchPageWidget(QWidget *parent) : QWid
 	m_ui->searchSuggestionsCheckBox->setChecked(SettingsManager::getOption(SettingsManager::Search_SearchEnginesSuggestionsOption).toBool());
 
 	QMenu *addSearchEngineMenu(new QMenu(m_ui->addSearchButton));
-
-	connect(addSearchEngineMenu->addAction(tr("New…")), &QAction::triggered, this, &PreferencesSearchPageWidget::createSearchEngine);
-	connect(addSearchEngineMenu->addAction(tr("File…")), &QAction::triggered, this, &PreferencesSearchPageWidget::importSearchEngine);
-
+	addSearchEngineMenu->addAction(tr("New…"), this, &PreferencesSearchPageWidget::createSearchEngine);
+	addSearchEngineMenu->addAction(tr("File…"), this, &PreferencesSearchPageWidget::importSearchEngine);
 	addSearchEngineMenu->addAction(tr("Readd"))->setMenu(new QMenu(m_ui->addSearchButton));
 
 	m_ui->addSearchButton->setMenu(addSearchEngineMenu);
@@ -136,8 +134,8 @@ PreferencesSearchPageWidget::PreferencesSearchPageWidget(QWidget *parent) : QWid
 	updateReaddSearchEngineMenu();
 
 	connect(m_ui->searchFilterLineEditWidget, &LineEditWidget::textChanged, m_ui->searchViewWidget, &ItemViewWidget::setFilterString);
-	connect(m_ui->searchViewWidget, &ItemViewWidget::canMoveDownChanged, m_ui->moveDownSearchButton, &QToolButton::setEnabled);
-	connect(m_ui->searchViewWidget, &ItemViewWidget::canMoveUpChanged, m_ui->moveUpSearchButton, &QToolButton::setEnabled);
+	connect(m_ui->searchViewWidget, &ItemViewWidget::canMoveRowDownChanged, m_ui->moveDownSearchButton, &QToolButton::setEnabled);
+	connect(m_ui->searchViewWidget, &ItemViewWidget::canMoveRowUpChanged, m_ui->moveUpSearchButton, &QToolButton::setEnabled);
 	connect(m_ui->searchViewWidget, &ItemViewWidget::needsActionsUpdate, this, &PreferencesSearchPageWidget::updateSearchEngineActions);
 	connect(m_ui->searchViewWidget, &ItemViewWidget::modified, this, &PreferencesSearchPageWidget::settingsModified);
 	connect(m_ui->addSearchButton->menu()->actions().at(2)->menu(), &QMenu::triggered, this, &PreferencesSearchPageWidget::readdSearchEngine);
@@ -289,6 +287,8 @@ void PreferencesSearchPageWidget::updateSearchEngine()
 		m_updateJobs[identifier] = job;
 
 		connect(job, &SearchEngineFetchJob::jobFinished, this, &PreferencesSearchPageWidget::handleSearchEngineUpdate);
+
+		job->start();
 	}
 }
 

@@ -19,6 +19,7 @@
 
 #include "ToolButtonWidget.h"
 #include "Action.h"
+#include "MainWindow.h"
 #include "Menu.h"
 #include "ToolBarWidget.h"
 #include "../core/Application.h"
@@ -44,14 +45,14 @@ ToolButtonWidget::ToolButtonWidget(const ToolBarsManager::ToolBarDefinition::Ent
 
 	if (!definition.entries.isEmpty())
 	{
-		menu = new Menu(Menu::NoMenuRole, this);
+		menu = new Menu(Menu::UnknownMenu, this);
 
 		addMenu(menu, definition.entries);
 		setMenu(menu);
 	}
 	else if (definition.action == QLatin1String("OptionMenu") && definition.options.contains(QLatin1String("option")))
 	{
-		menu = new Menu(Menu::NoMenuRole, this);
+		menu = new Menu(Menu::UnknownMenu, this);
 		menu->load(SettingsManager::getOptionIdentifier(definition.options[QLatin1String("option")].toString()));
 
 		setDefaultAction(menu->menuAction());
@@ -65,8 +66,12 @@ ToolButtonWidget::ToolButtonWidget(const ToolBarsManager::ToolBarDefinition::Ent
 
 	if (menu)
 	{
+		menu->setActionParameters(definition.parameters);
+		menu->setMenuOptions(definition.options);
+
 		setPopupMode(QToolButton::InstantPopup);
-		setText(definition.options.value(QLatin1String("text")).toString());
+		setText(getText());
+		setIcon(getIcon());
 	}
 
 	const ToolBarWidget *toolBar(qobject_cast<ToolBarWidget*>(parent));
@@ -110,29 +115,39 @@ void ToolButtonWidget::paintEvent(QPaintEvent *event)
 
 void ToolButtonWidget::addMenu(Menu *menu, const QVector<ToolBarsManager::ToolBarDefinition::Entry> &entries)
 {
+	const ToolBarWidget *toolBar(qobject_cast<ToolBarWidget*>(parentWidget()));
+	ActionExecutor::Object executor(Application::getInstance(), Application::getInstance());
+
+	if (toolBar && toolBar->getMainWindow())
+	{
+		executor = ActionExecutor::Object(toolBar->getMainWindow(), toolBar->getMainWindow());
+	}
+
 	for (int i = 0; i < entries.count(); ++i)
 	{
-		if (entries.at(i).entries.isEmpty())
+		const ToolBarsManager::ToolBarDefinition::Entry entry(entries.at(i));
+
+		if (entry.entries.isEmpty())
 		{
-			if (entries.at(i).action.isEmpty() || entries.at(i).action == QLatin1String("separator"))
+			if (entry.action.isEmpty() || entry.action == QLatin1String("separator"))
 			{
 				menu->addSeparator();
 			}
 			else
 			{
-				menu->addAction(new Action(ActionsManager::getActionIdentifier(entries.at(i).action), {}, ActionExecutor::Object(Application::getInstance(), Application::getInstance()), menu));
+				menu->addAction(new Action(ActionsManager::getActionIdentifier(entry.action), entry.parameters, entry.options, executor, menu));
 			}
 		}
 		else
 		{
 			Menu *subMenu(new Menu());
 			QAction *subMenuAction(new QAction(menu));
-			subMenuAction->setText(entries.at(i).options.value(QLatin1String("text"), tr("Menu")).toString());
+			subMenuAction->setText(entry.options.value(QLatin1String("text"), tr("Menu")).toString());
 			subMenuAction->setMenu(subMenu);
 
 			menu->addAction(subMenuAction);
 
-			addMenu(subMenu, entries.at(i).entries);
+			addMenu(subMenu, entry.entries);
 		}
 	}
 }
@@ -226,7 +241,14 @@ QIcon ToolButtonWidget::getIcon() const
 {
 	if (m_isCustomized && m_options.contains(QLatin1String("icon")))
 	{
-		return ThemesManager::createIcon(m_options[QLatin1String("icon")].toString());
+		const QVariant iconData(m_options[QLatin1String("icon")]);
+
+		if (iconData.type() == QVariant::Icon)
+		{
+			return iconData.value<QIcon>();
+		}
+
+		return ThemesManager::createIcon(iconData.toString());
 	}
 
 	return (defaultAction() ? defaultAction()->icon() : icon());

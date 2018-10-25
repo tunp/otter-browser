@@ -122,19 +122,19 @@ Application::Application(int &argc, char **argv) : QApplication(argc, argv), Act
 
 	m_commandLineParser.addHelpOption();
 	m_commandLineParser.addVersionOption();
-	m_commandLineParser.addPositionalArgument(QLatin1String("url"), QCoreApplication::translate("main", "URL to open"), QLatin1String("[url]"));
-	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("cache"), QCoreApplication::translate("main", "Uses <path> as cache directory"), QLatin1String("path"), {}));
-	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("profile"), QCoreApplication::translate("main", "Uses <path> as profile directory"), QLatin1String("path"), {}));
-	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("session"), QCoreApplication::translate("main", "Restores session <session> if it exists"), QLatin1String("session"), {}));
-	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("private-session"), QCoreApplication::translate("main", "Starts private session")));
-	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("session-chooser"), QCoreApplication::translate("main", "Forces session chooser dialog")));
-	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("portable"), QCoreApplication::translate("main", "Sets profile and cache paths to directories inside the same directory as that of application binary")));
-	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("new-tab"), QCoreApplication::translate("main", "Loads URL in new tab")));
-	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("new-private-tab"), QCoreApplication::translate("main", "Loads URL in new private tab")));
-	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("new-window"), QCoreApplication::translate("main", "Loads URL in new window")));
-	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("new-private-window"), QCoreApplication::translate("main", "Loads URL in new private window")));
-	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("readonly"), QCoreApplication::translate("main", "Tells application to avoid writing data to disk")));
-	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("report"), QCoreApplication::translate("main", "Prints out diagnostic report and exits application")));
+	m_commandLineParser.addPositionalArgument(QLatin1String("url"), translate("main", "URL to open"), QLatin1String("[url]"));
+	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("cache"), translate("main", "Uses <path> as cache directory"), QLatin1String("path"), {}));
+	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("profile"), translate("main", "Uses <path> as profile directory"), QLatin1String("path"), {}));
+	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("session"), translate("main", "Restores session <session> if it exists"), QLatin1String("session"), {}));
+	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("private-session"), translate("main", "Starts private session")));
+	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("session-chooser"), translate("main", "Forces session chooser dialog")));
+	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("portable"), translate("main", "Sets profile and cache paths to directories inside the same directory as that of application binary")));
+	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("new-tab"), translate("main", "Loads URL in new tab")));
+	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("new-private-tab"), translate("main", "Loads URL in new private tab")));
+	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("new-window"), translate("main", "Loads URL in new window")));
+	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("new-private-window"), translate("main", "Loads URL in new private window")));
+	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("readonly"), translate("main", "Tells application to avoid writing data to disk")));
+	m_commandLineParser.addOption(QCommandLineOption(QLatin1String("report"), translate("main", "Prints out diagnostic report and exits application")));
 
 	QStringList arguments(this->arguments());
 	QString argumentsPath(QDir::current().filePath(QLatin1String("arguments.txt")));
@@ -146,17 +146,17 @@ Application::Application(int &argc, char **argv) : QApplication(argc, argv), Act
 
 	if (QFile::exists(argumentsPath))
 	{
-		QFile argumentsFile(argumentsPath);
+		QFile file(argumentsPath);
 
-		if (argumentsFile.open(QIODevice::ReadOnly))
+		if (file.open(QIODevice::ReadOnly))
 		{
-			QStringList temporaryArguments(QString(argumentsFile.readAll()).trimmed().split(QLatin1Char(' '), QString::SkipEmptyParts));
+			QStringList temporaryArguments(QString(file.readAll()).trimmed().split(QLatin1Char(' '), QString::SkipEmptyParts));
 
 			if (!temporaryArguments.isEmpty())
 			{
 				if (arguments.isEmpty())
 				{
-					temporaryArguments.prepend(QFileInfo(QCoreApplication::applicationFilePath()).fileName());
+					temporaryArguments.prepend(QFileInfo(applicationFilePath()).fileName());
 				}
 				else
 				{
@@ -171,7 +171,7 @@ Application::Application(int &argc, char **argv) : QApplication(argc, argv), Act
 				arguments = temporaryArguments;
 			}
 
-			argumentsFile.close();
+			file.close();
 		}
 	}
 
@@ -234,22 +234,22 @@ Application::Application(int &argc, char **argv) : QApplication(argc, argv), Act
 		}
 		else
 		{
-			if (rawReportOptions.contains("environment"))
+			if (rawReportOptions.contains(QLatin1String("environment")))
 			{
 				reportOptions |= EnvironmentReport;
 			}
 
-			if (rawReportOptions.contains("keyboardShortcuts"))
+			if (rawReportOptions.contains(QLatin1String("keyboardShortcuts")))
 			{
 				reportOptions |= KeyboardShortcutsReport;
 			}
 
-			if (rawReportOptions.contains("paths"))
+			if (rawReportOptions.contains(QLatin1String("paths")))
 			{
 				reportOptions |= PathsReport;
 			}
 
-			if (rawReportOptions.contains("settings"))
+			if (rawReportOptions.contains(QLatin1String("settings")))
 			{
 				reportOptions |= SettingsReport;
 			}
@@ -312,10 +312,9 @@ Application::Application(int &argc, char **argv) : QApplication(argc, argv), Act
 		m_localServer->listen(server);
 	}
 
-	if (!isReadOnly && !QFile::exists(profilePath))
-	{
-		QDir().mkpath(profilePath);
-	}
+	Console::createInstance();
+
+	SettingsManager::createInstance(profilePath);
 
 	if (!isReadOnly && !QFileInfo(profilePath).isWritable())
 	{
@@ -324,12 +323,13 @@ Application::Application(int &argc, char **argv) : QApplication(argc, argv), Act
 		isReadOnly = true;
 	}
 
-	Console::createInstance();
-
-	SettingsManager::createInstance(profilePath);
-
 	if (!isReadOnly)
 	{
+		if (!QFile::exists(profilePath))
+		{
+			QDir().mkpath(profilePath);
+		}
+
 		const QStorageInfo storageInformation(profilePath);
 
 		if (storageInformation.bytesAvailable() > -1 && storageInformation.bytesAvailable() < 10000000)
@@ -621,6 +621,9 @@ void Application::triggerAction(int identifier, const QVariantMap &parameters, Q
 
 				if (m_activeWindow)
 				{
+					const SessionMainWindow activeSession(m_activeWindow->getSession());
+
+					session.splitters = activeSession.splitters;
 					session.hasToolBarsState = true;
 
 					if (parameters.value(QLatin1String("minimalInterface")).toBool())
@@ -629,7 +632,7 @@ void Application::triggerAction(int identifier, const QVariantMap &parameters, Q
 					}
 					else
 					{
-						session.toolBars = m_activeWindow->getSession().toolBars;
+						session.toolBars = activeSession.toolBars;
 					}
 				}
 
@@ -1529,22 +1532,22 @@ ActionsManager::ActionDefinition::State Application::getActionState(int identifi
 				{
 					if (host.isEmpty())
 					{
-						state.text = QCoreApplication::translate("actions", "Set %1").arg(name);
+						state.text = translate("actions", "Set %1").arg(name);
 					}
 					else
 					{
-						state.text = QCoreApplication::translate("actions", "Set %1 for %2").arg(name).arg(host);
+						state.text = translate("actions", "Set %1 for %2").arg(name).arg(host);
 					}
 				}
 				else if (mode == QLatin1String("reset"))
 				{
 					if (host.isEmpty())
 					{
-						state.text = QCoreApplication::translate("actions", "Reset %1").arg(name);
+						state.text = translate("actions", "Reset %1").arg(name);
 					}
 					else
 					{
-						state.text = QCoreApplication::translate("actions", "Reset %1 for %2").arg(name).arg(host);
+						state.text = translate("actions", "Reset %1 for %2").arg(name).arg(host);
 					}
 				}
 				else if (mode == QLatin1String("toggle"))
@@ -1553,11 +1556,11 @@ ActionsManager::ActionDefinition::State Application::getActionState(int identifi
 					{
 						if (host.isEmpty())
 						{
-							state.text = QCoreApplication::translate("actions", "Toggle %1").arg(name);
+							state.text = translate("actions", "Toggle %1").arg(name);
 						}
 						else
 						{
-							state.text = QCoreApplication::translate("actions", "Toggle %1 for %2").arg(name).arg(host);
+							state.text = translate("actions", "Toggle %1 for %2").arg(name).arg(host);
 						}
 					}
 					else
@@ -1622,8 +1625,6 @@ QVector<MainWindow*> Application::getWindows()
 
 bool Application::canClose()
 {
-	bool transfersDialog(false);
-
 	if (TransfersManager::hasRunningTransfers() && SettingsManager::getOption(SettingsManager::Choices_WarnQuitTransfersOption).toBool())
 	{
 		const QVector<Transfer*> transfers(TransfersManager::getTransfers());
@@ -1651,70 +1652,66 @@ bool Application::canClose()
 
 		SettingsManager::setOption(SettingsManager::Choices_WarnQuitTransfersOption, !messageBox.checkBox()->isChecked());
 
+		if (result == QMessageBox::Yes)
+		{
+			return true;
+		}
+
 		if (messageBox.clickedButton() == hideButton)
 		{
 			setHidden(true);
-
-			return false;
 		}
 
-		if (result == QMessageBox::Yes)
-		{
-			runningTransfers = 0;
-			transfersDialog = true;
-		}
-
-		if (runningTransfers > 0)
-		{
-			return false;
-		}
+		return false;
 	}
 
 	const QString warnQuitMode(SettingsManager::getOption(SettingsManager::Choices_WarnQuitOption).toString());
 
-	if (!transfersDialog && warnQuitMode != QLatin1String("noWarn"))
+	if (warnQuitMode == QLatin1String("noWarn"))
 	{
-		int tabsAmount(0);
+		return true;
+	}
 
-		for (int i = 0; i < m_windows.count(); ++i)
+	int tabsAmount(0);
+
+	for (int i = 0; i < m_windows.count(); ++i)
+	{
+		if (m_windows.at(i))
 		{
-			if (m_windows.at(i))
-			{
-				tabsAmount += m_windows.at(i)->getWindowCount();
-			}
+			tabsAmount += m_windows.at(i)->getWindowCount();
+		}
+	}
+
+	if (warnQuitMode == QLatin1String("alwaysWarn") || (tabsAmount > 1 && warnQuitMode == QLatin1String("warnOpenTabs")))
+	{
+		QMessageBox messageBox;
+		messageBox.setWindowTitle(tr("Question"));
+		messageBox.setText(tr("You are about to quit the current Otter Browser session."));
+		messageBox.setInformativeText(tr("Do you want to continue?"));
+		messageBox.setIcon(QMessageBox::Question);
+		messageBox.setStandardButtons(QMessageBox::Yes | QMessageBox::Cancel);
+		messageBox.setDefaultButton(QMessageBox::Yes);
+		messageBox.setCheckBox(new QCheckBox(tr("Do not show this message again")));
+
+		const QPushButton *hideButton(messageBox.addButton(tr("Hide"), QMessageBox::ActionRole));
+		const int result(messageBox.exec());
+
+		if (messageBox.checkBox()->isChecked())
+		{
+			SettingsManager::setOption(SettingsManager::Choices_WarnQuitOption, QLatin1String("noWarn"));
 		}
 
-		if (warnQuitMode == QLatin1String("alwaysWarn") || (tabsAmount > 1 && warnQuitMode == QLatin1String("warnOpenTabs")))
+		if (result == QMessageBox::Yes)
 		{
-			QMessageBox messageBox;
-			messageBox.setWindowTitle(tr("Question"));
-			messageBox.setText(tr("You are about to quit the current Otter Browser session."));
-			messageBox.setInformativeText(tr("Do you want to continue?"));
-			messageBox.setIcon(QMessageBox::Question);
-			messageBox.setStandardButtons(QMessageBox::Yes | QMessageBox::Cancel);
-			messageBox.setDefaultButton(QMessageBox::Yes);
-			messageBox.setCheckBox(new QCheckBox(tr("Do not show this message again")));
-
-			const QPushButton *hideButton(messageBox.addButton(tr("Hide"), QMessageBox::ActionRole));
-			const int result(messageBox.exec());
-
-			if (messageBox.checkBox()->isChecked())
-			{
-				SettingsManager::setOption(SettingsManager::Choices_WarnQuitOption, QLatin1String("noWarn"));
-			}
-
-			if (result == QMessageBox::Cancel)
-			{
-				return false;
-			}
-
-			if (messageBox.clickedButton() == hideButton)
-			{
-				setHidden(true);
-
-				return false;
-			}
+			return true;
 		}
+
+		if (messageBox.clickedButton() == hideButton)
+		{
+			setHidden(true);
+		}
+
+		return false;
 	}
 
 	return true;
@@ -1722,7 +1719,7 @@ bool Application::canClose()
 
 bool Application::isAboutToQuit()
 {
-	return m_isAboutToQuit;
+	return (m_isAboutToQuit || closingDown());
 }
 
 bool Application::isHidden()

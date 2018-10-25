@@ -22,8 +22,8 @@
 #include "QtWebEngineWebBackend.h"
 #include "QtWebEngineWebWidget.h"
 #include "../../../../core/Console.h"
-#include "../../../../core/ContentBlockingManager.h"
-#include "../../../../core/ContentBlockingProfile.h"
+#include "../../../../core/ContentFiltersManager.h"
+#include "../../../../core/HandlersManager.h"
 #include "../../../../core/HistoryManager.h"
 #include "../../../../core/ThemesManager.h"
 #include "../../../../core/UserScript.h"
@@ -33,7 +33,6 @@
 
 #include <QtCore/QFile>
 #include <QtCore/QRegularExpression>
-#include <QtGui/QDesktopServices>
 #include <QtWebEngineWidgets/QWebEngineHistory>
 #include <QtWebEngineWidgets/QWebEngineProfile>
 #include <QtWebEngineWidgets/QWebEngineScript>
@@ -70,15 +69,15 @@ void QtWebEnginePage::validatePopup(const QUrl &url)
 		page->deleteLater();
 	}
 
-	const QVector<int> profiles(ContentBlockingManager::getProfileList(m_widget->getOption(SettingsManager::ContentBlocking_ProfilesOption, m_widget->getUrl()).toStringList()));
+	const QVector<int> profiles(ContentFiltersManager::getProfileIdentifiers(m_widget->getOption(SettingsManager::ContentBlocking_ProfilesOption, m_widget->getUrl()).toStringList()));
 
 	if (!profiles.isEmpty())
 	{
-		const ContentBlockingManager::CheckResult result(ContentBlockingManager::checkUrl(profiles, m_widget->getUrl(), url, NetworkManager::PopupType));
+		const ContentFiltersManager::CheckResult result(ContentFiltersManager::checkUrl(profiles, m_widget->getUrl(), url, NetworkManager::PopupType));
 
 		if (result.isBlocked)
 		{
-			Console::addMessage(QCoreApplication::translate("main", "Request blocked by rule from profile %1:\n%2").arg(ContentBlockingManager::getProfile(result.profile)->getTitle()).arg(result.rule), Console::NetworkCategory, Console::LogLevel, url.url(), -1, (m_widget ? m_widget->getWindowIdentifier() : 0));
+			Console::addMessage(QCoreApplication::translate("main", "Request blocked by rule from profile %1:\n%2").arg(ContentFiltersManager::getProfile(result.profile)->getTitle()).arg(result.rule), Console::NetworkCategory, Console::LogLevel, url.url(), -1, (m_widget ? m_widget->getWindowIdentifier() : 0));
 
 			return;
 		}
@@ -171,7 +170,7 @@ void QtWebEnginePage::handleLoadFinished()
 		if (m_widget)
 		{
 			const QUrl url(m_widget->getUrl());
-			const ContentBlockingManager::CosmeticFiltersResult cosmeticFilters(ContentBlockingManager::getCosmeticFilters(ContentBlockingManager::getProfileList(m_widget->getOption(SettingsManager::ContentBlocking_ProfilesOption).toStringList()), url));
+			const ContentFiltersManager::CosmeticFiltersResult cosmeticFilters(ContentFiltersManager::getCosmeticFilters(ContentFiltersManager::getProfileIdentifiers(m_widget->getOption(SettingsManager::ContentBlocking_ProfilesOption).toStringList()), url));
 
 			if (!cosmeticFilters.rules.isEmpty() || !cosmeticFilters.exceptions.isEmpty())
 			{
@@ -322,7 +321,7 @@ QtWebEngineWebWidget* QtWebEnginePage::createWidget(SessionsManager::OpenHints h
 		widget = new QtWebEngineWebWidget({}, nullptr, nullptr);
 	}
 
-	widget->pageLoadStarted();
+	widget->handleLoadStarted();
 
 	emit requestedNewWindow(widget, hints, {});
 
@@ -342,6 +341,27 @@ QString QtWebEnginePage::createJavaScriptList(QStringList rules) const
 	}
 
 	return QLatin1Char('\'') + rules.join(QLatin1String("','")) + QLatin1Char('\'');
+}
+
+QString QtWebEnginePage::createScriptSource(const QString &path, const QStringList &parameters) const
+{
+	QFile file(QLatin1String(":/modules/backends/web/qtwebengine/resources/") + path + QLatin1String(".js"));
+
+	if (!file.open(QIODevice::ReadOnly))
+	{
+		return {};
+	}
+
+	QString script(file.readAll());
+
+	file.close();
+
+	for (int i = 0; i < parameters.count(); ++i)
+	{
+		script = script.arg(parameters.at(i));
+	}
+
+	return script;
 }
 
 QVariant QtWebEnginePage::runScriptSource(const QString &script)
@@ -370,23 +390,7 @@ QVariant QtWebEnginePage::runScriptSource(const QString &script)
 
 QVariant QtWebEnginePage::runScriptFile(const QString &path, const QStringList &parameters)
 {
-	QFile file(QLatin1String(":/modules/backends/web/qtwebengine/resources/") + path + QLatin1String(".js"));
-
-	if (!file.open(QIODevice::ReadOnly))
-	{
-		return {};
-	}
-
-	QString script(file.readAll());
-
-	file.close();
-
-	for (int i = 0; i < parameters.count(); ++i)
-	{
-		script = script.arg(parameters.at(i));
-	}
-
-	return runScriptSource(script);
+	return runScriptSource(createScriptSource(path, parameters));
 }
 
 WindowHistoryInformation QtWebEnginePage::getHistory() const
@@ -450,10 +454,8 @@ bool QtWebEnginePage::acceptNavigationRequest(const QUrl &url, NavigationType ty
 		return false;
 	}
 
-	if (url.scheme() == QLatin1String("mailto"))
+	if (HandlersManager::handleUrl(url))
 	{
-		QDesktopServices::openUrl(url);
-
 		return false;
 	}
 

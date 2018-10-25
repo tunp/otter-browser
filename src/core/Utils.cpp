@@ -484,6 +484,18 @@ QString formatFileTypes(const QStringList &filters)
 	return result;
 }
 
+QString normalizeObjectName(QString name, const QString &suffix)
+{
+	name.remove(QLatin1String("Otter__"));
+
+	if (!suffix.isEmpty() && name.endsWith(suffix))
+	{
+		name.remove((name.length() - suffix.length()), suffix.length());
+	}
+
+	return name;
+}
+
 QString normalizePath(const QString &path)
 {
 	if (path == QString(QLatin1Char('~')) || QDir::toNativeSeparators(path).startsWith(QLatin1Char('~') + QDir::separator()))
@@ -680,6 +692,11 @@ SaveInformation getSavePath(const QString &fileName, const QString &directory, Q
 qreal calculatePercent(qint64 amount, qint64 total, int multiplier)
 {
 	return ((static_cast<qreal>(amount) / static_cast<qreal>(total)) * multiplier);
+}
+
+bool isUrl(const QString &text)
+{
+	return QRegularExpression(QLatin1String("^[^\\s]+\\.[^\\s]{2,}$")).match(text).hasMatch();
 }
 
 bool isUrlEmpty(const QUrl &url)

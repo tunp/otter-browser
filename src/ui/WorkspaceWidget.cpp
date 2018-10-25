@@ -163,7 +163,7 @@ void MdiWindow::mouseReleaseEvent(QMouseEvent *event)
 
 			if (mainWindow)
 			{
-				mainWindow->setActiveWindowByIndex(-1);
+				mainWindow->setActiveWindowByIdentifier(0);
 			}
 			else
 			{
@@ -380,7 +380,7 @@ void WorkspaceWidget::triggerAction(int identifier, const QVariantMap &parameter
 
 				if (activeSubWindows == 1)
 				{
-					m_mainWindow->setActiveWindowByIndex(-1);
+					m_mainWindow->setActiveWindowByIdentifier(0);
 				}
 				else if (subWindow == m_mdi->currentSubWindow() && activeSubWindows > 1)
 				{
@@ -462,7 +462,7 @@ void WorkspaceWidget::triggerAction(int identifier, const QVariantMap &parameter
 
 				connect(m_mdi, &MdiWidget::subWindowActivated, this, &WorkspaceWidget::handleActiveSubWindowChanged);
 
-				m_mainWindow->setActiveWindowByIndex(-1);
+				m_mainWindow->setActiveWindowByIdentifier(0);
 			}
 
 			break;
@@ -605,7 +605,10 @@ void WorkspaceWidget::addWindow(Window *window, const WindowState &state, bool i
 		window->move(0, 0);
 	}
 
-	notifyActionsStateChanged();
+	if (m_isRestored)
+	{
+		notifyActionsStateChanged();
+	}
 }
 
 void WorkspaceWidget::handleActiveSubWindowChanged(QMdiSubWindow *subWindow)
@@ -652,7 +655,7 @@ void WorkspaceWidget::showContextMenu(const QPoint &position)
 	arrangeMenu->addAction(new Action(ActionsManager::CascadeAllAction, {}, executor, arrangeMenu));
 	arrangeMenu->addAction(new Action(ActionsManager::TileAllAction, {}, executor, arrangeMenu));
 
-	menu.addMenu(new Menu(Menu::ToolBarsMenuRole, &menu));
+	menu.addMenu(new Menu(Menu::ToolBarsMenu, &menu));
 	menu.exec(m_mdi->mapToGlobal(position));
 }
 

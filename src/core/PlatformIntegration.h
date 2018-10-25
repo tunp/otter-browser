@@ -29,7 +29,6 @@ namespace Otter
 {
 
 struct ApplicationInformation;
-class Application;
 class Notification;
 class Style;
 
@@ -38,12 +37,12 @@ class PlatformIntegration : public QObject
 	Q_OBJECT
 
 public:
-	explicit PlatformIntegration(Application *parent);
+	explicit PlatformIntegration(QObject *parent);
 
-	virtual void runApplication(const QString &command, const QUrl &url = {}) const;
+	virtual void runApplication(const QString &command, const QUrl &url = {}) const = 0;
 	virtual void startLinkDrag(const QUrl &url, const QString &title, const QPixmap &pixmap, QObject *parent = nullptr) const;
-	virtual Style* createStyle(const QString &name) const;
-	virtual QVector<ApplicationInformation> getApplicationsForMimeType(const QMimeType &mimeType);
+	virtual Style* createStyle(const QString &name) const = 0;
+	virtual QVector<ApplicationInformation> getApplicationsForMimeType(const QMimeType &mimeType) = 0;
 	virtual QString getPreferredPasswordsBackend() const;
 	virtual QString getPlatformName() const;
 	virtual bool canShowNotifications() const;

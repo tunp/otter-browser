@@ -24,7 +24,6 @@
 #include "QtWebKitWebWidget.h"
 #include "../../../../core/NetworkManagerFactory.h"
 #include "../../../../core/SettingsManager.h"
-#include "../../../../core/Utils.h"
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDir>
@@ -41,21 +40,17 @@ QtWebKitWebBackend* QtWebKitWebBackend::m_instance(nullptr);
 QPointer<WebWidget> QtWebKitWebBackend::m_activeWidget(nullptr);
 QMap<QString, QString> QtWebKitWebBackend::m_userAgentComponents;
 QMap<QString, QString> QtWebKitWebBackend::m_userAgents;
-#ifndef OTTER_ENABLE_QTWEBKIT_LEGACY
 int QtWebKitWebBackend::m_enableMediaOption(-1);
 int QtWebKitWebBackend::m_enableMediaSourceOption(-1);
 int QtWebKitWebBackend::m_enableWebSecurityOption(-1);
-#endif
 
 QtWebKitWebBackend::QtWebKitWebBackend(QObject *parent) : WebBackend(parent),
 	m_isInitialized(false)
 {
 	m_instance = this;
-#ifndef OTTER_ENABLE_QTWEBKIT_LEGACY
 	m_enableMediaOption = SettingsManager::registerOption(QLatin1String("QtWebKitBackend/EnableMedia"), SettingsManager::BooleanType, true);
 	m_enableMediaSourceOption = SettingsManager::registerOption(QLatin1String("QtWebKitBackend/EnableMediaSource"), SettingsManager::BooleanType, false);
 	m_enableWebSecurityOption = SettingsManager::registerOption(QLatin1String("QtWebKitBackend/EnableWebSecurity"), SettingsManager::BooleanType, true);
-#endif
 
 	const QString cachePath(SessionsManager::getCachePath());
 
@@ -150,18 +145,15 @@ WebWidget* QtWebKitWebBackend::createWidget(const QVariantMap &parameters, Conte
 
 		QWebHistoryInterface::setDefaultInterface(new QtWebKitHistoryInterface(this));
 
-#ifndef OTTER_ENABLE_QTWEBKIT_LEGACY
 		QStringList pluginSearchPaths(QWebSettings::pluginSearchPaths());
 		pluginSearchPaths.append(QDir::toNativeSeparators(QCoreApplication::applicationDirPath()));
 
 		QWebSettings::setPluginSearchPaths(pluginSearchPaths);
-#endif
 		QWebSettings::setMaximumPagesInCache(SettingsManager::getOption(SettingsManager::Cache_PagesInMemoryLimitOption).toInt());
 		QWebSettings::globalSettings()->setAttribute(QWebSettings::DnsPrefetchEnabled, true);
-#ifndef OTTER_ENABLE_QTWEBKIT_LEGACY
 		QWebSettings::globalSettings()->setAttribute(QWebSettings::FullScreenSupportEnabled, true);
-#endif
 		QWebSettings::globalSettings()->setAttribute(QWebSettings::JavascriptCanCloseWindows, true);
+		QWebSettings::globalSettings()->setAttribute(QWebSettings::XSSAuditingEnabled, true);
 		QWebSettings::globalSettings()->setAttribute(QWebSettings::PrintElementBackgrounds, SettingsManager::getOption(SettingsManager::Browser_PrintElementBackgroundsOption).toBool());
 		QWebSettings::globalSettings()->setAttribute(QWebSettings::ScrollAnimatorEnabled, SettingsManager::getOption(SettingsManager::Interface_EnableSmoothScrollingOption).toBool());
 		QWebSettings::globalSettings()->setOfflineStorageDefaultQuota(SettingsManager::getOption(SettingsManager::Browser_OfflineStorageLimitOption).toInt() * 1024);
@@ -192,11 +184,7 @@ QString QtWebKitWebBackend::getName() const
 
 QString QtWebKitWebBackend::getTitle() const
 {
-#ifdef OTTER_ENABLE_QTWEBKIT_LEGACY
-	return tr("WebKit Backend (legacy)");
-#else
 	return tr("WebKit Backend");
-#endif
 }
 
 QString QtWebKitWebBackend::getDescription() const
@@ -270,9 +258,6 @@ WebBackend::BackendCapabilities QtWebKitWebBackend::getCapabilities() const
 
 int QtWebKitWebBackend::getOptionIdentifier(QtWebKitWebBackend::OptionIdentifier identifier)
 {
-#ifdef OTTER_ENABLE_QTWEBKIT_LEGACY
-	Q_UNUSED(identifier)
-#else
 	switch (identifier)
 	{
 		case QtWebKitBackend_EnableMediaOption:
@@ -284,40 +269,65 @@ int QtWebKitWebBackend::getOptionIdentifier(QtWebKitWebBackend::OptionIdentifier
 		default:
 			return -1;
 	}
-#endif
 
 	return -1;
 }
 
 bool QtWebKitWebBackend::requestThumbnail(const QUrl &url, const QSize &size)
 {
-	connect(new QtWebKitThumbnailFetchJob(url, size, this), &QtWebKitThumbnailFetchJob::thumbnailAvailable, this, &QtWebKitWebBackend::thumbnailAvailable);
+	QtWebKitWebPageThumbnailJob *job(new QtWebKitWebPageThumbnailJob(url, size, this));
+
+	connect(job, &QtWebKitWebPageThumbnailJob::jobFinished, [=](bool isSuccess)
+	{
+		Q_UNUSED(isSuccess)
+
+		emit thumbnailAvailable(url, job->getThumbnail(), job->getTitle());
+	});
+
+	job->start();
 
 	return true;
 }
 
-QtWebKitThumbnailFetchJob::QtWebKitThumbnailFetchJob(const QUrl &url, const QSize &size, QObject *parent) : QObject(parent),
-	m_page(new QtWebKitPage(url)),
+QtWebKitWebPageThumbnailJob::QtWebKitWebPageThumbnailJob(const QUrl &url, const QSize &size, QObject *parent) : WebPageThumbnailJob(url, size, parent),
+	m_page(nullptr),
 	m_url(url),
 	m_size(size)
 {
-	m_page->setParent(this);
-
-	connect(m_page, &QtWebKitPage::loadFinished, this, &QtWebKitThumbnailFetchJob::handlePageLoadFinished);
 }
 
-void QtWebKitThumbnailFetchJob::handlePageLoadFinished(bool result)
+void QtWebKitWebPageThumbnailJob::start()
+{
+	if (!m_page)
+	{
+		m_page = new QtWebKitPage(m_url);
+		m_page->setParent(this);
+
+		connect(m_page, &QtWebKitPage::loadFinished, this, &QtWebKitWebPageThumbnailJob::handlePageLoadFinished);
+	}
+}
+
+void QtWebKitWebPageThumbnailJob::cancel()
+{
+	if (m_page)
+	{
+		m_page->triggerAction(QWebPage::Stop);
+	}
+
+	deleteLater();
+}
+
+void QtWebKitWebPageThumbnailJob::handlePageLoadFinished(bool result)
 {
 	if (!result)
 	{
 		deleteLater();
 
-		emit thumbnailAvailable(m_url, {}, {});
+		emit jobFinished(false);
 
 		return;
 	}
 
-	QPixmap pixmap;
 	QSize contentsSize(m_page->mainFrame()->contentsSize());
 
 	if (contentsSize.isNull())
@@ -344,25 +354,32 @@ void QtWebKitThumbnailFetchJob::handlePageLoadFinished(bool result)
 
 		if (!contentsSize.isNull())
 		{
-			pixmap = QPixmap(contentsSize);
-			pixmap.fill(Qt::white);
+			m_pixmap = QPixmap(contentsSize);
+			m_pixmap.fill(Qt::white);
 
-			QPainter painter(&pixmap);
+			QPainter painter(&m_pixmap);
 
 			m_page->mainFrame()->render(&painter, QWebFrame::ContentsLayer, QRegion(QRect(QPoint(0, 0), contentsSize)));
 
 			painter.end();
 
-			if (pixmap.size() != m_size)
+			if (m_pixmap.size() != m_size)
 			{
-				pixmap = pixmap.scaled(m_size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+				m_pixmap = m_pixmap.scaled(m_size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 			}
 		}
 	}
 
+	m_title = m_page->mainFrame()->title();
+
 	deleteLater();
 
-	emit thumbnailAvailable(m_url, pixmap, m_page->mainFrame()->title());
+	emit jobFinished(true);
+}
+
+bool QtWebKitWebPageThumbnailJob::isRunning() const
+{
+	return (m_page != nullptr);
 }
 
 }

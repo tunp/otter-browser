@@ -20,7 +20,7 @@
 
 #include "NetworkManagerFactory.h"
 #include "AddonsManager.h"
-#include "ContentBlockingManager.h"
+#include "ContentFiltersManager.h"
 #include "CookieJar.h"
 #include "NetworkCache.h"
 #include "NetworkManager.h"
@@ -41,7 +41,8 @@ namespace Otter
 {
 
 NetworkManagerFactory* NetworkManagerFactory::m_instance(nullptr);
-NetworkManager* NetworkManagerFactory::m_networkManager(nullptr);
+NetworkManager* NetworkManagerFactory::m_privateNetworkManager(nullptr);
+NetworkManager* NetworkManagerFactory::m_standardNetworkManager(nullptr);
 NetworkProxyFactory* NetworkManagerFactory::m_proxyFactory(nullptr);
 NetworkCache* NetworkManagerFactory::m_cache(nullptr);
 CookieJar* NetworkManagerFactory::m_cookieJar(nullptr);
@@ -229,7 +230,7 @@ void NetworkManagerFactory::createInstance()
 
 		QNetworkProxyFactory::setApplicationProxyFactory(m_proxyFactory);
 
-		ContentBlockingManager::createInstance();
+		ContentFiltersManager::createInstance();
 	}
 }
 
@@ -598,14 +599,18 @@ NetworkManagerFactory* NetworkManagerFactory::getInstance()
 	return m_instance;
 }
 
-NetworkManager* NetworkManagerFactory::getNetworkManager()
+NetworkManager* NetworkManagerFactory::getNetworkManager(bool isPrivate)
 {
-	if (!m_networkManager)
+	if (isPrivate && !m_privateNetworkManager)
 	{
-		m_networkManager = new NetworkManager(true, QCoreApplication::instance());
+		m_privateNetworkManager = new NetworkManager(true, QCoreApplication::instance());
+	}
+	else if (!isPrivate && !m_standardNetworkManager)
+	{
+		m_standardNetworkManager = new NetworkManager(false, QCoreApplication::instance());
 	}
 
-	return m_networkManager;
+	return (isPrivate ? m_privateNetworkManager : m_standardNetworkManager);
 }
 
 NetworkCache* NetworkManagerFactory::getCache()
@@ -626,6 +631,15 @@ CookieJar* NetworkManagerFactory::getCookieJar()
 	}
 
 	return m_cookieJar;
+}
+
+QNetworkReply* NetworkManagerFactory::createRequest(const QUrl &url, QNetworkAccessManager::Operation operation, bool isPrivate, QIODevice *outgoingData)
+{
+	QNetworkRequest request(url);
+	request.setAttribute(QNetworkRequest::FollowRedirectsAttribute, true);
+	request.setHeader(QNetworkRequest::UserAgentHeader, getUserAgent());
+
+	return getNetworkManager(isPrivate)->createRequest(operation, request, outgoingData);
 }
 
 QString NetworkManagerFactory::getAcceptLanguage()

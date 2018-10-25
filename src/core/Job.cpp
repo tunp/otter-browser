@@ -20,7 +20,6 @@
 #include "Job.h"
 #include "NetworkManager.h"
 #include "NetworkManagerFactory.h"
-#include "Utils.h"
 
 namespace Otter
 {
@@ -30,18 +29,40 @@ Job::Job(QObject *parent) : QObject(parent)
 }
 
 FetchJob::FetchJob(const QUrl &url, QObject *parent) : Job(parent),
+	m_reply(nullptr),
+	m_url(url),
 	m_sizeLimit(-1),
 	m_timeoutTimer(0),
 	m_isFinished(false),
+	m_isPrivate(false),
 	m_isSuccess(true)
 {
-	QNetworkRequest request(url);
-#if QT_VERSION >= 0x050600
-	request.setAttribute(QNetworkRequest::FollowRedirectsAttribute, true);
-#endif
-	request.setHeader(QNetworkRequest::UserAgentHeader, NetworkManagerFactory::getUserAgent());
+}
 
-	m_reply = NetworkManagerFactory::getNetworkManager()->get(request);
+FetchJob::~FetchJob()
+{
+	m_reply->deleteLater();
+}
+
+void FetchJob::timerEvent(QTimerEvent *event)
+{
+	if (event->timerId() == m_timeoutTimer)
+	{
+		cancel();
+		killTimer(m_timeoutTimer);
+
+		m_timeoutTimer = 0;
+	}
+}
+
+void FetchJob::start()
+{
+	if (m_reply)
+	{
+		return;
+	}
+
+	m_reply = NetworkManagerFactory::createRequest(m_url, QNetworkAccessManager::GetOperation, m_isPrivate);
 
 	connect(m_reply, &QNetworkReply::downloadProgress, this, [&](qint64 bytesReceived, qint64 bytesTotal)
 	{
@@ -68,11 +89,6 @@ FetchJob::FetchJob(const QUrl &url, QObject *parent) : Job(parent),
 	});
 }
 
-FetchJob::~FetchJob()
-{
-	m_reply->deleteLater();
-}
-
 void FetchJob::cancel()
 {
 	m_reply->blockSignals(true);
@@ -81,17 +97,6 @@ void FetchJob::cancel()
 	deleteLater();
 
 	emit jobFinished(false);
-}
-
-void FetchJob::timerEvent(QTimerEvent *event)
-{
-	if (event->timerId() == m_timeoutTimer)
-	{
-		cancel();
-		killTimer(m_timeoutTimer);
-
-		m_timeoutTimer = 0;
-	}
 }
 
 void FetchJob::markAsFailure()
@@ -119,9 +124,19 @@ void FetchJob::setSizeLimit(qint64 limit)
 	m_sizeLimit = limit;
 }
 
+void FetchJob::setPrivate(bool isPrivate)
+{
+	m_isPrivate = isPrivate;
+}
+
 QUrl FetchJob::getUrl() const
 {
-	return m_reply->request().url();
+	return (m_reply ? m_reply->request().url() : m_url);
+}
+
+bool FetchJob::isRunning() const
+{
+	return (m_reply != nullptr);
 }
 
 DataFetchJob::DataFetchJob(const QUrl &url, QObject *parent) : FetchJob(url, parent),

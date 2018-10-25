@@ -21,8 +21,7 @@
 #include "ContentBlockingInformationWidget.h"
 #include "../../../core/Console.h"
 #include "../../../core/Application.h"
-#include "../../../core/ContentBlockingManager.h"
-#include "../../../core/ContentBlockingProfile.h"
+#include "../../../core/ContentFiltersManager.h"
 #include "../../../core/ThemesManager.h"
 #include "../../../core/Utils.h"
 #include "../../../ui/ContentsWidget.h"
@@ -215,7 +214,7 @@ void ContentBlockingInformationWidget::populateProfilesMenu()
 		return;
 	}
 
-	QAction *enableContentBlockingAction(m_profilesMenu->addAction(tr("Enable Content Blocking")));
+	QAction *enableContentBlockingAction(m_profilesMenu->addAction(tr("Enable Content Blocking"), this, &ContentBlockingInformationWidget::toggleContentBlocking));
 	enableContentBlockingAction->setCheckable(true);
 	enableContentBlockingAction->setChecked(m_window->getOption(SettingsManager::ContentBlocking_EnableContentBlockingOption).toBool());
 
@@ -238,7 +237,7 @@ void ContentBlockingInformationWidget::populateProfilesMenu()
 		}
 	}
 
-	const QVector<ContentBlockingProfile*> profiles(ContentBlockingManager::getProfiles());
+	const QVector<ContentFiltersProfile*> profiles(ContentFiltersManager::getContentBlockingProfiles());
 	const QStringList enabledProfiles(m_window->getOption(SettingsManager::ContentBlocking_ProfilesOption).toStringList());
 
 	for (int i = 0; i < profiles.count(); ++i)
@@ -253,8 +252,6 @@ void ContentBlockingInformationWidget::populateProfilesMenu()
 			profileAction->setChecked(enabledProfiles.contains(profiles.at(i)->getName()));
 		}
 	}
-
-	connect(enableContentBlockingAction, &QAction::triggered, this, &ContentBlockingInformationWidget::toggleContentBlocking);
 }
 
 void ContentBlockingInformationWidget::populateHostsMenu()
@@ -510,7 +507,25 @@ void ContentBlockingInformationWidget::handleRequest()
 
 void ContentBlockingInformationWidget::updateState()
 {
-	m_icon = (isCustomized() ? getOptions().value(QLatin1String("icon")).value<QIcon>() : QIcon());
+	const QVariantMap options(getOptions());
+
+	if (isCustomized() && options.contains(QLatin1String("icon")))
+	{
+		const QVariant iconData(options[QLatin1String("icon")]);
+
+		if (iconData.type() == QVariant::Icon)
+		{
+			m_icon = iconData.value<QIcon>();
+		}
+		else
+		{
+			m_icon = ThemesManager::createIcon(iconData.toString());
+		}
+	}
+	else
+	{
+		m_icon = QIcon();
+	}
 
 	if (m_icon.isNull())
 	{

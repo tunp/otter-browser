@@ -60,15 +60,19 @@ protected:
 	void addEntry(const ToolBarsManager::ToolBarDefinition::Entry &entry, QStandardItem *parent = nullptr);
 	QStandardItem* createEntry(const QString &identifier, const QVariantMap &options = {}, const QVariantMap &parameters = {}) const;
 	ToolBarsManager::ToolBarDefinition::Entry getEntry(QStandardItem *item) const;
+	QMap<int, QVariant> createEntryData(const QString &identifier, const QVariantMap &options = {}, const QVariantMap &parameters = {}) const;
 
 protected slots:
 	void addNewEntry();
 	void editEntry();
 	void addBookmark(QAction *action);
 	void restoreDefaults();
+	void showAvailableEntriesContextMenu(const QPoint &position);
+	void showCurrentEntriesContextMenu(const QPoint &position);
 	void updateActions();
 
 private:
+	QStandardItemModel *m_currentEntriesModel;
 	ToolBarsManager::ToolBarDefinition m_definition;
 	Ui::ToolBarDialog *m_ui;
 };

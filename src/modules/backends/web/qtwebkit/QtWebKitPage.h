@@ -88,9 +88,6 @@ protected:
 
 	void markAsPopup();
 	void javaScriptAlert(QWebFrame *frame, const QString &message) override;
-#ifdef OTTER_ENABLE_QTWEBKIT_LEGACY
-	void javaScriptConsoleMessage(const QString &note, int line, const QString &source) override;
-#endif
 	QWebPage* createWindow(WebWindowType type) override;
 	QtWebKitWebWidget* createWidget(SessionsManager::OpenHints hints);
 	QString chooseFile(QWebFrame *frame, const QString &suggestedFile) override;
@@ -105,9 +102,7 @@ protected slots:
 	void validatePopup(const QUrl &url);
 	void handleOptionChanged(int identifier);
 	void handleFrameCreation(QWebFrame *frame);
-#ifndef OTTER_ENABLE_QTWEBKIT_LEGACY
 	void handleConsoleMessage(MessageSource category, MessageLevel level, const QString &message, int line, const QString &source);
-#endif
 
 private:
 	QtWebKitWebWidget *m_widget;
@@ -125,7 +120,7 @@ signals:
 	void isDisplayingErrorPageChanged(QWebFrame *frame, bool isVisible);
 	void viewingMediaChanged(bool isViewingMedia);
 
-friend class QtWebKitThumbnailFetchJob;
+friend class QtWebKitWebPageThumbnailJob;
 friend class QtWebKitWebBackend;
 };
 

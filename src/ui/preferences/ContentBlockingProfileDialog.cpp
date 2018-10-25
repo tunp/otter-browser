@@ -19,8 +19,8 @@
 **************************************************************************/
 
 #include "ContentBlockingProfileDialog.h"
-#include "../../core/ContentBlockingManager.h"
-#include "../../core/ContentBlockingProfile.h"
+#include "../../core/AdblockContentFiltersProfile.h"
+#include "../../core/ContentFiltersManager.h"
 #include "../../core/SessionsManager.h"
 #include "../../core/Utils.h"
 
@@ -32,17 +32,17 @@
 namespace Otter
 {
 
-ContentBlockingProfileDialog::ContentBlockingProfileDialog(QWidget *parent, ContentBlockingProfile *profile) : Dialog(parent),
+ContentBlockingProfileDialog::ContentBlockingProfileDialog(QWidget *parent, ContentFiltersProfile *profile) : Dialog(parent),
 	m_profile(profile),
 	m_ui(new Ui::ContentBlockingProfileDialog)
 {
 	m_ui->setupUi(this);
-	m_ui->categoryComboBox->addItem(tr("Advertisements"), ContentBlockingProfile::AdvertisementsCategory);
-	m_ui->categoryComboBox->addItem(tr("Annoyance"), ContentBlockingProfile::AnnoyanceCategory);
-	m_ui->categoryComboBox->addItem(tr("Privacy"), ContentBlockingProfile::PrivacyCategory);
-	m_ui->categoryComboBox->addItem(tr("Social"), ContentBlockingProfile::SocialCategory);
-	m_ui->categoryComboBox->addItem(tr("Regional"), ContentBlockingProfile::RegionalCategory);
-	m_ui->categoryComboBox->addItem(tr("Other"), ContentBlockingProfile::OtherCategory);
+	m_ui->categoryComboBox->addItem(tr("Advertisements"), ContentFiltersProfile::AdvertisementsCategory);
+	m_ui->categoryComboBox->addItem(tr("Annoyance"), ContentFiltersProfile::AnnoyanceCategory);
+	m_ui->categoryComboBox->addItem(tr("Privacy"), ContentFiltersProfile::PrivacyCategory);
+	m_ui->categoryComboBox->addItem(tr("Social"), ContentFiltersProfile::SocialCategory);
+	m_ui->categoryComboBox->addItem(tr("Regional"), ContentFiltersProfile::RegionalCategory);
+	m_ui->categoryComboBox->addItem(tr("Other"), ContentFiltersProfile::OtherCategory);
 
 	if (profile)
 	{
@@ -62,7 +62,7 @@ ContentBlockingProfileDialog::~ContentBlockingProfileDialog()
 	delete m_ui;
 }
 
-ContentBlockingProfile* ContentBlockingProfileDialog::getProfile()
+ContentFiltersProfile* ContentBlockingProfileDialog::getProfile()
 {
 	return m_profile;
 }
@@ -85,7 +85,7 @@ void ContentBlockingProfileDialog::changeEvent(QEvent *event)
 
 void ContentBlockingProfileDialog::save()
 {
-	const ContentBlockingProfile::ProfileCategory category(static_cast<ContentBlockingProfile::ProfileCategory>(m_ui->categoryComboBox->itemData(m_ui->categoryComboBox->currentIndex()).toInt()));
+	const ContentFiltersProfile::ProfileCategory category(static_cast<ContentFiltersProfile::ProfileCategory>(m_ui->categoryComboBox->itemData(m_ui->categoryComboBox->currentIndex()).toInt()));
 	const QUrl url(m_ui->updateUrLineEdit->text());
 
 	if (!url.isValid())
@@ -116,7 +116,7 @@ void ContentBlockingProfileDialog::save()
 			return;
 		}
 
-		if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
+		if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
 		{
 			QMessageBox::critical(this, tr("Error"), tr("Failed to create profile file: %1.").arg(file.errorString()), QMessageBox::Close);
 
@@ -126,9 +126,9 @@ void ContentBlockingProfileDialog::save()
 		file.write(QStringLiteral("[AdBlock Plus 2.0]\n").toUtf8());
 		file.close();
 
-		ContentBlockingProfile *profile(new ContentBlockingProfile(fileName, m_ui->titleLineEdit->text(), url, {}, {}, m_ui->updateIntervalSpinBox->value(), category, (ContentBlockingProfile::HasCustomTitleFlag | ContentBlockingProfile::HasCustomUpdateUrlFlag)));
+		ContentFiltersProfile *profile(new AdblockContentFiltersProfile(fileName, m_ui->titleLineEdit->text(), url, {}, {}, m_ui->updateIntervalSpinBox->value(), category, (ContentFiltersProfile::HasCustomTitleFlag | ContentFiltersProfile::HasCustomUpdateUrlFlag), ContentFiltersManager::getInstance()));
 
-		ContentBlockingManager::addProfile(profile);
+		ContentFiltersManager::addProfile(profile);
 
 		m_profile = profile;
 	}

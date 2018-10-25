@@ -160,13 +160,18 @@ void SourceViewerWebWidget::triggerAction(int identifier, const QVariantMap &par
 			break;
 		case ActionsManager::ReloadAndBypassCacheAction:
 			{
-			triggerAction(ActionsManager::StopAction, {}, trigger);
+				triggerAction(ActionsManager::StopAction, {}, trigger);
 
 				QNetworkRequest request(QUrl(getUrl().toString().mid(12)));
 				request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
 				request.setHeader(QNetworkRequest::UserAgentHeader, NetworkManagerFactory::getUserAgent());
 
-				m_viewSourceReply = NetworkManagerFactory::getNetworkManager()->get(request);
+				if (!m_networkManager)
+				{
+					m_networkManager = new NetworkManager(m_isPrivate, this);
+				}
+
+				m_viewSourceReply = m_networkManager->get(request);
 
 				connect(m_viewSourceReply, &QNetworkReply::finished, this, &SourceViewerWebWidget::handleViewSourceReplyFinished);
 
@@ -292,20 +297,18 @@ void SourceViewerWebWidget::showContextMenu(const QPoint &position)
 	if (child && child->metaObject()->className() == QLatin1String("Otter::MarginWidget"))
 	{
 		QMenu menu(this);
-		QAction *showLineNumbersAction(menu.addAction(tr("Show Line Numbers")));
-		showLineNumbersAction->setCheckable(true);
-		showLineNumbersAction->setChecked(SettingsManager::getOption(SettingsManager::SourceViewer_ShowLineNumbersOption).toBool());
-
-		connect(showLineNumbersAction, &QAction::triggered, [&](bool show)
+		QAction *showLineNumbersAction(menu.addAction(tr("Show Line Numbers"), [&](bool show)
 		{
 			SettingsManager::setOption(SettingsManager::SourceViewer_ShowLineNumbersOption, show);
-		});
+		}));
+		showLineNumbersAction->setCheckable(true);
+		showLineNumbersAction->setChecked(SettingsManager::getOption(SettingsManager::SourceViewer_ShowLineNumbersOption).toBool());
 
 		menu.exec(menuPosition);
 	}
 	else
 	{
-		Menu menu(Menu::NoMenuRole, this);
+		Menu menu(Menu::UnknownMenu, this);
 		menu.load(QLatin1String("menu/webWidget.json"), {QLatin1String("edit"), QLatin1String("source")}, ActionExecutor::Object(this, this));
 		menu.exec(menuPosition);
 	}

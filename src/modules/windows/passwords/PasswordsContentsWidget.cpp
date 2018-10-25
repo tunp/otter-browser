@@ -43,7 +43,7 @@ PasswordsContentsWidget::PasswordsContentsWidget(const QVariantMap &parameters, 
 	m_ui->setupUi(this);
 	m_ui->filterLineEditWidget->setClearOnEscape(true);
 	m_ui->passwordsViewWidget->installEventFilter(this);
-	m_ui->passwordsViewWidget->setViewMode(ItemViewWidget::TreeViewMode);
+	m_ui->passwordsViewWidget->setViewMode(ItemViewWidget::TreeView);
 	m_ui->passwordsViewWidget->setModel(m_model);
 
 	m_model->setHeaderData(0, Qt::Horizontal, 500, HeaderViewWidget::WidthRole);
@@ -274,20 +274,15 @@ void PasswordsContentsWidget::showContextMenu(const QPoint &position)
 	{
 		if (index.parent() != m_model->invisibleRootItem()->index())
 		{
-			connect(menu.addAction(tr("Remove Password")), &QAction::triggered , this, &PasswordsContentsWidget::removePasswords);
+			menu.addAction(tr("Remove Password"), this, &PasswordsContentsWidget::removePasswords);
 		}
 
-		connect(menu.addAction(tr("Remove All Passwords from This Domain…")), &QAction::triggered, this, &PasswordsContentsWidget::removeHostPasswords);
+		menu.addAction(tr("Remove All Passwords from This Domain…"), this, &PasswordsContentsWidget::removeHostPasswords);
 	}
 
-	QAction *removeAllPasswordsAction(menu.addAction(tr("Remove All Passwords…")));
-	removeAllPasswordsAction->setEnabled(m_ui->passwordsViewWidget->model()->rowCount() > 0);
-
+	menu.addAction(tr("Remove All Passwords…"), this, &PasswordsContentsWidget::removeAllPasswords)->setEnabled(m_ui->passwordsViewWidget->model()->rowCount() > 0);
 	menu.addSeparator();
 	menu.addAction(new Action(ActionsManager::ClearHistoryAction, {}, ActionExecutor::Object(mainWindow, mainWindow), &menu));
-
-	connect(removeAllPasswordsAction, &QAction::triggered, this, &PasswordsContentsWidget::removeAllPasswords);
-
 	menu.exec(m_ui->passwordsViewWidget->mapToGlobal(position));
 }
 

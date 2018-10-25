@@ -244,7 +244,7 @@ ItemViewWidget::ItemViewWidget(QWidget *parent) : QTreeView(parent),
 	m_headerWidget(new HeaderViewWidget(Qt::Horizontal, this)),
 	m_sourceModel(nullptr),
 	m_proxyModel(nullptr),
-	m_viewMode(ListViewMode),
+	m_viewMode(ListView),
 	m_sortOrder(Qt::AscendingOrder),
 	m_sortColumn(-1),
 	m_dragRow(-1),
@@ -345,7 +345,7 @@ void ItemViewWidget::keyPressEvent(QKeyEvent *event)
 
 void ItemViewWidget::dropEvent(QDropEvent *event)
 {
-	if (m_viewMode == TreeViewMode)
+	if (m_viewMode == TreeView)
 	{
 		QTreeView::dropEvent(event);
 
@@ -397,7 +397,7 @@ void ItemViewWidget::ensureInitialized()
 		return;
 	}
 
-	const QString name(normalizeViewName(objectName()));
+	const QString name(Utils::normalizeObjectName(objectName(), QLatin1String("ViewWidget")));
 
 	if (name.isEmpty())
 	{
@@ -459,15 +459,15 @@ void ItemViewWidget::currentChanged(const QModelIndex &current, const QModelInde
 	{
 		if (m_sourceModel)
 		{
-			emit canMoveUpChanged(canMoveUp());
-			emit canMoveDownChanged(canMoveDown());
+			emit canMoveRowUpChanged(canMoveRowUp());
+			emit canMoveRowDownChanged(canMoveRowDown());
 		}
 
 		emit needsActionsUpdate();
 	}
 }
 
-void ItemViewWidget::moveRow(bool up)
+void ItemViewWidget::moveRow(bool moveUp)
 {
 	if (!m_sourceModel)
 	{
@@ -475,9 +475,9 @@ void ItemViewWidget::moveRow(bool up)
 	}
 
 	const int sourceRow(currentIndex().row());
-	const int destinationRow(up ? (sourceRow - 1) : (sourceRow + 1));
+	const int destinationRow(moveUp ? (sourceRow - 1) : (sourceRow + 1));
 
-	if ((up && sourceRow > 0) || (!up && sourceRow < (m_sourceModel->rowCount() - 1)))
+	if ((moveUp && sourceRow > 0) || (!moveUp && sourceRow < (m_sourceModel->rowCount() - 1)))
 	{
 		m_sourceModel->insertRow(sourceRow, m_sourceModel->takeRow(destinationRow));
 
@@ -583,7 +583,7 @@ void ItemViewWidget::saveState()
 		return;
 	}
 
-	const QString name(normalizeViewName(objectName()));
+	const QString name(Utils::normalizeObjectName(objectName(), QLatin1String("ViewWidget")));
 
 	if (name.isEmpty())
 	{
@@ -624,8 +624,8 @@ void ItemViewWidget::notifySelectionChanged()
 {
 	if (m_sourceModel)
 	{
-		emit canMoveUpChanged(canMoveUp());
-		emit canMoveDownChanged(canMoveDown());
+		emit canMoveRowUpChanged(canMoveRowUp());
+		emit canMoveRowDownChanged(canMoveRowDown());
 	}
 
 	emit needsActionsUpdate();
@@ -862,7 +862,7 @@ void ItemViewWidget::setViewMode(ItemViewWidget::ViewMode mode)
 {
 	m_viewMode = mode;
 
-	setIndentation((mode == TreeViewMode) ? style()->pixelMetric(QStyle::PM_TreeViewIndentation) : 0);
+	setIndentation((mode == TreeView) ? style()->pixelMetric(QStyle::PM_TreeViewIndentation) : 0);
 }
 
 void ItemViewWidget::setModified(bool isModified)
@@ -895,18 +895,6 @@ QStandardItem* ItemViewWidget::getItem(const QModelIndex &index) const
 QStandardItem* ItemViewWidget::getItem(int row, int column, const QModelIndex &parent) const
 {
 	return(m_sourceModel ? m_sourceModel->itemFromIndex(getIndex(row, column, parent)) : nullptr);
-}
-
-QString ItemViewWidget::normalizeViewName(QString name)
-{
-	name.remove(QLatin1String("Otter__"));
-
-	if (name.endsWith(QLatin1String("ViewWidget")))
-	{
-		name.remove((name.length() - 10), 10);
-	}
-
-	return name;
 }
 
 QModelIndex ItemViewWidget::getCheckedIndex(const QModelIndex &parent) const
@@ -998,12 +986,12 @@ int ItemViewWidget::getColumnCount(const QModelIndex &parent) const
 	return (model() ? model()->columnCount(parent) : 0);
 }
 
-bool ItemViewWidget::canMoveUp() const
+bool ItemViewWidget::canMoveRowUp() const
 {
 	return (currentIndex().row() > 0 && getRowCount() > 1);
 }
 
-bool ItemViewWidget::canMoveDown() const
+bool ItemViewWidget::canMoveRowDown() const
 {
 	const int currentRow(currentIndex().row());
 	const int rowCount(getRowCount());
@@ -1016,33 +1004,15 @@ bool ItemViewWidget::isExclusive() const
 	return m_isExclusive;
 }
 
-bool ItemViewWidget::applyFilter(const QModelIndex &index)
+bool ItemViewWidget::applyFilter(const QModelIndex &index, bool parentHasMatch)
 {
-	bool hasMatch(m_filterString.isEmpty());
 	const bool isFolder(!index.flags().testFlag(Qt::ItemNeverHasChildren));
+	const bool hasFilter(!m_filterString.isEmpty());
+	bool hasMatch(!hasFilter || (isFolder && parentHasMatch));
 
-	if (isFolder)
+	if (!hasMatch)
 	{
-		if (m_canGatherExpanded && isExpanded(index))
-		{
-			m_expandedBranches.insert(index);
-		}
-
-		const int rowCount(getRowCount(index));
-
-		for (int i = 0; i < rowCount; ++i)
-		{
-			if (applyFilter(index.child(i, 0)))
-			{
-				hasMatch = true;
-			}
-		}
-	}
-	else
-	{
-		const int columnCount(index.parent().isValid() ? getRowCount(index.parent()) : getColumnCount());
-
-		for (int i = 0; i < columnCount; ++i)
+		for (int i = 0; i < getColumnCount(index.parent()); ++i)
 		{
 			const QModelIndex childIndex(index.sibling(index.row(), i));
 
@@ -1072,11 +1042,35 @@ bool ItemViewWidget::applyFilter(const QModelIndex &index)
 		}
 	}
 
-	setRowHidden(index.row(), index.parent(), (!hasMatch || (isFolder && getRowCount(index) == 0)));
+	if (isFolder)
+	{
+		if (m_canGatherExpanded && isExpanded(index))
+		{
+			m_expandedBranches.insert(index);
+		}
+
+		const int rowCount(getRowCount(index));
+		bool folderHasMatch(false);
+
+		for (int i = 0; i < rowCount; ++i)
+		{
+			if (applyFilter(index.child(i, 0), hasMatch))
+			{
+				folderHasMatch = true;
+			}
+		}
+
+		if (!hasMatch)
+		{
+			hasMatch = folderHasMatch;
+		}
+	}
+
+	setRowHidden(index.row(), index.parent(), (hasFilter ? (!(hasMatch || parentHasMatch) || (isFolder && getRowCount(index) == 0)) : false));
 
 	if (isFolder)
 	{
-		setExpanded(index, ((hasMatch && !m_filterString.isEmpty()) || (m_filterString.isEmpty() && m_expandedBranches.contains(index))));
+		setExpanded(index, ((hasMatch && hasFilter) || (!hasFilter && m_expandedBranches.contains(index))));
 	}
 
 	return hasMatch;

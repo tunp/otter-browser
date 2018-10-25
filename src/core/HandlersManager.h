@@ -20,7 +20,9 @@
 #ifndef OTTER_HANDLERSMANAGER_H
 #define OTTER_HANDLERSMANAGER_H
 
+#include <QtCore/QMimeType>
 #include <QtCore/QObject>
+#include <QtCore/QUrl>
 
 namespace Otter
 {
@@ -43,14 +45,18 @@ public:
 
 		QString openCommand;
 		QString downloadsPath;
+		QMimeType mimeType;
 		TransferMode transferMode = IgnoreTransfer;
 		bool isExplicit = true;
 	};
 
 	static void createInstance();
+	static void setHandler(const QMimeType &mimeType, const HandlerDefinition &definition);
 	static HandlersManager* getInstance();
-	static HandlerDefinition getHandler(const QString &type);
-	static void setHandler(const QString &type, const HandlerDefinition &definition);
+	static HandlerDefinition getHandler(const QMimeType &mimeType);
+	static QVector<HandlerDefinition> getHandlers();
+	static bool handleUrl(const QUrl &url);
+	static bool canHandleUrl(const QUrl &url);
 
 protected:
 	explicit HandlersManager(QObject *parent);

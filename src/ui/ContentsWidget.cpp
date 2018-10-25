@@ -20,6 +20,7 @@
 #include "ContentsWidget.h"
 #include "BookmarkPropertiesDialog.h"
 #include "ContentsDialog.h"
+#include "MainWindow.h"
 #include "Window.h"
 #include "../core/Application.h"
 
@@ -134,7 +135,6 @@ void ContentsWidget::mouseReleaseEvent(QMouseEvent *event)
 
 void ContentsWidget::triggerAction(int identifier, const QVariantMap &parameters, ActionsManager::TriggerType trigger)
 {
-	Q_UNUSED(parameters)
 	Q_UNUSED(trigger)
 
 	switch (identifier)
@@ -148,12 +148,10 @@ void ContentsWidget::triggerAction(int identifier, const QVariantMap &parameters
 				QPrintDialog printDialog(&printer, this);
 				printDialog.setWindowTitle(tr("Print Page"));
 
-				if (printDialog.exec() != QDialog::Accepted)
+				if (printDialog.exec() == QDialog::Accepted)
 				{
-					break;
+					print(&printer);
 				}
-
-				print(&printer);
 			}
 
 			break;
@@ -165,9 +163,9 @@ void ContentsWidget::triggerAction(int identifier, const QVariantMap &parameters
 				printPreviewDialog.setWindowFlags(printPreviewDialog.windowFlags() | Qt::WindowMaximizeButtonHint | Qt::WindowMinimizeButtonHint);
 				printPreviewDialog.setWindowTitle(tr("Print Preview"));
 
-				if (QApplication::activeWindow())
+				if (Application::getActiveWindow())
 				{
-					printPreviewDialog.resize(QApplication::activeWindow()->size());
+					printPreviewDialog.resize(Application::getActiveWindow()->size());
 				}
 
 				connect(&printPreviewDialog, &QPrintPreviewDialog::paintRequested, this, &ContentsWidget::print);
@@ -185,16 +183,18 @@ void ContentsWidget::triggerAction(int identifier, const QVariantMap &parameters
 					break;
 				}
 
-				const QVector<BookmarksModel::Bookmark*> bookmarks(BookmarksManager::getModel()->getBookmarks(url));
-
-				if (bookmarks.isEmpty())
+				if (BookmarksManager::hasBookmark(url))
 				{
-					BookmarkPropertiesDialog dialog(url, parameters.value(QLatin1String("title"), getTitle()).toString(), parameters.value(QLatin1String("description"), getDescription()).toString(), nullptr, -1, true, this);
+					BookmarkPropertiesDialog dialog(BookmarksManager::getBookmark(url), this);
 					dialog.exec();
+				}
+				else if (!parameters.value(QLatin1String("showDialog"), true).toBool())
+				{
+					BookmarksManager::addBookmark(BookmarksModel::UrlBookmark, {{BookmarksModel::UrlRole, url}, {BookmarksModel::TitleRole, parameters.value(QLatin1String("title"), getTitle()).toString()}, {BookmarksModel::DescriptionRole, parameters.value(QLatin1String("description"), getDescription()).toString()}}, BookmarksManager::getLastUsedFolder());
 				}
 				else
 				{
-					BookmarkPropertiesDialog dialog(bookmarks.at(0), this);
+					BookmarkPropertiesDialog dialog(url, parameters.value(QLatin1String("title"), getTitle()).toString(), parameters.value(QLatin1String("description"), getDescription()).toString(), nullptr, -1, true, this);
 					dialog.exec();
 				}
 			}

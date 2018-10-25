@@ -39,6 +39,20 @@
 namespace Otter
 {
 
+EntryDelegate::EntryDelegate(QObject *parent) : ItemDelegate(parent)
+{
+}
+
+void EntryDelegate::initStyleOption(QStyleOptionViewItem *option, const QModelIndex &index) const
+{
+	ItemDelegate::initStyleOption(option, index);
+
+	if (index.sibling(index.row(), 0).data(FeedsContentsWidget::LastReadTimeRole).isNull())
+	{
+		option->font.setBold(true);
+	}
+}
+
 FeedDelegate::FeedDelegate(QObject *parent) : ItemDelegate(parent)
 {
 }
@@ -67,20 +81,23 @@ FeedsContentsWidget::FeedsContentsWidget(const QVariantMap &parameters, QWidget 
 {
 	m_ui->setupUi(this);
 	m_ui->subscribeFeedWidget->hide();
-	m_ui->horizontalSplitter->setSizes({300, qMax(500, (width() - 300))});
+	m_ui->feedsHorizontalSplitterWidget->setSizes({300, qMax(500, (width() - 300))});
 	m_ui->entriesFilterLineEditWidget->setClearOnEscape(true);
+	m_ui->entriesViewWidget->setItemDelegate(new EntryDelegate(this));
+	m_ui->entriesViewWidget->installEventFilter(this);
 	m_ui->entriesViewWidget->viewport()->installEventFilter(this);
 	m_ui->entriesViewWidget->viewport()->setMouseTracking(true);
 	m_ui->feedsFilterLineEditWidget->setClearOnEscape(true);
-	m_ui->feedsViewWidget->setViewMode(ItemViewWidget::TreeViewMode);
+	m_ui->feedsViewWidget->setViewMode(ItemViewWidget::TreeView);
 	m_ui->feedsViewWidget->setModel(FeedsManager::getModel());
 	m_ui->feedsViewWidget->setItemDelegate(new FeedDelegate(this));
 	m_ui->feedsViewWidget->expandAll();
+	m_ui->feedsViewWidget->installEventFilter(this);
 	m_ui->feedsViewWidget->viewport()->installEventFilter(this);
 	m_ui->feedsViewWidget->viewport()->setMouseTracking(true);
 	m_ui->emailButton->setIcon(ThemesManager::createIcon(QLatin1String("mail-send")));
 	m_ui->urlButton->setIcon(ThemesManager::createIcon(QLatin1String("text-html")));
-	m_ui->textBrowser->setOpenExternalLinks(true);
+	m_ui->textBrowserWidget->setOpenExternalLinks(true);
 
 	if (isSidebarPanel())
 	{
@@ -90,9 +107,11 @@ FeedsContentsWidget::FeedsContentsWidget(const QVariantMap &parameters, QWidget 
 
 	connect(FeedsManager::getInstance(), &FeedsManager::feedModified, this, &FeedsContentsWidget::handleFeedModified);
 	connect(m_ui->entriesFilterLineEditWidget, &LineEditWidget::textChanged, m_ui->entriesViewWidget, &ItemViewWidget::setFilterString);
+	connect(m_ui->entriesViewWidget, &ItemViewWidget::doubleClicked, this, &FeedsContentsWidget::openEntry);
 	connect(m_ui->entriesViewWidget, &ItemViewWidget::customContextMenuRequested, this, &FeedsContentsWidget::showEntriesContextMenu);
 	connect(m_ui->entriesViewWidget, &ItemViewWidget::needsActionsUpdate, this, &FeedsContentsWidget::updateEntry);
 	connect(m_ui->feedsFilterLineEditWidget, &LineEditWidget::textChanged, m_ui->feedsViewWidget, &ItemViewWidget::setFilterString);
+	connect(m_ui->feedsViewWidget, &ItemViewWidget::doubleClicked, this, &FeedsContentsWidget::openFeed);
 	connect(m_ui->feedsViewWidget, &ItemViewWidget::customContextMenuRequested, this, &FeedsContentsWidget::showFeedsContextMenu);
 	connect(m_ui->feedsViewWidget, &ItemViewWidget::needsActionsUpdate, this, &FeedsContentsWidget::updateActions);
 	connect(m_ui->okButton, &QToolButton::clicked, this, &FeedsContentsWidget::subscribeFeed);
@@ -116,11 +135,6 @@ FeedsContentsWidget::~FeedsContentsWidget()
 	delete m_ui;
 }
 
-Animation* FeedsContentsWidget::getUpdateAnimation()
-{
-	return m_updateAnimation;
-}
-
 void FeedsContentsWidget::changeEvent(QEvent *event)
 {
 	ContentsWidget::changeEvent(event);
@@ -136,9 +150,38 @@ void FeedsContentsWidget::changeEvent(QEvent *event)
 	}
 }
 
+void FeedsContentsWidget::triggerAction(int identifier, const QVariantMap &parameters, ActionsManager::TriggerType trigger)
+{
+	switch (identifier)
+	{
+		case ActionsManager::ReloadAction:
+			if (m_feed && !m_feed->isUpdating())
+			{
+				m_feed->update();
+			}
+
+			break;
+		case ActionsManager::DeleteAction:
+			if (m_ui->feedsViewWidget->hasFocus())
+			{
+				removeFeed();
+			}
+			else if (m_ui->entriesViewWidget->hasFocus())
+			{
+				removeEntry();
+			}
+
+			break;
+		default:
+			ContentsWidget::triggerAction(identifier, parameters, trigger);
+
+			break;
+	}
+}
+
 void FeedsContentsWidget::addFeed()
 {
-	FeedPropertiesDialog dialog(nullptr, this);
+	FeedPropertiesDialog dialog(nullptr, findFolder(m_ui->feedsViewWidget->currentIndex()), this);
 
 	if (dialog.exec() == QDialog::Rejected)
 	{
@@ -161,7 +204,7 @@ void FeedsContentsWidget::addFeed()
 		}
 	}
 
-	FeedsManager::getModel()->addEntry(dialog.getFeed(), findFolder(m_ui->feedsViewWidget->currentIndex()));
+	FeedsManager::getModel()->addEntry(dialog.getFeed(), dialog.getFolder());
 
 	updateActions();
 }
@@ -173,6 +216,17 @@ void FeedsContentsWidget::addFolder()
 	if (!title.isEmpty())
 	{
 		m_ui->feedsViewWidget->setCurrentIndex(FeedsManager::getModel()->addEntry(FeedsModel::FolderEntry, {{FeedsModel::TitleRole, title}}, findFolder(m_ui->feedsViewWidget->currentIndex()))->index());
+	}
+}
+
+void FeedsContentsWidget::openFeed()
+{
+	const FeedsModel::Entry *entry(FeedsManager::getModel()->getEntry(m_ui->feedsViewWidget->currentIndex()));
+	MainWindow *mainWindow(MainWindow::findMainWindow(this));
+
+	if (mainWindow && entry && entry->getFeed())
+	{
+		mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), QUrl(QLatin1String("view-feed:") + entry->getFeed()->getUrl().toDisplayString())}});
 	}
 }
 
@@ -191,17 +245,6 @@ void FeedsContentsWidget::removeFeed()
 	FeedsManager::getModel()->trashEntry(FeedsManager::getModel()->getEntry(m_ui->feedsViewWidget->currentIndex()));
 }
 
-void FeedsContentsWidget::openFeed()
-{
-	const FeedsModel::Entry *entry(FeedsManager::getModel()->getEntry(m_ui->feedsViewWidget->currentIndex()));
-	MainWindow *mainWindow(MainWindow::findMainWindow(this));
-
-	if (mainWindow && entry && entry->getFeed())
-	{
-		mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), QUrl(QLatin1String("view-feed:") + entry->getFeed()->getUrl().toDisplayString())}});
-	}
-}
-
 void FeedsContentsWidget::subscribeFeed()
 {
 	if (!m_feed)
@@ -211,11 +254,11 @@ void FeedsContentsWidget::subscribeFeed()
 
 	if (m_ui->applicationComboBox->currentIndex() == 0)
 	{
-		FeedPropertiesDialog dialog(m_feed, this);
+		FeedPropertiesDialog dialog(m_feed, findFolder(m_ui->feedsViewWidget->currentIndex()), this);
 
 		if (dialog.exec() == QDialog::Accepted)
 		{
-			FeedsManager::getModel()->addEntry(m_feed);
+			FeedsManager::getModel()->addEntry(m_feed, dialog.getFolder());
 		}
 	}
 	else
@@ -232,10 +275,41 @@ void FeedsContentsWidget::feedProperties()
 
 	if (entry)
 	{
-		FeedPropertiesDialog dialog(entry->getFeed(), this);
-		dialog.exec();
+		FeedsModel::Entry *folder(findFolder(m_ui->feedsViewWidget->currentIndex()));
+		FeedPropertiesDialog dialog(entry->getFeed(), folder, this);
+
+		if (dialog.exec() == QDialog::Accepted && dialog.getFolder() != folder)
+		{
+			FeedsManager::getModel()->moveEntry(entry, dialog.getFolder());
+		}
 
 		updateActions();
+	}
+}
+
+void FeedsContentsWidget::openEntry()
+{
+	const QModelIndex index(m_ui->entriesViewWidget->currentIndex().sibling(m_ui->entriesViewWidget->currentIndex().row(), 0));
+	MainWindow *mainWindow(MainWindow::findMainWindow(this));
+
+	if (mainWindow && index.isValid() && !index.data(UrlRole).isNull())
+	{
+		mainWindow->triggerAction(ActionsManager::OpenUrlAction, {{QLatin1String("url"), index.data(UrlRole)}});
+	}
+}
+
+void FeedsContentsWidget::removeEntry()
+{
+	if (m_feed)
+	{
+		const QModelIndex index(m_ui->entriesViewWidget->currentIndex().sibling(m_ui->entriesViewWidget->currentIndex().row(), 0));
+
+		if (index.isValid() && !index.data(IdentifierRole).isNull())
+		{
+			m_feed->markEntryAsRemoved(index.data(IdentifierRole).toString());
+
+			m_ui->entriesViewWidget->removeRow();
+		}
 	}
 }
 
@@ -251,64 +325,29 @@ void FeedsContentsWidget::selectCategory()
 	}
 }
 
-void FeedsContentsWidget::toggleCategory(QAction *action)
-{
-	QMenu *menu(m_ui->categoriesButton->menu());
-
-	if (action->data().isNull() && action->isChecked())
-	{
-		m_categories.clear();
-	}
-	else if (menu && menu->actions().count() > 0)
-	{
-		QStringList categories;
-		bool hasAllCategories = true;
-
-		m_categories.clear();
-
-		for (int i = 2; i < menu->actions().count(); ++i)
-		{
-			if (menu->actions().at(i)->isChecked())
-			{
-				categories.append(menu->actions().at(i)->data().toString());
-			}
-			else
-			{
-				hasAllCategories = false;
-			}
-		}
-
-		menu->actions().first()->setChecked(hasAllCategories);
-
-		if (!hasAllCategories)
-		{
-			m_categories = categories;
-		}
-	}
-
-	updateFeedModel();
-}
-
 void FeedsContentsWidget::handleFeedModified(const QUrl &url)
 {
 	const Feed *feed(FeedsManager::getFeed(url));
 
-	if (feed && feed->isUpdating() && FeedsManager::getModel()->hasFeed(url) && !m_updateAnimation)
+	if (feed && feed->isUpdating() && FeedsManager::getModel()->hasFeed(url))
 	{
-		const QString path(ThemesManager::getAnimationPath(QLatin1String("spinner")));
-
-		if (path.isEmpty())
+		if (!m_updateAnimation)
 		{
-			m_updateAnimation = new SpinnerAnimation(this);
-		}
-		else
-		{
-			m_updateAnimation = new GenericAnimation(path, this);
+			const QString path(ThemesManager::getAnimationPath(QLatin1String("spinner")));
+
+			if (path.isEmpty())
+			{
+				m_updateAnimation = new SpinnerAnimation(this);
+			}
+			else
+			{
+				m_updateAnimation = new GenericAnimation(path, this);
+			}
+
+			m_updateAnimation->start();
 		}
 
-		m_updateAnimation->start();
-
-		connect(m_updateAnimation, &Animation::frameChanged, m_ui->feedsViewWidget->viewport(), static_cast<void(QWidget::*)()>(&QWidget::update));
+		connect(m_updateAnimation, &Animation::frameChanged, m_ui->feedsViewWidget->viewport(), static_cast<void(QWidget::*)()>(&QWidget::update), Qt::UniqueConnection);
 	}
 }
 
@@ -335,17 +374,12 @@ void FeedsContentsWidget::showFeedsContextMenu(const QPoint &position)
 	switch (type)
 	{
 		case FeedsModel::TrashEntry:
-			{
-				QAction *emptyTrashAction(menu.addAction(ThemesManager::createIcon(QLatin1String("trash-empty")), tr("Empty Trash")));
-				emptyTrashAction->setEnabled(FeedsManager::getModel()->getTrashEntry()->rowCount() > 0);
-
-				connect(emptyTrashAction, &QAction::triggered, FeedsManager::getModel(), &FeedsModel::emptyTrash);
-			}
+			menu.addAction(ThemesManager::createIcon(QLatin1String("trash-empty")), tr("Empty Trash"), FeedsManager::getModel(), &FeedsModel::emptyTrash)->setEnabled(FeedsManager::getModel()->getTrashEntry()->rowCount() > 0);
 
 			break;
 		case FeedsModel::UnknownEntry:
-			connect(menu.addAction(ThemesManager::createIcon(QLatin1String("inode-directory")), tr("Add Folder…")), &QAction::triggered, this, &FeedsContentsWidget::addFolder);
-			connect(menu.addAction(tr("Add Feed…")), &QAction::triggered, this, &FeedsContentsWidget::addFeed);
+			menu.addAction(ThemesManager::createIcon(QLatin1String("inode-directory")), tr("Add Folder…"), this, &FeedsContentsWidget::addFolder);
+			menu.addAction(tr("Add Feed…"), this, &FeedsContentsWidget::addFeed);
 
 			break;
 		default:
@@ -358,19 +392,16 @@ void FeedsContentsWidget::showFeedsContextMenu(const QPoint &position)
 				{
 					if (type == FeedsModel::FeedEntry)
 					{
-						connect(menu.addAction(ThemesManager::createIcon(QLatin1String("view-refresh")), QCoreApplication::translate("actions", "Update")), &QAction::triggered, this, &FeedsContentsWidget::updateFeed);
-
+						menu.addAction(ThemesManager::createIcon(QLatin1String("view-refresh")), QCoreApplication::translate("actions", "Update"), this, &FeedsContentsWidget::updateFeed);
 						menu.addSeparator();
-
-						connect(menu.addAction(ThemesManager::createIcon(QLatin1String("document-open")), QCoreApplication::translate("actions", "Open")), &QAction::triggered, this, &FeedsContentsWidget::openFeed);
+						menu.addAction(ThemesManager::createIcon(QLatin1String("document-open")), QCoreApplication::translate("actions", "Open"), this, &FeedsContentsWidget::openFeed);
 					}
 
 					menu.addSeparator();
 
 					QMenu *addMenu(menu.addMenu(tr("Add New")));
-
-					connect(addMenu->addAction(ThemesManager::createIcon(QLatin1String("inode-directory")), tr("Add Folder…")), &QAction::triggered, this, &FeedsContentsWidget::addFolder);
-					connect(addMenu->addAction(tr("Add Feed…")), &QAction::triggered, this, &FeedsContentsWidget::addFeed);
+					addMenu->addAction(ThemesManager::createIcon(QLatin1String("inode-directory")), tr("Add Folder…"), this, &FeedsContentsWidget::addFolder);
+					addMenu->addAction(tr("Add Feed…"), this, &FeedsContentsWidget::addFeed);
 				}
 
 				if (type != FeedsModel::RootEntry)
@@ -379,7 +410,7 @@ void FeedsContentsWidget::showFeedsContextMenu(const QPoint &position)
 
 					if (isInTrash)
 					{
-						connect(menu.addAction(tr("Restore Feed")), &QAction::triggered, [&]()
+						menu.addAction(tr("Restore Feed"), &menu, [&]()
 						{
 							FeedsManager::getModel()->restoreEntry(FeedsManager::getModel()->getEntry(m_ui->feedsViewWidget->currentIndex()));
 						});
@@ -392,8 +423,7 @@ void FeedsContentsWidget::showFeedsContextMenu(const QPoint &position)
 					if (type == FeedsModel::FeedEntry)
 					{
 						menu.addSeparator();
-
-						connect(menu.addAction(tr("Properties…")), &QAction::triggered, this, &FeedsContentsWidget::feedProperties);
+						menu.addAction(tr("Properties…"), this, &FeedsContentsWidget::feedProperties);
 					}
 				}
 			}
@@ -417,6 +447,33 @@ void FeedsContentsWidget::updateActions()
 void FeedsContentsWidget::updateEntry()
 {
 	const QModelIndex index(m_ui->entriesViewWidget->currentIndex().sibling(m_ui->entriesViewWidget->currentIndex().row(), 0));
+	QString content(index.data(ContentRole).toString());
+
+	if (!index.data(SummaryRole).isNull())
+	{
+		QString summary(index.data(SummaryRole).toString());
+
+		if (!summary.contains(QLatin1Char('<')))
+		{
+			summary = QLatin1String("<p>") + summary + QLatin1String("</p>");
+		}
+
+		summary.append(QLatin1Char('\n'));
+
+		content.prepend(summary);
+	}
+
+	const QString enableImages(SettingsManager::getOption(SettingsManager::Permissions_EnableImagesOption, Utils::extractHost(m_feed->getUrl())).toString());
+	TextBrowserWidget::ImagesPolicy imagesPolicy(TextBrowserWidget::AllImages);
+
+	if (enableImages == QLatin1String("onlyCached"))
+	{
+		imagesPolicy = TextBrowserWidget::OnlyCachedImages;
+	}
+	else if (enableImages == QLatin1String("disabled"))
+	{
+		imagesPolicy = TextBrowserWidget::NoImages;
+	}
 
 	m_ui->titleLabelWidget->setText(index.isValid() ? index.data(Qt::DisplayRole).toString() : QString());
 	m_ui->emailButton->setVisible(!index.data(EmailRole).isNull());
@@ -425,7 +482,8 @@ void FeedsContentsWidget::updateEntry()
 	m_ui->urlButton->setToolTip(tr("Go to %1").arg(index.data(UrlRole).toUrl().toDisplayString()));
 	m_ui->authorLabelWidget->setText(index.isValid() ? index.data(AuthorRole).toString() : QString());
 	m_ui->timeLabelWidget->setText(index.isValid() ? Utils::formatDateTime(index.data(index.data(UpdateTimeRole).isNull() ? PublicationTimeRole : UpdateTimeRole).toDateTime()) : QString());
-	m_ui->textBrowser->setText(index.data(SummaryRole).toString() + QLatin1Char('\n') + index.data(ContentRole).toString());
+	m_ui->textBrowserWidget->setImagesPolicy(imagesPolicy);
+	m_ui->textBrowserWidget->setText(content);
 
 	for (int i = (m_ui->categoriesLayout->count() - 1); i >= 0; --i)
 	{
@@ -433,7 +491,7 @@ void FeedsContentsWidget::updateEntry()
 	}
 
 	const QStringList entryCategories(index.data(CategoriesRole).toStringList());
-	const QMap<QString, QString> feedCategories(m_feed->getCategories());
+	const QMap<QString, QString> feedCategories(m_feed ? m_feed->getCategories() : QMap<QString, QString>());
 
 	for (int i = 0; i < entryCategories.count(); ++i)
 	{
@@ -451,6 +509,21 @@ void FeedsContentsWidget::updateEntry()
 	}
 
 	m_ui->categoriesLayout->addStretch();
+
+	if (index.isValid() && m_feed && m_feedModel)
+	{
+		disconnect(m_ui->entriesViewWidget, &ItemViewWidget::needsActionsUpdate, this, &FeedsContentsWidget::updateEntry);
+
+		m_feed->markEntryAsRead(index.data(IdentifierRole).toString());
+
+		m_feedModel->setData(index, QDateTime::currentDateTimeUtc(), LastReadTimeRole);
+
+		m_ui->entriesViewWidget->update();
+
+		connect(m_ui->entriesViewWidget, &ItemViewWidget::needsActionsUpdate, this, &FeedsContentsWidget::updateEntry);
+	}
+
+	emit arbitraryActionsStateChanged({ActionsManager::DeleteAction});
 }
 
 void FeedsContentsWidget::updateFeedModel()
@@ -502,7 +575,41 @@ void FeedsContentsWidget::updateFeedModel()
 
 	m_ui->categoriesButton->setMenu(menu);
 
-	connect(menu, &QMenu::triggered, this, &FeedsContentsWidget::toggleCategory);
+	connect(menu, &QMenu::triggered, [=](QAction *action)
+	{
+		if (action->data().isNull() && action->isChecked())
+		{
+			m_categories.clear();
+		}
+		else if (menu && menu->actions().count() > 0)
+		{
+			QStringList categories;
+			bool hasAllCategories = true;
+
+			m_categories.clear();
+
+			for (int i = 2; i < menu->actions().count(); ++i)
+			{
+				if (menu->actions().at(i)->isChecked())
+				{
+					categories.append(menu->actions().at(i)->data().toString());
+				}
+				else
+				{
+					hasAllCategories = false;
+				}
+			}
+
+			menu->actions().first()->setChecked(hasAllCategories);
+
+			if (!hasAllCategories)
+			{
+				m_categories = categories;
+			}
+		}
+
+		updateFeedModel();
+	});
 
 	if (!m_feed)
 	{
@@ -530,6 +637,8 @@ void FeedsContentsWidget::updateFeedModel()
 			action->setData(iterator.key());
 		}
 	}
+
+	m_ui->categoriesButton->setEnabled(!categories.isEmpty());
 
 	const QVector<Feed::Entry> entries(m_feed->getEntries(m_categories));
 
@@ -566,6 +675,7 @@ void FeedsContentsWidget::updateFeedModel()
 		items[0]->setData(entry.updateTime, UpdateTimeRole);
 		items[0]->setData(entry.author, AuthorRole);
 		items[0]->setData(entry.email, EmailRole);
+		items[0]->setData(entry.lastReadTime, LastReadTimeRole);
 		items[0]->setData(entry.categories, CategoriesRole);
 		items[0]->setFlags(items[0]->flags() | Qt::ItemNeverHasChildren);
 		items[1]->setFlags(items[1]->flags() | Qt::ItemNeverHasChildren);
@@ -613,7 +723,7 @@ void FeedsContentsWidget::setFeed(Feed *feed)
 			m_feedModel = new QStandardItemModel(this);
 
 			m_ui->entriesViewWidget->setModel(m_feedModel);
-			m_ui->entriesViewWidget->setViewMode(ItemViewWidget::ListViewMode);
+			m_ui->entriesViewWidget->setViewMode(ItemViewWidget::ListView);
 		}
 
 		if (m_feed->getLastSynchronizationTime().isNull())
@@ -638,6 +748,7 @@ void FeedsContentsWidget::setFeed(Feed *feed)
 
 	updateFeedModel();
 
+	emit arbitraryActionsStateChanged({ActionsManager::ReloadAction});
 	emit titleChanged(getTitle());
 	emit iconChanged(getIcon());
 	emit urlChanged(getUrl());
@@ -651,6 +762,11 @@ void FeedsContentsWidget::setUrl(const QUrl &url, bool isTyped)
 	{
 		setFeed(FeedsManager::createFeed(url.toDisplayString().mid(10)));
 	}
+}
+
+Animation* FeedsContentsWidget::getUpdateAnimation()
+{
+	return m_updateAnimation;
 }
 
 FeedsModel::Entry* FeedsContentsWidget::findFolder(const QModelIndex &index) const
@@ -701,9 +817,72 @@ QIcon FeedsContentsWidget::getIcon() const
 	return ThemesManager::createIcon(QLatin1String("feeds"), false);
 }
 
+ActionsManager::ActionDefinition::State FeedsContentsWidget::getActionState(int identifier, const QVariantMap &parameters) const
+{
+	ActionsManager::ActionDefinition::State state(ActionsManager::getActionDefinition(identifier).getDefaultState());
+
+	switch (identifier)
+	{
+		case ActionsManager::ReloadAction:
+			state.isEnabled = (m_feed != nullptr);
+
+			return state;
+		case ActionsManager::DeleteAction:
+			state.isEnabled = false;
+
+			if (m_ui->feedsViewWidget->hasFocus())
+			{
+				const FeedsModel::EntryType type(static_cast<FeedsModel::EntryType>(m_ui->feedsViewWidget->currentIndex().data(FeedsModel::TypeRole).toInt()));
+
+				state.isEnabled = (type == FeedsModel::FeedEntry || type == FeedsModel::FolderEntry);
+			}
+			else if (m_ui->entriesViewWidget->hasFocus())
+			{
+				state.isEnabled = (m_feed && m_ui->entriesViewWidget->selectionModel()->hasSelection());
+			}
+
+			return state;
+		default:
+			break;
+	}
+
+	return ContentsWidget::getActionState(identifier, parameters);
+}
+
 bool FeedsContentsWidget::eventFilter(QObject *object, QEvent *event)
 {
-	if ((object == m_ui->entriesViewWidget->viewport() || object == m_ui->feedsViewWidget->viewport()) && event->type() == QEvent::ToolTip)
+	if ((object == m_ui->entriesViewWidget || object == m_ui->feedsViewWidget ) && event->type() == QEvent::KeyPress)
+	{
+		switch (static_cast<QKeyEvent*>(event)->key())
+		{
+			case Qt::Key_Delete:
+				if (m_ui->feedsViewWidget->hasFocus())
+				{
+					removeFeed();
+				}
+				else if (m_ui->entriesViewWidget->hasFocus())
+				{
+					removeEntry();
+				}
+
+				return true;
+			case Qt::Key_Enter:
+			case Qt::Key_Return:
+				if (m_ui->feedsViewWidget->hasFocus())
+				{
+					openFeed();
+				}
+				else if (m_ui->entriesViewWidget->hasFocus())
+				{
+					openEntry();
+				}
+
+				return true;
+			default:
+				break;
+		}
+	}
+	else if ((object == m_ui->entriesViewWidget->viewport() || object == m_ui->feedsViewWidget->viewport()) && event->type() == QEvent::ToolTip)
 	{
 		const QHelpEvent *helpEvent(static_cast<QHelpEvent*>(event));
 		ItemViewWidget *viewWidget(object == m_ui->feedsViewWidget->viewport() ? m_ui->feedsViewWidget : m_ui->entriesViewWidget);

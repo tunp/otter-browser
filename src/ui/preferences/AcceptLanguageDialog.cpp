@@ -70,7 +70,7 @@ AcceptLanguageDialog::AcceptLanguageDialog(const QString &languages, QWidget *pa
 	QCollator collator;
 	collator.setCaseSensitivity(Qt::CaseInsensitive);
 
-	qSort(entries.begin(), entries.end(), [&](const QPair<QString, QString> &first, const QPair<QString, QString> &second)
+	std::sort(entries.begin(), entries.end(), [&](const QPair<QString, QString> &first, const QPair<QString, QString> &second)
 	{
 		return (collator.compare(first.first, second.first) < 0);
 	});
@@ -92,8 +92,8 @@ AcceptLanguageDialog::AcceptLanguageDialog(const QString &languages, QWidget *pa
 	connect(m_ui->moveUpButton, &QToolButton::clicked, m_ui->languagesViewWidget, &ItemViewWidget::moveUpRow);
 	connect(m_ui->removeButton, &QToolButton::clicked, m_ui->languagesViewWidget, &ItemViewWidget::removeRow);
 	connect(m_ui->addButton, &QToolButton::clicked, this, &AcceptLanguageDialog::addNewLanguage);
-	connect(m_ui->languagesViewWidget, &ItemViewWidget::canMoveDownChanged, m_ui->moveDownButton, &QToolButton::setEnabled);
-	connect(m_ui->languagesViewWidget, &ItemViewWidget::canMoveUpChanged, m_ui->moveUpButton, &QToolButton::setEnabled);
+	connect(m_ui->languagesViewWidget, &ItemViewWidget::canMoveRowDownChanged, m_ui->moveDownButton, &QToolButton::setEnabled);
+	connect(m_ui->languagesViewWidget, &ItemViewWidget::canMoveRowUpChanged, m_ui->moveUpButton, &QToolButton::setEnabled);
 	connect(m_ui->languagesViewWidget, &ItemViewWidget::needsActionsUpdate, this, &AcceptLanguageDialog::updateActions);
 }
 

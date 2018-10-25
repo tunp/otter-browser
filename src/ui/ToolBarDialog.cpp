@@ -35,6 +35,7 @@ namespace Otter
 {
 
 ToolBarDialog::ToolBarDialog(const ToolBarsManager::ToolBarDefinition &definition, QWidget *parent) : Dialog(parent),
+	m_currentEntriesModel(new QStandardItemModel(this)),
 	m_definition(definition),
 	m_ui(new Ui::ToolBarDialog)
 {
@@ -124,11 +125,10 @@ ToolBarDialog::ToolBarDialog(const ToolBarsManager::ToolBarDefinition &definitio
 
 				for (int i = 0; i < specialPages.count(); ++i)
 				{
-					QStandardItem *item(new QStandardItem(SidebarWidget::getPanelTitle(specialPages.at(i))));
+					ItemModel::Item *item(new ItemModel::Item(SidebarWidget::getPanelTitle(specialPages.at(i))));
 					item->setCheckable(true);
 					item->setCheckState(definition.panels.contains(specialPages.at(i)) ? Qt::Checked : Qt::Unchecked);
 					item->setData(specialPages.at(i), ItemModel::UserRole);
-					item->setFlags(item->flags() | Qt::ItemNeverHasChildren);
 
 					panelsModel->insertRow(item);
 				}
@@ -137,11 +137,10 @@ ToolBarDialog::ToolBarDialog(const ToolBarsManager::ToolBarDefinition &definitio
 				{
 					if (!specialPages.contains(definition.panels.at(i)))
 					{
-						QStandardItem *item(new QStandardItem(SidebarWidget::getPanelTitle(definition.panels.at(i))));
+						ItemModel::Item *item(new ItemModel::Item(SidebarWidget::getPanelTitle(definition.panels.at(i))));
 						item->setCheckable(true);
 						item->setCheckState(Qt::Checked);
 						item->setData(definition.panels.at(i), ItemModel::UserRole);
-						item->setFlags(item->flags() | Qt::ItemNeverHasChildren);
 
 						panelsModel->insertRow(item);
 					}
@@ -210,9 +209,9 @@ ToolBarDialog::ToolBarDialog(const ToolBarsManager::ToolBarDefinition &definitio
 	m_ui->availableEntriesItemView->setModel(availableEntriesModel);
 	m_ui->availableEntriesItemView->setFilterRoles({Qt::DisplayRole, IdentifierRole});
 	m_ui->availableEntriesItemView->viewport()->installEventFilter(this);
-	m_ui->currentEntriesItemView->setModel(new QStandardItemModel(this));
+	m_ui->currentEntriesItemView->setModel(m_currentEntriesModel);
 	m_ui->currentEntriesItemView->setFilterRoles({Qt::DisplayRole, IdentifierRole});
-	m_ui->currentEntriesItemView->setViewMode(ItemViewWidget::TreeViewMode);
+	m_ui->currentEntriesItemView->setViewMode(ItemViewWidget::TreeView);
 	m_ui->currentEntriesItemView->setRootIsDecorated(false);
 
 	for (int i = 0; i < m_definition.entries.count(); ++i)
@@ -222,7 +221,7 @@ ToolBarDialog::ToolBarDialog(const ToolBarsManager::ToolBarDefinition &definitio
 
 	m_definition.entries.clear();
 
-	Menu *bookmarksMenu(new Menu(Menu::BookmarkSelectorMenuRole, m_ui->addBookmarkButton));
+	Menu *bookmarksMenu(new Menu(Menu::BookmarkSelectorMenu, m_ui->addBookmarkButton));
 
 	m_ui->addBookmarkButton->setMenu(bookmarksMenu);
 	m_ui->addBookmarkButton->setEnabled(BookmarksManager::getModel()->getRootItem()->rowCount() > 0);
@@ -232,10 +231,12 @@ ToolBarDialog::ToolBarDialog(const ToolBarsManager::ToolBarDefinition &definitio
 	connect(m_ui->removeButton, &QToolButton::clicked, m_ui->currentEntriesItemView, &ItemViewWidget::removeRow);
 	connect(m_ui->moveDownButton, &QToolButton::clicked, m_ui->currentEntriesItemView, &ItemViewWidget::moveDownRow);
 	connect(m_ui->moveUpButton, &QToolButton::clicked, m_ui->currentEntriesItemView, &ItemViewWidget::moveUpRow);
+	connect(m_ui->availableEntriesItemView, &ItemViewWidget::customContextMenuRequested, this, &ToolBarDialog::showAvailableEntriesContextMenu);
 	connect(m_ui->availableEntriesItemView, &ItemViewWidget::needsActionsUpdate, this, &ToolBarDialog::updateActions);
+	connect(m_ui->currentEntriesItemView, &ItemViewWidget::customContextMenuRequested, this, &ToolBarDialog::showCurrentEntriesContextMenu);
 	connect(m_ui->currentEntriesItemView, &ItemViewWidget::needsActionsUpdate, this, &ToolBarDialog::updateActions);
-	connect(m_ui->currentEntriesItemView, &ItemViewWidget::canMoveDownChanged, m_ui->moveDownButton, &QToolButton::setEnabled);
-	connect(m_ui->currentEntriesItemView, &ItemViewWidget::canMoveUpChanged, m_ui->moveUpButton, &QToolButton::setEnabled);
+	connect(m_ui->currentEntriesItemView, &ItemViewWidget::canMoveRowDownChanged, m_ui->moveDownButton, &QToolButton::setEnabled);
+	connect(m_ui->currentEntriesItemView, &ItemViewWidget::canMoveRowUpChanged, m_ui->moveUpButton, &QToolButton::setEnabled);
 	connect(m_ui->availableEntriesFilterLineEditWidget, &LineEditWidget::textChanged, m_ui->availableEntriesItemView, &ItemViewWidget::setFilterString);
 	connect(m_ui->currentEntriesFilterLineEditWidget, &LineEditWidget::textChanged, m_ui->currentEntriesItemView, &ItemViewWidget::setFilterString);
 	connect(m_ui->editEntryButton, &QPushButton::clicked, this, &ToolBarDialog::editEntry);
@@ -396,7 +397,7 @@ void ToolBarDialog::editEntry()
 
 		connect(optionNameWidget, &OptionWidget::commitData, [&]()
 		{
-			const bool needsReset(textWidget->getDefaultValue() == textWidget->getValue());
+			const bool needsReset(textWidget->isDefault());
 
 			textWidget->setDefaultValue(optionNameWidget->getValue().toString().section(QLatin1Char('/'), -1));
 
@@ -406,7 +407,7 @@ void ToolBarDialog::editEntry()
 			}
 		});
 	}
-	else if (identifier == QLatin1String("ContentBlockingInformationWidget") || identifier == QLatin1String("MenuButtonWidget") || identifier == QLatin1String("TransfersWidget") || identifier.startsWith(QLatin1String("bookmarks:")) || identifier.endsWith(QLatin1String("Action")) || identifier.endsWith(QLatin1String("Menu")))
+	else if (identifier == QLatin1String("ContentBlockingInformationWidget") || identifier == QLatin1String("MenuButtonWidget") || identifier == QLatin1String("PrivateWindowIndicatorWidget") || identifier == QLatin1String("TransfersWidget") || identifier.startsWith(QLatin1String("bookmarks:")) || identifier.endsWith(QLatin1String("Action")) || identifier.endsWith(QLatin1String("Menu")))
 	{
 		OptionWidget *iconWidget(new OptionWidget({}, SettingsManager::IconType, &dialog));
 		iconWidget->setObjectName(QLatin1String("icon"));
@@ -416,11 +417,11 @@ void ToolBarDialog::editEntry()
 
 		if (identifier == QLatin1String("ClosedWindowsMenu"))
 		{
-			iconWidget->setDefaultValue(ThemesManager::createIcon(QLatin1String("user-trash")));
+			iconWidget->setDefaultValue(QLatin1String("user-trash"));
 		}
 		else if (identifier == QLatin1String("ContentBlockingInformationWidget"))
 		{
-			iconWidget->setDefaultValue(ThemesManager::createIcon(QLatin1String("content-blocking")));
+			iconWidget->setDefaultValue(QLatin1String("content-blocking"));
 			textWidget->setDefaultValue(tr("Blocked Elements: {amount}"));
 		}
 		else if (identifier == QLatin1String("MenuButtonWidget"))
@@ -428,9 +429,14 @@ void ToolBarDialog::editEntry()
 			iconWidget->setDefaultValue(ThemesManager::createIcon(QLatin1String("otter-browser"), false));
 			textWidget->setDefaultValue(tr("Menu"));
 		}
+		else if (identifier == QLatin1String("PrivateWindowIndicatorWidget"))
+		{
+			iconWidget->setDefaultValue(QLatin1String("window-private"));
+			textWidget->setDefaultValue(tr("Private Window"));
+		}
 		else if (identifier == QLatin1String("TransfersWidget"))
 		{
-			iconWidget->setDefaultValue(ThemesManager::createIcon(QLatin1String("transfers")));
+			iconWidget->setDefaultValue(QLatin1String("transfers"));
 			textWidget->setDefaultValue(tr("Downloads"));
 		}
 		else if (identifier.startsWith(QLatin1String("bookmarks:")))
@@ -478,19 +484,21 @@ void ToolBarDialog::editEntry()
 
 			if (widget)
 			{
-				options[widget->objectName()] = widget->getValue();
+				const QString option(widget->objectName());
+
+				if (widget->isDefault())
+				{
+					options.remove(option);
+				}
+				else
+				{
+					options[option] = widget->getValue();
+				}
 			}
 		}
 	}
 
-	QStandardItem *item(createEntry(identifier, options));
-
-	m_ui->currentEntriesItemView->setData(index, item->text(), Qt::DisplayRole);
-	m_ui->currentEntriesItemView->setData(index, item->text(), Qt::ToolTipRole);
-	m_ui->currentEntriesItemView->setData(index, item->data(Qt::DecorationRole), Qt::DecorationRole);
-	m_ui->currentEntriesItemView->setData(index, options, OptionsRole);
-
-	delete item;
+	m_currentEntriesModel->setItemData(index, createEntryData(identifier, options, index.data(ParametersRole).toMap()));
 }
 
 void ToolBarDialog::addBookmark(QAction *action)
@@ -508,6 +516,28 @@ void ToolBarDialog::restoreDefaults()
 	reject();
 }
 
+void ToolBarDialog::showAvailableEntriesContextMenu(const QPoint &position)
+{
+	const QModelIndex index(m_ui->availableEntriesItemView->indexAt(position));
+
+	if (index.isValid())
+	{
+		QMenu menu(this);
+		menu.addAction(tr("Add"), this, &ToolBarDialog::addNewEntry)->setShortcut(QKeySequence(Qt::Key_Enter));
+		menu.exec(m_ui->availableEntriesItemView->mapToGlobal(position));
+	}
+}
+
+void ToolBarDialog::showCurrentEntriesContextMenu(const QPoint &position)
+{
+	QMenu menu(this);
+	QAction *removeAction(menu.addAction(tr("Remove"), m_ui->currentEntriesItemView, &ItemViewWidget::removeRow));
+	removeAction->setShortcut(QKeySequence(Qt::Key_Delete));
+	removeAction->setEnabled(m_ui->removeButton->isEnabled());
+
+	menu.exec(m_ui->currentEntriesItemView->mapToGlobal(position));
+}
+
 void ToolBarDialog::updateActions()
 {
 	const QModelIndex targetIndex(m_ui->currentEntriesItemView->currentIndex());
@@ -522,212 +552,25 @@ void ToolBarDialog::updateActions()
 QStandardItem* ToolBarDialog::createEntry(const QString &identifier, const QVariantMap &options, const QVariantMap &parameters) const
 {
 	QStandardItem *item(new QStandardItem());
-	item->setData(QColor(Qt::transparent), Qt::DecorationRole);
-	item->setData(identifier, IdentifierRole);
-	item->setData(parameters, ParametersRole);
-	item->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled | Qt::ItemIsDragEnabled | Qt::ItemNeverHasChildren);
 
-	if (identifier == QLatin1String("separator"))
+	if (identifier == QLatin1String("CustomMenu"))
 	{
-		item->setText(tr("--- separator ---"));
-	}
-	else if (identifier == QLatin1String("spacer"))
-	{
-		item->setText(tr("--- spacer ---"));
-	}
-	else if (identifier == QLatin1String("CustomMenu"))
-	{
-		item->setText(tr("Arbitrary List of Actions"));
 		item->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled | Qt::ItemIsDragEnabled);
 
 		m_ui->currentEntriesItemView->setRootIsDecorated(true);
 	}
-	else if (identifier == QLatin1String("ClosedWindowsMenu"))
-	{
-		item->setData(true, HasOptionsRole);
-		item->setText(tr("List of Closed Tabs and Windows"));
-		item->setIcon(ThemesManager::createIcon(QLatin1String("user-trash")));
-	}
-	else if (identifier == QLatin1String("AddressWidget"))
-	{
-		item->setText(tr("Address Field"));
-		item->setIcon(ThemesManager::createIcon(QLatin1String("document-open")));
-	}
-	else if (identifier == QLatin1String("ConfigurationOptionWidget"))
-	{
-		item->setData(true, HasOptionsRole);
-
-		if (options.contains(QLatin1String("optionName")) && !options.value("optionName").toString().isEmpty())
-		{
-			item->setText(tr("Configuration Widget (%1)").arg(options.value("optionName").toString()));
-		}
-		else
-		{
-			item->setText(tr("Configuration Widget"));
-		}
-	}
-	else if (identifier == QLatin1String("ContentBlockingInformationWidget"))
-	{
-		item->setData(true, HasOptionsRole);
-		item->setText(tr("Content Blocking Details"));
-		item->setIcon(ThemesManager::createIcon(QLatin1String("content-blocking")));
-	}
-	else if (identifier == QLatin1String("ErrorConsoleWidget"))
-	{
-		item->setText(tr("Error Console"));
-	}
-	else if (identifier == QLatin1String("MenuBarWidget"))
-	{
-		item->setText(tr("Menu Bar"));
-	}
-	else if (identifier == QLatin1String("MenuButtonWidget"))
-	{
-		item->setData(true, HasOptionsRole);
-		item->setText(tr("Menu Button"));
-	}
-	else if (identifier == QLatin1String("PanelChooserWidget"))
-	{
-		item->setText(tr("Sidebar Panel Chooser"));
-	}
-	else if (identifier == QLatin1String("PrivateWindowIndicatorWidget"))
-	{
-		item->setText(tr("Private Window Indicator"));
-		item->setIcon(ThemesManager::createIcon(QLatin1String("window-private")));
-	}
-	else if (identifier == QLatin1String("ProgressInformationDocumentProgressWidget"))
-	{
-		item->setText(tr("Progress Information (Document Progress)"));
-	}
-	else if (identifier == QLatin1String("ProgressInformationTotalSizeWidget"))
-	{
-		item->setText(tr("Progress Information (Total Progress)"));
-	}
-	else if (identifier == QLatin1String("ProgressInformationElementsWidget"))
-	{
-		item->setText(tr("Progress Information (Loaded Elements)"));
-	}
-	else if (identifier == QLatin1String("ProgressInformationSpeedWidget"))
-	{
-		item->setText(tr("Progress Information (Loading Speed)"));
-	}
-	else if (identifier == QLatin1String("ProgressInformationElapsedTimeWidget"))
-	{
-		item->setText(tr("Progress Information (Elapsed Time)"));
-	}
-	else if (identifier == QLatin1String("ProgressInformationMessageWidget"))
-	{
-		item->setText(tr("Progress Information (Status Message)"));
-	}
-	else if (identifier == QLatin1String("SearchWidget"))
-	{
-		item->setData(true, HasOptionsRole);
-
-		if (options.contains(QLatin1String("searchEngine")))
-		{
-			const SearchEnginesManager::SearchEngineDefinition definition(SearchEnginesManager::getSearchEngine(options[QLatin1String("searchEngine")].toString()));
-
-			item->setText(tr("Search Field (%1)").arg(definition.title.isEmpty() ? tr("Unknown") : definition.title));
-			item->setIcon(definition.icon.isNull() ? ThemesManager::createIcon(QLatin1String("edit-find")) : definition.icon);
-		}
-		else
-		{
-			item->setText(tr("Search Field"));
-			item->setIcon(ThemesManager::createIcon(QLatin1String("edit-find")));
-		}
-	}
-	else if (identifier == QLatin1String("SizeGripWidget"))
-	{
-		item->setText(tr("Window Resize Handle"));
-	}
-	else if (identifier == QLatin1String("StatusMessageWidget"))
-	{
-		item->setText(tr("Status Message Field"));
-	}
-	else if (identifier == QLatin1String("TabBarWidget"))
-	{
-		item->setText(tr("Tab Bar"));
-	}
-	else if (identifier == QLatin1String("TransfersWidget"))
-	{
-		item->setText(tr("Downloads Progress Information"));
-		item->setIcon(ThemesManager::createIcon(QLatin1String("transfers")));
-	}
-	else if (identifier == QLatin1String("ZoomWidget"))
-	{
-		item->setText(tr("Zoom Slider"));
-	}
-	else if (identifier.startsWith(QLatin1String("bookmarks:")))
-	{
-		const BookmarksModel::Bookmark *bookmark(identifier.startsWith(QLatin1String("bookmarks:/")) ? BookmarksManager::getModel()->getBookmarkByPath(identifier.mid(11)) : BookmarksManager::getBookmark(identifier.mid(10).toULongLong()));
-
-		if (bookmark)
-		{
-			const QIcon icon(bookmark->getIcon());
-
-			item->setData(true, HasOptionsRole);
-			item->setText(bookmark->getTitle());
-
-			if (!icon.isNull())
-			{
-				item->setIcon(icon);
-			}
-		}
-		else
-		{
-			item->setText(tr("Invalid Bookmark"));
-		}
-	}
-	else if (identifier.endsWith(QLatin1String("Action")))
-	{
-		const int actionIdentifier(ActionsManager::getActionIdentifier(identifier.left(identifier.length() - 6)));
-
-		if (actionIdentifier < 0)
-		{
-			item->setText(tr("Invalid Entry"));
-		}
-		else
-		{
-			const ActionsManager::ActionDefinition definition(ActionsManager::getActionDefinition(actionIdentifier));
-
-			item->setData(true, HasOptionsRole);
-			item->setText(definition.getText(true));
-
-			if (!definition.defaultState.icon.isNull())
-			{
-				item->setIcon(definition.defaultState.icon);
-			}
-		}
-	}
 	else
 	{
-		item->setText(tr("Invalid Entry"));
+		item->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled | Qt::ItemIsDragEnabled | Qt::ItemNeverHasChildren);
 	}
 
-	if (!options.isEmpty())
+	const QMap<int, QVariant> entryData(createEntryData(identifier, options, parameters));
+	QMap<int, QVariant>::const_iterator iterator;
+
+	for (iterator = entryData.begin(); iterator != entryData.end(); ++iterator)
 	{
-		item->setData(options, OptionsRole);
-
-		if (options.contains(QLatin1String("icon")))
-		{
-			const QIcon icon(ThemesManager::createIcon(options[QLatin1String("icon")].toString()));
-
-			if (icon.isNull())
-			{
-				item->setData(QColor(Qt::transparent), Qt::DecorationRole);
-			}
-			else
-			{
-				item->setIcon(icon);
-			}
-		}
-
-		if (options.contains(QLatin1String("text")))
-		{
-			item->setText(options[QLatin1String("text")].toString());
-		}
+		item->setData(iterator.value(), iterator.key());
 	}
-
-	item->setToolTip(QStringLiteral("%1 (%2)").arg(item->text()).arg(identifier));
 
 	return item;
 }
@@ -808,6 +651,212 @@ ToolBarsManager::ToolBarDefinition ToolBarDialog::getDefinition() const
 	return definition;
 }
 
+QMap<int, QVariant> ToolBarDialog::createEntryData(const QString &identifier, const QVariantMap &options, const QVariantMap &parameters) const
+{
+	QMap<int, QVariant> entryData({{Qt::DecorationRole, QColor(Qt::transparent)}, {IdentifierRole, identifier}, {OptionsRole, options}, {ParametersRole, parameters}});
+
+	if (identifier == QLatin1String("separator"))
+	{
+		entryData[Qt::DisplayRole] = tr("--- separator ---");
+	}
+	else if (identifier == QLatin1String("spacer"))
+	{
+		entryData[Qt::DisplayRole] = tr("--- spacer ---");
+	}
+	else if (identifier == QLatin1String("CustomMenu"))
+	{
+		entryData[Qt::DisplayRole] = tr("Arbitrary List of Actions");
+	}
+	else if (identifier == QLatin1String("ClosedWindowsMenu"))
+	{
+		entryData[HasOptionsRole] = true;
+		entryData[Qt::DisplayRole] = tr("List of Closed Tabs and Windows");
+		entryData[Qt::DecorationRole] = ThemesManager::createIcon(QLatin1String("user-trash"));
+	}
+	else if (identifier == QLatin1String("AddressWidget"))
+	{
+		entryData[Qt::DisplayRole] = tr("Address Field");
+		entryData[Qt::DecorationRole] = ThemesManager::createIcon(QLatin1String("document-open"));
+	}
+	else if (identifier == QLatin1String("ConfigurationOptionWidget"))
+	{
+		entryData[HasOptionsRole] = true;
+
+		if (options.contains(QLatin1String("optionName")) && !options.value("optionName").toString().isEmpty())
+		{
+			entryData[Qt::DisplayRole] = tr("Configuration Widget (%1)").arg(options.value("optionName").toString());
+		}
+		else
+		{
+			entryData[Qt::DisplayRole] = tr("Configuration Widget");
+		}
+	}
+	else if (identifier == QLatin1String("ContentBlockingInformationWidget"))
+	{
+		entryData[HasOptionsRole] = true;
+		entryData[Qt::DisplayRole] = tr("Content Blocking Details");
+		entryData[Qt::DecorationRole] = ThemesManager::createIcon(QLatin1String("content-blocking"));
+	}
+	else if (identifier == QLatin1String("ErrorConsoleWidget"))
+	{
+		entryData[Qt::DisplayRole] = tr("Error Console");
+	}
+	else if (identifier == QLatin1String("MenuBarWidget"))
+	{
+		entryData[Qt::DisplayRole] = tr("Menu Bar");
+	}
+	else if (identifier == QLatin1String("MenuButtonWidget"))
+	{
+		entryData[HasOptionsRole] = true;
+		entryData[Qt::DisplayRole] = tr("Menu Button");
+	}
+	else if (identifier == QLatin1String("OpenInApplicationMenu"))
+	{
+		entryData[Qt::DisplayRole] = tr("Open with");
+	}
+	else if (identifier == QLatin1String("PanelChooserWidget"))
+	{
+		entryData[Qt::DisplayRole] = tr("Sidebar Panel Chooser");
+	}
+	else if (identifier == QLatin1String("PrivateWindowIndicatorWidget"))
+	{
+		entryData[HasOptionsRole] = true;
+		entryData[Qt::DisplayRole] = tr("Private Window Indicator");
+		entryData[Qt::DecorationRole] = ThemesManager::createIcon(QLatin1String("window-private"));
+	}
+	else if (identifier == QLatin1String("ProgressInformationDocumentProgressWidget"))
+	{
+		entryData[Qt::DisplayRole] = tr("Progress Information (Document Progress)");
+	}
+	else if (identifier == QLatin1String("ProgressInformationTotalSizeWidget"))
+	{
+		entryData[Qt::DisplayRole] = tr("Progress Information (Total Progress)");
+	}
+	else if (identifier == QLatin1String("ProgressInformationElementsWidget"))
+	{
+		entryData[Qt::DisplayRole] = tr("Progress Information (Loaded Elements)");
+	}
+	else if (identifier == QLatin1String("ProgressInformationSpeedWidget"))
+	{
+		entryData[Qt::DisplayRole] = tr("Progress Information (Loading Speed)");
+	}
+	else if (identifier == QLatin1String("ProgressInformationElapsedTimeWidget"))
+	{
+		entryData[Qt::DisplayRole] = tr("Progress Information (Elapsed Time)");
+	}
+	else if (identifier == QLatin1String("ProgressInformationMessageWidget"))
+	{
+		entryData[Qt::DisplayRole] = tr("Progress Information (Status Message)");
+	}
+	else if (identifier == QLatin1String("SearchWidget"))
+	{
+		entryData[HasOptionsRole] = true;
+
+		if (options.contains(QLatin1String("searchEngine")))
+		{
+			const SearchEnginesManager::SearchEngineDefinition definition(SearchEnginesManager::getSearchEngine(options[QLatin1String("searchEngine")].toString()));
+
+			entryData[Qt::DisplayRole] = tr("Search Field (%1)").arg(definition.title.isEmpty() ? tr("Unknown") : definition.title);
+			entryData[Qt::DecorationRole] = (definition.icon.isNull() ? ThemesManager::createIcon(QLatin1String("edit-find")) : definition.icon);
+		}
+		else
+		{
+			entryData[Qt::DisplayRole] = tr("Search Field");
+			entryData[Qt::DecorationRole] = ThemesManager::createIcon(QLatin1String("edit-find"));
+		}
+	}
+	else if (identifier == QLatin1String("SizeGripWidget"))
+	{
+		entryData[Qt::DisplayRole] = tr("Window Resize Handle");
+	}
+	else if (identifier == QLatin1String("StatusMessageWidget"))
+	{
+		entryData[Qt::DisplayRole] = tr("Status Message Field");
+	}
+	else if (identifier == QLatin1String("TabBarWidget"))
+	{
+		entryData[Qt::DisplayRole] = tr("Tab Bar");
+	}
+	else if (identifier == QLatin1String("TransfersWidget"))
+	{
+		entryData[Qt::DisplayRole] = tr("Downloads Progress Information");
+		entryData[Qt::DecorationRole] = ThemesManager::createIcon(QLatin1String("transfers"));
+	}
+	else if (identifier == QLatin1String("ZoomWidget"))
+	{
+		entryData[Qt::DisplayRole] = tr("Zoom Slider");
+	}
+	else if (identifier.startsWith(QLatin1String("bookmarks:")))
+	{
+		const BookmarksModel::Bookmark *bookmark(identifier.startsWith(QLatin1String("bookmarks:/")) ? BookmarksManager::getModel()->getBookmarkByPath(identifier.mid(11)) : BookmarksManager::getBookmark(identifier.mid(10).toULongLong()));
+
+		if (bookmark)
+		{
+			const QIcon icon(bookmark->getIcon());
+
+			entryData[HasOptionsRole] = true;
+			entryData[Qt::DisplayRole] = bookmark->getTitle();
+
+			if (!icon.isNull())
+			{
+				entryData[Qt::DecorationRole] = icon;
+			}
+		}
+		else
+		{
+			entryData[Qt::DisplayRole] = tr("Invalid Bookmark");
+		}
+	}
+	else if (identifier.endsWith(QLatin1String("Action")))
+	{
+		const int actionIdentifier(ActionsManager::getActionIdentifier(identifier.left(identifier.length() - 6)));
+
+		if (actionIdentifier < 0)
+		{
+			entryData[Qt::DisplayRole] = tr("Invalid Entry");
+		}
+		else
+		{
+			const ActionsManager::ActionDefinition definition(ActionsManager::getActionDefinition(actionIdentifier));
+
+			entryData[HasOptionsRole] = true;
+			entryData[Qt::DisplayRole] = definition.getText(true);
+
+			if (!definition.defaultState.icon.isNull())
+			{
+				entryData[Qt::DecorationRole] = definition.defaultState.icon;
+			}
+		}
+	}
+	else
+	{
+		entryData[Qt::DisplayRole] = tr("Invalid Entry");
+	}
+
+	if (options.contains(QLatin1String("icon")))
+	{
+		const QIcon icon(ThemesManager::createIcon(options[QLatin1String("icon")].toString()));
+
+		if (icon.isNull())
+		{
+			entryData[Qt::DecorationRole] = QColor(Qt::transparent);
+		}
+		else
+		{
+			entryData[Qt::DecorationRole] = icon;
+		}
+	}
+
+	if (options.contains(QLatin1String("text")))
+	{
+		entryData[Qt::DisplayRole] = options[QLatin1String("text")].toString();
+	}
+
+	entryData[Qt::ToolTipRole] = QStringLiteral("%1 (%2)").arg(entryData.value(Qt::DisplayRole).toString()).arg(identifier);
+
+	return entryData;
+}
+
 bool ToolBarDialog::eventFilter(QObject *object, QEvent *event)
 {
 	if (object == m_ui->availableEntriesItemView->viewport() && event->type() == QEvent::Drop)
@@ -817,7 +866,7 @@ bool ToolBarDialog::eventFilter(QObject *object, QEvent *event)
 		return true;
 	}
 
-	return Dialog::eventFilter(object, event);;
+	return Dialog::eventFilter(object, event);
 }
 
 }

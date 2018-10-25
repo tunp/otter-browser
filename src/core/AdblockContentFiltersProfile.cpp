@@ -19,7 +19,7 @@
 *
 **************************************************************************/
 
-#include "ContentBlockingProfile.h"
+#include "AdblockContentFiltersProfile.h"
 #include "Console.h"
 #include "NetworkManager.h"
 #include "NetworkManagerFactory.h"
@@ -28,6 +28,7 @@
 #include <QtConcurrent/QtConcurrentRun>
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDir>
+#include <QtCore/QSaveFile>
 #include <QtCore/QTextStream>
 #include <QtNetwork/QNetworkReply>
 #include <QtNetwork/QNetworkRequest>
@@ -35,11 +36,11 @@
 namespace Otter
 {
 
-QVector<QChar> ContentBlockingProfile::m_separators({QLatin1Char('_'), QLatin1Char('-'), QLatin1Char('.'), QLatin1Char('%')});
-QHash<QString, ContentBlockingProfile::RuleOption> ContentBlockingProfile::m_options({{QLatin1String("third-party"), ThirdPartyOption}, {QLatin1String("stylesheet"), StyleSheetOption}, {QLatin1String("image"), ImageOption}, {QLatin1String("script"), ScriptOption}, {QLatin1String("object"), ObjectOption}, {QLatin1String("object-subrequest"), ObjectSubRequestOption}, {QLatin1String("object_subrequest"), ObjectSubRequestOption}, {QLatin1String("subdocument"), SubDocumentOption}, {QLatin1String("xmlhttprequest"), XmlHttpRequestOption}, {QLatin1String("websocket"), WebSocketOption}, {QLatin1String("popup"), PopupOption}, {QLatin1String("elemhide"), ElementHideOption}, {QLatin1String("generichide"), GenericHideOption}});
-QHash<NetworkManager::ResourceType, ContentBlockingProfile::RuleOption> ContentBlockingProfile::m_resourceTypes({{NetworkManager::ImageType, ImageOption}, {NetworkManager::ScriptType, ScriptOption}, {NetworkManager::StyleSheetType, StyleSheetOption}, {NetworkManager::ObjectType, ObjectOption}, {NetworkManager::XmlHttpRequestType, XmlHttpRequestOption}, {NetworkManager::SubFrameType, SubDocumentOption},{NetworkManager::PopupType, PopupOption}, {NetworkManager::ObjectSubrequestType, ObjectSubRequestOption}, {NetworkManager::WebSocketType, WebSocketOption}});
+QVector<QChar> AdblockContentFiltersProfile::m_separators({QLatin1Char('_'), QLatin1Char('-'), QLatin1Char('.'), QLatin1Char('%')});
+QHash<QString, AdblockContentFiltersProfile::RuleOption> AdblockContentFiltersProfile::m_options({{QLatin1String("third-party"), ThirdPartyOption}, {QLatin1String("stylesheet"), StyleSheetOption}, {QLatin1String("image"), ImageOption}, {QLatin1String("script"), ScriptOption}, {QLatin1String("object"), ObjectOption}, {QLatin1String("object-subrequest"), ObjectSubRequestOption}, {QLatin1String("object_subrequest"), ObjectSubRequestOption}, {QLatin1String("subdocument"), SubDocumentOption}, {QLatin1String("xmlhttprequest"), XmlHttpRequestOption}, {QLatin1String("websocket"), WebSocketOption}, {QLatin1String("popup"), PopupOption}, {QLatin1String("elemhide"), ElementHideOption}, {QLatin1String("generichide"), GenericHideOption}});
+QHash<NetworkManager::ResourceType, AdblockContentFiltersProfile::RuleOption> AdblockContentFiltersProfile::m_resourceTypes({{NetworkManager::ImageType, ImageOption}, {NetworkManager::ScriptType, ScriptOption}, {NetworkManager::StyleSheetType, StyleSheetOption}, {NetworkManager::ObjectType, ObjectOption}, {NetworkManager::XmlHttpRequestType, XmlHttpRequestOption}, {NetworkManager::SubFrameType, SubDocumentOption},{NetworkManager::PopupType, PopupOption}, {NetworkManager::ObjectSubrequestType, ObjectSubRequestOption}, {NetworkManager::WebSocketType, WebSocketOption}});
 
-ContentBlockingProfile::ContentBlockingProfile(const QString &name, const QString &title, const QUrl &updateUrl, const QDateTime &lastUpdate, const QStringList &languages, int updateInterval, const ProfileCategory &category, const ProfileFlags &flags, QObject *parent) : QObject(parent),
+AdblockContentFiltersProfile::AdblockContentFiltersProfile(const QString &name, const QString &title, const QUrl &updateUrl, const QDateTime &lastUpdate, const QStringList &languages, int updateInterval, const ProfileCategory &category, const ProfileFlags &flags, QObject *parent) : ContentFiltersProfile(parent),
 	m_root(nullptr),
 	m_networkReply(nullptr),
 	m_name(name),
@@ -66,10 +67,10 @@ ContentBlockingProfile::ContentBlockingProfile(const QString &name, const QStrin
 		}
 	}
 
-	loadHeader(getPath());
+	loadHeader();
 }
 
-void ContentBlockingProfile::clear()
+void AdblockContentFiltersProfile::clear()
 {
 	if (!m_wasLoaded)
 	{
@@ -78,7 +79,7 @@ void ContentBlockingProfile::clear()
 
 	if (m_root)
 	{
-		QtConcurrent::run(this, &ContentBlockingProfile::deleteNode, m_root);
+		QtConcurrent::run(this, &AdblockContentFiltersProfile::deleteNode, m_root);
 	}
 
 	m_cosmeticFiltersRules.clear();
@@ -88,8 +89,10 @@ void ContentBlockingProfile::clear()
 	m_wasLoaded = false;
 }
 
-void ContentBlockingProfile::loadHeader(const QString &path)
+void AdblockContentFiltersProfile::loadHeader()
 {
+	const QString &path(getPath());
+
 	if (!QFile::exists(path))
 	{
 		return;
@@ -119,7 +122,7 @@ void ContentBlockingProfile::loadHeader(const QString &path)
 			break;
 		}
 
-		if (line.startsWith(QLatin1String("! Title: ")) && !m_flags.testFlag(HasCustomTitleFlag))
+		if (!m_flags.testFlag(HasCustomTitleFlag) && line.startsWith(QLatin1String("! Title: ")))
 		{
 			m_title = line.remove(QLatin1String("! Title: "));
 
@@ -131,11 +134,11 @@ void ContentBlockingProfile::loadHeader(const QString &path)
 
 	if (!m_isUpdating && m_updateInterval > 0 && (!m_lastUpdate.isValid() || m_lastUpdate.daysTo(QDateTime::currentDateTimeUtc()) > m_updateInterval))
 	{
-		downloadRules();
+		update();
 	}
 }
 
-void ContentBlockingProfile::parseRuleLine(const QString &rule)
+void AdblockContentFiltersProfile::parseRuleLine(const QString &rule)
 {
 	if (rule.indexOf(QLatin1Char('!')) == 0 || rule.isEmpty())
 	{
@@ -144,7 +147,7 @@ void ContentBlockingProfile::parseRuleLine(const QString &rule)
 
 	if (rule.startsWith(QLatin1String("##")))
 	{
-		if (ContentBlockingManager::getCosmeticFiltersMode() == ContentBlockingManager::AllFiltersMode)
+		if (ContentFiltersManager::getCosmeticFiltersMode() == ContentFiltersManager::AllFilters)
 		{
 			m_cosmeticFiltersRules.append(rule.mid(2));
 		}
@@ -154,7 +157,7 @@ void ContentBlockingProfile::parseRuleLine(const QString &rule)
 
 	if (rule.contains(QLatin1String("##")))
 	{
-		if (ContentBlockingManager::getCosmeticFiltersMode() != ContentBlockingManager::NoFiltersMode)
+		if (ContentFiltersManager::getCosmeticFiltersMode() != ContentFiltersManager::NoFilters)
 		{
 			parseStyleSheetRule(rule.split(QLatin1String("##")), m_cosmeticFiltersDomainRules);
 		}
@@ -164,7 +167,7 @@ void ContentBlockingProfile::parseRuleLine(const QString &rule)
 
 	if (rule.contains(QLatin1String("#@#")))
 	{
-		if (ContentBlockingManager::getCosmeticFiltersMode() != ContentBlockingManager::NoFiltersMode)
+		if (ContentFiltersManager::getCosmeticFiltersMode() != ContentFiltersManager::NoFilters)
 		{
 			parseStyleSheetRule(rule.split(QLatin1String("#@#")), m_cosmeticFiltersDomainExceptions);
 		}
@@ -191,7 +194,7 @@ void ContentBlockingProfile::parseRuleLine(const QString &rule)
 		line = line.mid(1);
 	}
 
-	if (!ContentBlockingManager::areWildcardsEnabled() && line.contains(QLatin1Char('*')))
+	if (!ContentFiltersManager::areWildcardsEnabled() && line.contains(QLatin1Char('*')))
 	{
 		return;
 	}
@@ -276,7 +279,7 @@ void ContentBlockingProfile::parseRuleLine(const QString &rule)
 	addRule(new ContentBlockingRule(rule, blockedDomains, allowedDomains, ruleOptions, ruleMatch, isException, needsDomainCheck), line);
 }
 
-void ContentBlockingProfile::parseStyleSheetRule(const QStringList &line, QMultiHash<QString, QString> &list) const
+void AdblockContentFiltersProfile::parseStyleSheetRule(const QStringList &line, QMultiHash<QString, QString> &list) const
 {
 	const QStringList domains(line.at(0).split(QLatin1Char(',')));
 
@@ -286,7 +289,7 @@ void ContentBlockingProfile::parseStyleSheetRule(const QStringList &line, QMulti
 	}
 }
 
-void ContentBlockingProfile::addRule(ContentBlockingRule *rule, const QString &ruleString) const
+void AdblockContentFiltersProfile::addRule(ContentBlockingRule *rule, const QString &ruleString) const
 {
 	Node *node(m_root);
 
@@ -330,7 +333,7 @@ void ContentBlockingProfile::addRule(ContentBlockingRule *rule, const QString &r
 	node->rules.append(rule);
 }
 
-void ContentBlockingProfile::deleteNode(Node *node) const
+void AdblockContentFiltersProfile::deleteNode(Node *node) const
 {
 	for (int i = 0; i < node->children.count(); ++i)
 	{
@@ -345,10 +348,10 @@ void ContentBlockingProfile::deleteNode(Node *node) const
 	delete node;
 }
 
-ContentBlockingManager::CheckResult ContentBlockingProfile::checkUrlSubstring(const Node *node, const QString &subString, QString currentRule, NetworkManager::ResourceType resourceType)
+ContentFiltersManager::CheckResult AdblockContentFiltersProfile::checkUrlSubstring(const Node *node, const QString &subString, QString currentRule, NetworkManager::ResourceType resourceType)
 {
-	ContentBlockingManager::CheckResult result;
-	ContentBlockingManager::CheckResult currentResult;
+	ContentFiltersManager::CheckResult result;
+	ContentFiltersManager::CheckResult currentResult;
 
 	for (int i = 0; i < subString.length(); ++i)
 	{
@@ -452,7 +455,7 @@ ContentBlockingManager::CheckResult ContentBlockingProfile::checkUrlSubstring(co
 	return result;
 }
 
-ContentBlockingManager::CheckResult ContentBlockingProfile::checkRuleMatch(const ContentBlockingRule *rule, const QString &currentRule, NetworkManager::ResourceType resourceType) const
+ContentFiltersManager::CheckResult AdblockContentFiltersProfile::checkRuleMatch(const ContentBlockingRule *rule, const QString &currentRule, NetworkManager::ResourceType resourceType) const
 {
 	switch (rule->ruleMatch)
 	{
@@ -486,7 +489,7 @@ ContentBlockingManager::CheckResult ContentBlockingProfile::checkRuleMatch(const
 			break;
 	}
 
-	const QStringList requestSubdomainList(ContentBlockingManager::createSubdomainList(m_requestHost));
+	const QStringList requestSubdomainList(ContentFiltersManager::createSubdomainList(m_requestHost));
 
 	if (rule->needsDomainCheck && !requestSubdomainList.contains(currentRule.left(currentRule.indexOf(m_domainExpression))))
 	{
@@ -553,7 +556,7 @@ ContentBlockingManager::CheckResult ContentBlockingProfile::checkRuleMatch(const
 
 	if (isBlocked)
 	{
-		ContentBlockingManager::CheckResult result;
+		ContentFiltersManager::CheckResult result;
 		result.rule = rule->rule;
 
 		if (rule->isException)
@@ -563,11 +566,11 @@ ContentBlockingManager::CheckResult ContentBlockingProfile::checkRuleMatch(const
 
 			if (rule->ruleOptions.testFlag(ElementHideOption))
 			{
-				result.comesticFiltersMode = ContentBlockingManager::NoFiltersMode;
+				result.comesticFiltersMode = ContentFiltersManager::NoFilters;
 			}
 			else if (rule->ruleOptions.testFlag(GenericHideOption))
 			{
-				result.comesticFiltersMode = ContentBlockingManager::DomainOnlyFiltersMode;
+				result.comesticFiltersMode = ContentFiltersManager::DomainOnlyFilters;
 			}
 
 			return result;
@@ -581,7 +584,7 @@ ContentBlockingManager::CheckResult ContentBlockingProfile::checkRuleMatch(const
 	return {};
 }
 
-void ContentBlockingProfile::handleReplyFinished()
+void AdblockContentFiltersProfile::handleReplyFinished()
 {
 	m_isUpdating = false;
 
@@ -592,8 +595,8 @@ void ContentBlockingProfile::handleReplyFinished()
 
 	m_networkReply->deleteLater();
 
-	const QByteArray downloadedDataHeader(m_networkReply->readLine());
-	const QByteArray downloadedDataChecksum(m_networkReply->readLine());
+	const QByteArray downloadedHeader(m_networkReply->readLine());
+	const QByteArray downloadedChecksum(m_networkReply->readLine());
 	const QByteArray downloadedData(m_networkReply->readAll());
 
 	if (m_networkReply->error() != QNetworkReply::NoError)
@@ -605,12 +608,12 @@ void ContentBlockingProfile::handleReplyFinished()
 		return;
 	}
 
-	if (downloadedDataChecksum.contains(QByteArray("! Checksum: ")))
+	if (downloadedChecksum.contains(QByteArrayLiteral("! Checksum: ")))
 	{
-		QByteArray checksum(downloadedDataChecksum);
-		const QByteArray verifiedChecksum(QCryptographicHash::hash(downloadedDataHeader + QString(downloadedData).replace(QRegExp(QLatin1String("^*\n{2,}")), QLatin1String("\n")).toStdString().c_str(), QCryptographicHash::Md5));
+		QByteArray checksum(downloadedChecksum);
+		const QByteArray verifiedChecksum(QCryptographicHash::hash(downloadedHeader + QString(downloadedData).replace(QRegularExpression(QLatin1String("^.*\n{2,}")), QLatin1String("\n")).toStdString().c_str(), QCryptographicHash::Md5));
 
-		if (verifiedChecksum.toBase64().replace(QByteArray("="), QByteArray()) != checksum.replace(QByteArray("! Checksum: "), QByteArray()).replace(QByteArray("\n"), QByteArray()))
+		if (verifiedChecksum.toBase64().replace(QByteArrayLiteral("="), QByteArray()) != checksum.replace(QByteArrayLiteral("! Checksum: "), QByteArray()).replace(QByteArrayLiteral("\n"), QByteArray()))
 		{
 			m_error = ChecksumError;
 
@@ -622,9 +625,9 @@ void ContentBlockingProfile::handleReplyFinished()
 
 	QDir().mkpath(SessionsManager::getWritableDataPath(QLatin1String("contentBlocking")));
 
-	QFile file(SessionsManager::getWritableDataPath(QLatin1String("contentBlocking/%1.txt")).arg(m_name));
+	QSaveFile file(SessionsManager::getWritableDataPath(QLatin1String("contentBlocking/%1.txt")).arg(m_name));
 
-	if (!file.open(QIODevice::ReadWrite | QIODevice::Truncate))
+	if (!file.open(QIODevice::WriteOnly))
 	{
 		m_error = DownloadError;
 
@@ -633,20 +636,19 @@ void ContentBlockingProfile::handleReplyFinished()
 		return;
 	}
 
-	file.write(downloadedDataHeader);
-	file.write(downloadedDataChecksum);
+	file.write(downloadedHeader);
+	file.write(downloadedChecksum);
 	file.write(downloadedData);
-	file.close();
 
 	m_lastUpdate = QDateTime::currentDateTimeUtc();
 
-	if (file.error() != QFile::NoError)
+	if (!file.commit())
 	{
-// TODO
+		Console::addMessage(QCoreApplication::translate("main", "Failed to update content blocking profile: %1").arg(file.errorString()), Console::OtherCategory, Console::ErrorLevel, file.fileName());
 	}
 
 	clear();
-	loadHeader(getPath());
+	loadHeader();
 
 	if (m_wasLoaded)
 	{
@@ -656,7 +658,7 @@ void ContentBlockingProfile::handleReplyFinished()
 	emit profileModified(m_name);
 }
 
-void ContentBlockingProfile::setUpdateInterval(int interval)
+void AdblockContentFiltersProfile::setUpdateInterval(int interval)
 {
 	if (interval != m_updateInterval)
 	{
@@ -666,7 +668,7 @@ void ContentBlockingProfile::setUpdateInterval(int interval)
 	}
 }
 
-void ContentBlockingProfile::setUpdateUrl(const QUrl &url)
+void AdblockContentFiltersProfile::setUpdateUrl(const QUrl &url)
 {
 	if (url.isValid() && url != m_updateUrl)
 	{
@@ -677,7 +679,7 @@ void ContentBlockingProfile::setUpdateUrl(const QUrl &url)
 	}
 }
 
-void ContentBlockingProfile::setCategory(const ProfileCategory &category)
+void AdblockContentFiltersProfile::setCategory(ProfileCategory category)
 {
 	if (category != m_category)
 	{
@@ -687,7 +689,7 @@ void ContentBlockingProfile::setCategory(const ProfileCategory &category)
 	}
 }
 
-void ContentBlockingProfile::setTitle(const QString &title)
+void AdblockContentFiltersProfile::setTitle(const QString &title)
 {
 	if (title != m_title)
 	{
@@ -698,34 +700,58 @@ void ContentBlockingProfile::setTitle(const QString &title)
 	}
 }
 
-QString ContentBlockingProfile::getName() const
+QString AdblockContentFiltersProfile::getName() const
 {
 	return m_name;
 }
 
-QString ContentBlockingProfile::getTitle() const
+QString AdblockContentFiltersProfile::getTitle() const
 {
 	return (m_title.isEmpty() ? tr("(Unknown)") : m_title);
 }
 
-QString ContentBlockingProfile::getPath() const
+QString AdblockContentFiltersProfile::getPath() const
 {
 	return SessionsManager::getWritableDataPath(QLatin1String("contentBlocking/%1.txt")).arg(m_name);
 }
 
-QDateTime ContentBlockingProfile::getLastUpdate() const
+QDateTime AdblockContentFiltersProfile::getLastUpdate() const
 {
 	return m_lastUpdate;
 }
 
-QUrl ContentBlockingProfile::getUpdateUrl() const
+QUrl AdblockContentFiltersProfile::getUpdateUrl() const
 {
 	return m_updateUrl;
 }
 
-ContentBlockingManager::CheckResult ContentBlockingProfile::checkUrl(const QUrl &baseUrl, const QUrl &requestUrl, NetworkManager::ResourceType resourceType)
+ContentFiltersManager::CheckResult AdblockContentFiltersProfile::evaluateRulesInNode(const Node *node, const QString &currentRule, NetworkManager::ResourceType resourceType) const
 {
-	ContentBlockingManager::CheckResult result;
+	ContentFiltersManager::CheckResult result;
+
+	for (int i = 0; i < node->rules.count(); ++i)
+	{
+		if (node->rules.at(i))
+		{
+			ContentFiltersManager::CheckResult currentResult(checkRuleMatch(node->rules.at(i), currentRule, resourceType));
+
+			if (currentResult.isBlocked)
+			{
+				result = currentResult;
+			}
+			else if (currentResult.isException)
+			{
+				return currentResult;
+			}
+		}
+	}
+
+	return result;
+}
+
+ContentFiltersManager::CheckResult AdblockContentFiltersProfile::checkUrl(const QUrl &baseUrl, const QUrl &requestUrl, NetworkManager::ResourceType resourceType)
+{
+	ContentFiltersManager::CheckResult result;
 
 	if (!m_wasLoaded && !loadRules())
 	{
@@ -743,7 +769,7 @@ ContentBlockingManager::CheckResult ContentBlockingProfile::checkUrl(const QUrl 
 
 	for (int i = 0; i < m_requestUrl.length(); ++i)
 	{
-		const ContentBlockingManager::CheckResult currentResult(checkUrlSubstring(m_root, m_requestUrl.right(m_requestUrl.length() - i), {}, resourceType));
+		const ContentFiltersManager::CheckResult currentResult(checkUrlSubstring(m_root, m_requestUrl.right(m_requestUrl.length() - i), {}, resourceType));
 
 		if (currentResult.isBlocked)
 		{
@@ -758,14 +784,14 @@ ContentBlockingManager::CheckResult ContentBlockingProfile::checkUrl(const QUrl 
 	return result;
 }
 
-ContentBlockingManager::CosmeticFiltersResult ContentBlockingProfile::getCosmeticFilters(const QStringList &domains, bool isDomainOnly)
+ContentFiltersManager::CosmeticFiltersResult AdblockContentFiltersProfile::getCosmeticFilters(const QStringList &domains, bool isDomainOnly)
 {
 	if (!m_wasLoaded)
 	{
 		loadRules();
 	}
 
-	ContentBlockingManager::CosmeticFiltersResult result;
+	ContentFiltersManager::CosmeticFiltersResult result;
 
 	if (!isDomainOnly)
 	{
@@ -781,99 +807,38 @@ ContentBlockingManager::CosmeticFiltersResult ContentBlockingProfile::getCosmeti
 	return result;
 }
 
-QVector<QLocale::Language> ContentBlockingProfile::getLanguages() const
+QVector<QLocale::Language> AdblockContentFiltersProfile::getLanguages() const
 {
 	return m_languages;
 }
 
-ContentBlockingProfile::ProfileCategory ContentBlockingProfile::getCategory() const
+ContentFiltersProfile::ProfileCategory AdblockContentFiltersProfile::getCategory() const
 {
 	return m_category;
 }
 
-ContentBlockingProfile::ProfileError ContentBlockingProfile::getError() const
+ContentFiltersProfile::ProfileError AdblockContentFiltersProfile::getError() const
 {
 	return m_error;
 }
 
-ContentBlockingProfile::ProfileFlags ContentBlockingProfile::getFlags() const
+ContentFiltersProfile::ProfileFlags AdblockContentFiltersProfile::getFlags() const
 {
 	return m_flags;
 }
 
-int ContentBlockingProfile::getUpdateInterval() const
+int AdblockContentFiltersProfile::getUpdateInterval() const
 {
 	return m_updateInterval;
 }
 
-bool ContentBlockingProfile::downloadRules()
-{
-	if (m_isUpdating)
-	{
-		return false;
-	}
-
-	if (!m_updateUrl.isValid())
-	{
-		const QString path(getPath());
-
-		m_error = DownloadError;
-
-		if (m_updateUrl.isEmpty())
-		{
-			Console::addMessage(QCoreApplication::translate("main", "Failed to update content blocking profile, update URL is empty"), Console::OtherCategory, Console::ErrorLevel, path);
-		}
-		else
-		{
-			Console::addMessage(QCoreApplication::translate("main", "Failed to update content blocking profile, update URL (%1) is invalid").arg(m_updateUrl.toString()), Console::OtherCategory, Console::ErrorLevel, path);
-		}
-
-		return false;
-	}
-
-	QNetworkRequest request(m_updateUrl);
-	request.setHeader(QNetworkRequest::UserAgentHeader, NetworkManagerFactory::getUserAgent());
-
-	m_networkReply = NetworkManagerFactory::getNetworkManager()->get(request);
-
-	connect(m_networkReply, &QNetworkReply::finished, this, &ContentBlockingProfile::handleReplyFinished);
-
-	m_isUpdating = true;
-
-	return true;
-}
-
-ContentBlockingManager::CheckResult ContentBlockingProfile::evaluateRulesInNode(const Node *node, const QString &currentRule, NetworkManager::ResourceType resourceType) const
-{
-	ContentBlockingManager::CheckResult result;
-
-	for (int i = 0; i < node->rules.count(); ++i)
-	{
-		if (node->rules.at(i))
-		{
-			ContentBlockingManager::CheckResult currentResult(checkRuleMatch(node->rules.at(i), currentRule, resourceType));
-
-			if (currentResult.isBlocked)
-			{
-				result = currentResult;
-			}
-			else if (currentResult.isException)
-			{
-				return currentResult;
-			}
-		}
-	}
-
-	return result;
-}
-
-bool ContentBlockingProfile::loadRules()
+bool AdblockContentFiltersProfile::loadRules()
 {
 	m_error = NoError;
 
 	if (m_isEmpty && !m_updateUrl.isEmpty())
 	{
-		downloadRules();
+		update();
 
 		return false;
 	}
@@ -904,7 +869,41 @@ bool ContentBlockingProfile::loadRules()
 	return true;
 }
 
-bool ContentBlockingProfile::remove()
+bool AdblockContentFiltersProfile::update()
+{
+	if (m_isUpdating)
+	{
+		return false;
+	}
+
+	if (!m_updateUrl.isValid())
+	{
+		const QString path(getPath());
+
+		m_error = DownloadError;
+
+		if (m_updateUrl.isEmpty())
+		{
+			Console::addMessage(QCoreApplication::translate("main", "Failed to update content blocking profile, update URL is empty"), Console::OtherCategory, Console::ErrorLevel, path);
+		}
+		else
+		{
+			Console::addMessage(QCoreApplication::translate("main", "Failed to update content blocking profile, update URL (%1) is invalid").arg(m_updateUrl.toString()), Console::OtherCategory, Console::ErrorLevel, path);
+		}
+
+		return false;
+	}
+
+	m_networkReply = NetworkManagerFactory::createRequest(m_updateUrl);
+
+	connect(m_networkReply, &QNetworkReply::finished, this, &AdblockContentFiltersProfile::handleReplyFinished);
+
+	m_isUpdating = true;
+
+	return true;
+}
+
+bool AdblockContentFiltersProfile::remove()
 {
 	const QString path(SessionsManager::getWritableDataPath(QLatin1String("contentBlocking/%1.txt")).arg(m_name));
 
@@ -923,7 +922,7 @@ bool ContentBlockingProfile::remove()
 	return true;
 }
 
-bool ContentBlockingProfile::resolveDomainExceptions(const QString &url, const QStringList &ruleList) const
+bool AdblockContentFiltersProfile::resolveDomainExceptions(const QString &url, const QStringList &ruleList) const
 {
 	for (int i = 0; i < ruleList.count(); ++i)
 	{
@@ -936,7 +935,7 @@ bool ContentBlockingProfile::resolveDomainExceptions(const QString &url, const Q
 	return false;
 }
 
-bool ContentBlockingProfile::isUpdating() const
+bool AdblockContentFiltersProfile::isUpdating() const
 {
 	return m_isUpdating;
 }

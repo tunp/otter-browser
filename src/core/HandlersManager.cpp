@@ -18,11 +18,19 @@
 **************************************************************************/
 
 #include "HandlersManager.h"
+#include "AdblockContentFiltersProfile.h"
+#include "ContentFiltersManager.h"
 #include "IniSettings.h"
 #include "SessionsManager.h"
 #include "SettingsManager.h"
+#include "Utils.h"
 
 #include <QtCore/QFile>
+#include <QtCore/QFileInfo>
+#include <QtCore/QMimeDatabase>
+#include <QtCore/QUrlQuery>
+#include <QtGui/QDesktopServices>
+#include <QtWidgets/QMessageBox>
 
 namespace Otter
 {
@@ -41,20 +49,64 @@ void HandlersManager::createInstance()
 	}
 }
 
+void HandlersManager::setHandler(const QMimeType &mimeType, const HandlerDefinition &definition)
+{
+	if (SessionsManager::isReadOnly())
+	{
+		return;
+	}
+
+	const QString path(SessionsManager::getWritableDataPath(QLatin1String("handlers.ini")));
+	IniSettings settings(QFile::exists(path) ? path : SessionsManager::getReadableDataPath(QLatin1String("handlers.ini")));
+	QString transferMode;
+
+	switch (definition.transferMode)
+	{
+		case HandlerDefinition::IgnoreTransfer:
+			transferMode = QLatin1String("ignore");
+
+			break;
+		case HandlerDefinition::OpenTransfer:
+			transferMode = QLatin1String("open");
+
+			break;
+		case HandlerDefinition::SaveTransfer:
+			transferMode = QLatin1String("save");
+
+			break;
+		case HandlerDefinition::SaveAsTransfer:
+			transferMode = QLatin1String("saveAs");
+
+			break;
+		default:
+			transferMode = QLatin1String("ask");
+
+			break;
+	}
+
+	settings.beginGroup(mimeType.isValid() ? mimeType.name() : QLatin1String("*"));
+	settings.setValue(QLatin1String("openCommand"), definition.openCommand);
+	settings.setValue(QLatin1String("downloadsPath"), definition.downloadsPath);
+	settings.setValue(QLatin1String("transferMode"), transferMode);
+	settings.save(path);
+}
+
 HandlersManager* HandlersManager::getInstance()
 {
 	return m_instance;
 }
 
-HandlersManager::HandlerDefinition HandlersManager::getHandler(const QString &type)
+HandlersManager::HandlerDefinition HandlersManager::getHandler(const QMimeType &mimeType)
 {
 	IniSettings settings(SessionsManager::getReadableDataPath(QLatin1String("handlers.ini")));
+	const QString name(mimeType.isValid() ? mimeType.name() : QLatin1String("*"));
 	HandlerDefinition definition;
-	definition.isExplicit = settings.getGroups().contains(type);
+	definition.mimeType = mimeType;
+	definition.isExplicit = settings.getGroups().contains(name);
 
 	if (definition.isExplicit)
 	{
-		settings.beginGroup(type);
+		settings.beginGroup(name);
 	}
 	else
 	{
@@ -91,46 +143,61 @@ HandlersManager::HandlerDefinition HandlersManager::getHandler(const QString &ty
 	return definition;
 }
 
-void HandlersManager::setHandler(const QString &type, const HandlerDefinition &definition)
+QVector<HandlersManager::HandlerDefinition> HandlersManager::getHandlers()
 {
-	if (SessionsManager::isReadOnly())
+	const QMimeDatabase mimeDatabase;
+	const QStringList mimeTypes(IniSettings(SessionsManager::getReadableDataPath(QLatin1String("handlers.ini"))).getGroups());
+	QVector<HandlersManager::HandlerDefinition> handlers;
+	handlers.reserve(mimeTypes.count());
+
+	for (int i = 0; i < mimeTypes.count(); ++i)
 	{
-		return;
+		handlers.append(getHandler(mimeDatabase.mimeTypeForName(mimeTypes.at(i))));
 	}
 
-	const QString path(SessionsManager::getWritableDataPath(QLatin1String("handlers.ini")));
-	IniSettings settings(QFile::exists(path) ? path : SessionsManager::getReadableDataPath(QLatin1String("handlers.ini")));
-	QString transferMode;
+	return handlers;
+}
 
-	switch (definition.transferMode)
+bool HandlersManager::handleUrl(const QUrl &url)
+{
+	if (url.scheme() == QLatin1String("abp"))
 	{
-		case HandlerDefinition::IgnoreTransfer:
-			transferMode = QLatin1String("ignore");
+		const QUrlQuery query(url.query());
+		const QUrl location(QUrl::fromPercentEncoding(query.queryItemValue(QLatin1String("location")).toUtf8()));
 
-			break;
-		case HandlerDefinition::OpenTransfer:
-			transferMode = QLatin1String("open");
+		if (location.isValid())
+		{
+			if (ContentFiltersManager::getProfile(location))
+			{
+				QMessageBox::critical(nullptr, tr("Error"), tr("Profile with this address already exists."), QMessageBox::Close);
+			}
+			else if (QMessageBox::question(nullptr, tr("Question"), tr("Do you want to add this content blocking profile?"), QMessageBox::Yes, QMessageBox::No) == QMessageBox::Yes)
+			{
+				ContentFiltersProfile *profile(new AdblockContentFiltersProfile(Utils::createIdentifier(QFileInfo(location.path()).baseName(), ContentFiltersManager::getProfileNames()), QByteArray::fromPercentEncoding(query.queryItemValue(QLatin1String("title")).toUtf8()), location, {}, {}, 0, ContentFiltersProfile::OtherCategory, ContentFiltersProfile::NoFlags));
 
-			break;
-		case HandlerDefinition::SaveTransfer:
-			transferMode = QLatin1String("save");
+				ContentFiltersManager::addProfile(profile);
 
-			break;
-		case HandlerDefinition::SaveAsTransfer:
-			transferMode = QLatin1String("saveAs");
+				profile->update();
+///TODO Some sort of passive confirmation that profile was added
+			}
+		}
 
-			break;
-		default:
-			transferMode = QLatin1String("ask");
-
-			break;
+		return true;
 	}
 
-	settings.beginGroup(type);
-	settings.setValue(QLatin1String("openCommand"), definition.openCommand);
-	settings.setValue(QLatin1String("downloadsPath"), definition.downloadsPath);
-	settings.setValue(QLatin1String("transferMode"), transferMode);
-	settings.save(path);
+	if (url.scheme() == QLatin1String("mailto"))
+	{
+		QDesktopServices::openUrl(url);
+
+		return true;
+	}
+
+	return false;
+}
+
+bool HandlersManager::canHandleUrl(const QUrl &url)
+{
+	return (url.scheme() == QLatin1String("abp") || url.scheme() == QLatin1String("mailto"));
 }
 
 }

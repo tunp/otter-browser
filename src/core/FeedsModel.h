@@ -67,7 +67,10 @@ public:
 		Feed* getFeed() const;
 		QVariant data(int role) const override;
 		QVariant getRawData(int role) const;
+		QVector<Feed*> getFeeds() const;
+		EntryType getType() const;
 		bool isAncestorOf(Entry *child) const;
+		bool operator<(const QStandardItem &other) const override;
 
 	protected:
 		explicit Entry(Feed *feed = nullptr);
@@ -80,6 +83,8 @@ public:
 
 	explicit FeedsModel(const QString &path, QObject *parent = nullptr);
 
+	void beginImport(Entry *target, int estimatedUrlsAmount);
+	void endImport();
 	void trashEntry(Entry *entry);
 	void restoreEntry(Entry *entry);
 	void removeEntry(Entry *entry);
@@ -92,7 +97,7 @@ public:
 	QMimeData* mimeData(const QModelIndexList &indexes) const override;
 	QStringList mimeTypes() const override;
 	QVector<Entry*> getEntries(const QUrl &url) const;
-	bool moveFeed(Entry *entry, Entry *newParent, int newRow = -1);
+	bool moveEntry(Entry *entry, Entry *newParent, int newRow = -1);
 	bool canDropMimeData(const QMimeData *data, Qt::DropAction action, int row, int column, const QModelIndex &parent) const override;
 	bool dropMimeData(const QMimeData *data, Qt::DropAction action, int row, int column, const QModelIndex &parent) override;
 	bool save(const QString &path) const;
@@ -107,11 +112,13 @@ protected:
 	void writeEntry(QXmlStreamWriter *writer, Entry *entry) const;
 	void removeEntryUrl(Entry *entry);
 	void readdEntryUrl(Entry *entry);
+	void createIdentifier(Entry *entry);
 	void handleUrlChanged(Entry *entry, const QUrl &newUrl, const QUrl &oldUrl = {});
 
 private:
 	Entry *m_rootEntry;
 	Entry *m_trashEntry;
+	Entry *m_importTargetEntry;
 	QHash<Entry*, QPair<QModelIndex, int> > m_trash;
 	QHash<QUrl, QVector<Entry*> > m_urls;
 	QMap<quint64, Entry*> m_identifiers;

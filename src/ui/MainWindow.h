@@ -60,6 +60,7 @@ public:
 	void restoreClosedWindow(int index = 0);
 	void moveWindow(Window *window, MainWindow *mainWindow = nullptr, const QVariantMap &parameters = {});
 	void setActiveEditorExecutor(ActionExecutor::Object executor);
+	void setSplitterSizes(const QString &identifier, const QVector<int> &sizes);
 	static MainWindow* findMainWindow(QObject *parent);
 	AddressWidget* findAddressField() const;
 	SearchWidget* findSearchField() const;
@@ -74,6 +75,7 @@ public:
 	ToolBarState getToolBarState(int identifier) const;
 	QVector<ToolBarWidget*> getToolBars(Qt::ToolBarArea area) const;
 	QVector<ClosedWindow> getClosedWindows() const;
+	QVector<int> getSplitterSizes(const QString &identifier) const;
 	quint64 getIdentifier() const;
 	int getCurrentWindowIndex() const;
 	int getWindowCount() const;
@@ -139,6 +141,7 @@ private:
 	QVector<ClosedWindow> m_closedWindows;
 	QVector<quint64> m_tabSwitchingOrderList;
 	QHash<quint64, Window*> m_windows;
+	QMap<QString, QVector<int> > m_splitters;
 	QMap<int, ToolBarWidget*> m_toolBars;
 	QMap<int, ToolBarState> m_toolBarStates;
 	Qt::WindowStates m_previousState;

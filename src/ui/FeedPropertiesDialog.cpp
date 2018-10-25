@@ -19,7 +19,6 @@
 
 #include "FeedPropertiesDialog.h"
 #include "../core/FeedsManager.h"
-#include "../core/ThemesManager.h"
 
 #include "ui_FeedPropertiesDialog.h"
 
@@ -28,7 +27,7 @@
 namespace Otter
 {
 
-FeedPropertiesDialog::FeedPropertiesDialog(Feed *feed, QWidget *parent) : Dialog(parent),
+FeedPropertiesDialog::FeedPropertiesDialog(Feed *feed, FeedsModel::Entry *folder, QWidget *parent) : Dialog(parent),
 	m_feed(feed),
 	m_ui(new Ui::FeedPropertiesDialog)
 {
@@ -50,8 +49,10 @@ FeedPropertiesDialog::FeedPropertiesDialog(Feed *feed, QWidget *parent) : Dialog
 		setWindowTitle(tr("Add Feed"));
 	}
 
-	m_ui->iconButton->setDefaultIcon(ThemesManager::createIcon(QLatin1String("application-rss+xml")));
+	m_ui->folderComboBox->setCurrentFolder(folder);
+	m_ui->iconButton->setDefaultIcon(QLatin1String("application-rss+xml"));
 
+	connect(m_ui->newFolderButton, &QPushButton::clicked, m_ui->folderComboBox, &FeedsComboBoxWidget::createFolder);
 	connect(m_ui->buttonBox, &QDialogButtonBox::accepted, this, &FeedPropertiesDialog::saveFeed);
 	connect(m_ui->buttonBox, &QDialogButtonBox::rejected, this, &FeedPropertiesDialog::close);
 }
@@ -98,6 +99,11 @@ void FeedPropertiesDialog::saveFeed()
 Feed* FeedPropertiesDialog::getFeed() const
 {
 	return m_feed;
+}
+
+FeedsModel::Entry* FeedPropertiesDialog::getFolder() const
+{
+	return m_ui->folderComboBox->getCurrentFolder();
 }
 
 }

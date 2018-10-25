@@ -1,6 +1,6 @@
 /**************************************************************************
 * Otter Browser: Web browser controlled by the user, not vice-versa.
-* Copyright (C) 2013 - 2017 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
+* Copyright (C) 2013 - 2018 Michal Dutkiewicz aka Emdek <michal@emdek.pl>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -36,26 +36,26 @@ class Menu : public QMenu
 public:
 	enum MenuRole
 	{
-		NoMenuRole = 0,
-		BookmarksMenuRole,
-		BookmarkSelectorMenuRole,
-		NotesMenuRole,
-		CharacterEncodingMenuRole,
-		ClosedWindowsMenuRole,
-		DictionariesMenuRole,
-		ImportExportMenuRole,
-		OpenInApplicationMenuRole,
-		ProxyMenuRole,
-		SearchMenuRole,
-		SessionsMenuRole,
-		StyleSheetsMenuRole,
-		ToolBarsMenuRole,
-		UserAgentMenuRole,
-		ValidateMenuRole,
-		WindowsMenuRole
+		UnknownMenu = 0,
+		BookmarksMenu,
+		BookmarkSelectorMenu,
+		NotesMenu,
+		CharacterEncodingMenu,
+		ClosedWindowsMenu,
+		DictionariesMenu,
+		ImportExportMenu,
+		OpenInApplicationMenu,
+		ProxyMenu,
+		SearchMenu,
+		SessionsMenu,
+		StyleSheetsMenu,
+		ToolBarsMenu,
+		UserAgentMenu,
+		ValidateMenu,
+		WindowsMenu
 	};
 
-	explicit Menu(int role = NoMenuRole, QWidget *parent = nullptr);
+	explicit Menu(int role = UnknownMenu, QWidget *parent = nullptr);
 
 	void load(const QString &path, const QStringList &includeSections = {}, ActionExecutor::Object executor = ActionExecutor::Object());
 	void load(const QJsonObject &definition, const QStringList &includeSections = {}, ActionExecutor::Object executor = ActionExecutor::Object());
@@ -73,9 +73,10 @@ protected:
 	void mousePressEvent(QMouseEvent *event) override;
 	void mouseReleaseEvent(QMouseEvent *event) override;
 	void contextMenuEvent(QContextMenuEvent *event) override;
-	void appendAction(const QJsonValue &definition, const QStringList &includeSections, ActionExecutor::Object executor);
+	void appendAction(const QJsonValue &definition, const QStringList &sections, ActionExecutor::Object executor);
 	ActionExecutor::Object getExecutor() const;
-	bool canInclude(const QJsonObject &definition, const QStringList &includeSections);
+	bool canInclude(const QJsonObject &definition, const QStringList &sections);
+	bool hasIncludeMatch(const QJsonObject &definition, const QString &key, const QStringList &sections);
 
 protected slots:
 	void hideMenu();
