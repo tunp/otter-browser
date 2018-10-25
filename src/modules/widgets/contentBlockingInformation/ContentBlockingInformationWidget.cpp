@@ -367,7 +367,7 @@ void ContentBlockingInformationWidget::populateHostsPart(const QHash<QString, bo
 		{
 			const QString host(orderedHostsIt.value().at(i));
 			QCheckBox *checkbox = new QCheckBox(m_hostsMenu);
-			checkbox->setText(QStringLiteral("%1\t [%2]").arg(Utils::elideText(host, m_hostsMenu)).arg(orderedHostsIt.key()));
+			checkbox->setText(QStringLiteral("%1\t [%2]").arg(Utils::elideText(host, m_hostsMenu->fontMetrics(), m_hostsMenu)).arg(orderedHostsIt.key()));
 			bool isEnabled = hostsEnabled.contains(host);
 			checkbox->setChecked(isEnabled);
 			checkbox->setProperty("origIsChecked", isEnabled);
