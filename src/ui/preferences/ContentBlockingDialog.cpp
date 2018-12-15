@@ -541,7 +541,7 @@ void ContentBlockingDialog::save()
 			}
 		}
 		file.close();
-		ContentBlockingProfile *profile(ContentBlockingManager::getProfile(QLatin1String("3rdpartyblock")));
+		ContentFiltersProfile *profile(ContentFiltersManager::getProfile(QLatin1String("3rdpartyblock")));
 
 		if (profile)
 		{
@@ -549,9 +549,9 @@ void ContentBlockingDialog::save()
 		}
 		else
 		{
-			profile = new ContentBlockingProfile(QLatin1String("3rdpartyblock"), tr("3rd-party block"), QUrl(), QDateTime(), QStringList(), 0, ContentBlockingProfile::OtherCategory, ContentBlockingProfile::NoFlags);
+			profile = new AdblockContentFiltersProfile(QLatin1String("3rdpartyblock"), tr("3rd-party block"), QUrl(), QDateTime(), QStringList(), 0, ContentFiltersProfile::OtherCategory, ContentFiltersProfile::NoFlags);
 
-			ContentBlockingManager::addProfile(profile);
+			ContentFiltersManager::addProfile(profile);
 		}
 
 		profiles.append(QLatin1String("3rdpartyblock"));

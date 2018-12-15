@@ -19,6 +19,7 @@
 **************************************************************************/
 
 #include "ContentBlockingInformationWidget.h"
+#include "../../../core/AdblockContentFiltersProfile.h"
 #include "../../../core/Console.h"
 #include "../../../core/Application.h"
 #include "../../../core/ContentFiltersManager.h"
@@ -440,7 +441,7 @@ void ContentBlockingInformationWidget::saveHosts()
 					file.write(QString(newLines.at(i) + "\n").toUtf8());
 				}
 
-				ContentBlockingProfile *profile(ContentBlockingManager::getProfile(QLatin1String("3rdpartyblock")));
+				ContentFiltersProfile *profile(ContentFiltersManager::getProfile(QLatin1String("3rdpartyblock")));
 
 				// clear profile so that ContentBlockingManager will notice that its empty and reloads it
 				if (profile)
@@ -449,9 +450,9 @@ void ContentBlockingInformationWidget::saveHosts()
 				}
 				else
 				{
-					profile = new ContentBlockingProfile(QLatin1String("3rdpartyblock"), tr("3rd-party block"), QUrl(), QDateTime(), QStringList(), 0, ContentBlockingProfile::OtherCategory, ContentBlockingProfile::NoFlags);
+					profile = new AdblockContentFiltersProfile(QLatin1String("3rdpartyblock"), tr("3rd-party block"), QUrl(), QDateTime(), QStringList(), 0, ContentFiltersProfile::OtherCategory, ContentFiltersProfile::NoFlags);
 
-					ContentBlockingManager::addProfile(profile);
+					ContentFiltersManager::addProfile(profile);
 				}
 			}
 		}
